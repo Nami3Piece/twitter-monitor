@@ -1,0 +1,355 @@
+import asyncio
+from typing import Dict, List, Optional
+
+from loguru import logger
+
+from api.twitterapi import fetch_latest_tweets, fetch_tweet_by_id, follow_user, unfollow_user
+from config import AUTO_FOLLOW_THRESHOLD
+from db.database import insert_tweet, record_account, update_ai_reply, vote_tweet, mark_account_followed, get_low_follower_accounts, delete_account_and_tweets
+from notifiers import get_notifiers
+
+MIN_FOLLOWER_THRESHOLD = 1000
+
+# Exchanges allowed to appear in results
+_ALLOWED_EXCHANGES = {"binance", "coinbase"}
+
+# Keywords that identify exchange accounts (username or display name).
+# Any match → blocked, unless the account is in _ALLOWED_EXCHANGES.
+_EXCHANGE_PATTERNS = {
+    "exchange", "trading", "futures", "perpetual", "derivatives",
+    "bitget", "bybit", "okx", "okex", "kucoin", "huobi", "htx",
+    "gate.io", "gateio", "mexc", "bitmex", "bitfinex", "kraken",
+    "bitstamp", "gemini", "phemex", "whitebit", "lbank", "xt.com",
+    "xtcom", "deribit", "coinsbit", "hotbit", "bitmart", "digifinex",
+    "ascendex", "bitrue", "pionex", "poloniex", "probit", "jarxe",
+    "vest", "bingx", "woox", "backpack",
+}
+
+
+def _is_blocked_exchange(author: Dict) -> bool:
+    """Return True if the author looks like a non-whitelisted exchange."""
+    username = (author.get("userName") or author.get("username") or "").lower()
+    name = (author.get("name") or "").lower()
+    combined = f"{username} {name}"
+
+    # Whitelist: always allow Binance and Coinbase
+    for allowed in _ALLOWED_EXCHANGES:
+        if allowed in combined:
+            return False
+
+    # Block if any exchange keyword found
+    for pat in _EXCHANGE_PATTERNS:
+        if pat in combined:
+            return True
+
+    return False
+
+
+def _is_partnership_promo(text: str) -> bool:
+    """Return True if tweet looks like a partnership announcement (ProjectA × ProjectB)."""
+    import re
+    # Match patterns like "X × Y", "A x B", "Project1 × Project2"
+    if re.search(r'\s[×xX]\s', text):
+        return True
+    # Common partnership keywords
+    partnership_keywords = [
+        'partnership', 'collaboration', 'collab', 'announcing',
+        'excited to announce', 'proud to partner', 'teaming up',
+        'joining forces', 'strategic partnership'
+    ]
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in partnership_keywords)
+
+
+def _contains_meme_coin(text: str) -> bool:
+    """Return True if tweet mentions meme coins."""
+    import re
+    # Common meme coin tickers and names
+    meme_patterns = [
+        r'\$doge\b', r'\bdogecoin\b',
+        r'\$shib\b', r'\bshiba\b',
+        r'\$pepe\b', r'\bpepe\b',
+        r'\$floki\b', r'\bfloki\b',
+        r'\$bonk\b', r'\bbonk\b',
+        r'\$wif\b', r'\bdogwifhat\b',
+        r'\$meme\b', r'\bmemecoin\b',
+        r'\$elon\b', r'\belonmusk\b',
+        r'\$safemoon\b', r'\bsafemoon\b',
+    ]
+    text_lower = text.lower()
+    return any(re.search(pat, text_lower) for pat in meme_patterns)
+
+
+def _contains_nuclear_energy(text: str) -> bool:
+    """Return True if tweet mentions nuclear energy."""
+    import re
+    nuclear_patterns = [
+        r'\bnuclear energy\b',
+        r'\bnuclear power\b',
+        r'\bnuclear plant\b',
+        r'\bnuclear reactor\b',
+        r'\bnuclear facility\b',
+        r'\bnuclear station\b',
+    ]
+    text_lower = text.lower()
+    return any(re.search(pat, text_lower) for pat in nuclear_patterns)
+
+
+def _is_political_content(text: str) -> bool:
+    """Return True if tweet contains political content."""
+    import re
+    text_lower = text.lower()
+
+    # Political figures
+    political_figures = [
+        r'\btrump\b', r'\bpresident trump\b', r'\bdonald trump\b',
+        r'\bbiden\b', r'\bpresident biden\b',
+        r'\bobama\b', r'\bclinton\b', r'\breagan\b',
+        r'\bpelosi\b', r'\bmcconnell\b', r'\bschumer\b',
+    ]
+
+    # Political keywords
+    political_keywords = [
+        r'\belection\b', r'\bvote\b', r'\bvoting\b',
+        r'\bdemocrat\b', r'\brepublican\b', r'\bgop\b',
+        r'\bcongress\b', r'\bsenate\b', r'\bhouse of representatives\b',
+        r'\bwhite house\b', r'\bpolitical\b', r'\bpolitics\b',
+        r'\bcampaign\b', r'\bpolicy\b', r'\blegislation\b',
+    ]
+
+    all_patterns = political_figures + political_keywords
+    return any(re.search(pat, text_lower) for pat in all_patterns)
+
+
+def _is_non_energy_content(text: str) -> bool:
+    """Return True if tweet uses 'energy' in non-energy context (music, fitness, etc)."""
+    text_lower = text.lower()
+
+    # Non-energy contexts where 'energy' appears
+    non_energy_keywords = [
+        'album', 'music', 'song', 'artist', 'singer', 'concert', 'performance',
+        'movie', 'film', 'actor', 'actress', 'celebrity', 'fashion', 'style',
+        'workout', 'fitness', 'gym', 'exercise', 'health', 'wellness',
+        'vibe', 'mood', 'feeling', 'emotion', 'spirit', 'aura',
+        'bambam', 'kpop', 'idol', 'band', 'tour', 'dance', 'choreography',
+    ]
+
+    return any(kw in text_lower for kw in non_energy_keywords)
+
+
+def _is_adult_content(text: str) -> bool:
+    """Return True if tweet contains adult/NSFW content."""
+    text_lower = text.lower()
+
+    adult_keywords = [
+        'nsfw', 'onlyfans', 'xxx', 'porn', 'sexy', 'nude', 'naked',
+        'bikini', 'lingerie', 'adult content', '18+', 'explicit',
+        'fan art', 'cosplay', 'lewds', 'thirst', 'hot pics',
+        'lipstick energy', 'delish', 'spicy', 'naughty'
+    ]
+
+    return any(kw in text_lower for kw in adult_keywords)
+
+
+def _is_consumer_electronics(text: str) -> bool:
+    """Return True if tweet is about consumer electronics batteries (phones, laptops, etc)."""
+    text_lower = text.lower()
+
+    consumer_keywords = [
+        'macbook', 'ipad', 'iphone', 'laptop', 'notebook', 'smartphone',
+        'phone battery', 'mobile phone', 'tablet', 'apple watch', 'airpods',
+        'samsung galaxy', 'pixel', 'oneplus', 'xiaomi', 'huawei', 'oppo', 'vivo',
+        'gaming laptop', 'ultrabook', 'chromebook', 'surface pro',
+        'ev battery', 'electric vehicle battery', 'car battery', 'tesla battery',
+        'automotive battery', 'vehicle battery'
+    ]
+
+    return any(kw in text_lower for kw in consumer_keywords)
+
+
+def _is_regenerative_agriculture(text: str) -> bool:
+    """Return True if tweet is about regenerative agriculture (not energy-related)."""
+    text_lower = text.lower()
+
+    regen_ag_keywords = [
+        'regenerative ag', 'regenerative agriculture', 'regenerative farming',
+        'soil health', 'cover crop', 'crop rotation', 'pasture', 'livestock',
+        'organic farming', 'permaculture', 'agroforestry', 'food system',
+        'regenerative grazing', 'carbon farming'
+    ]
+
+    return any(kw in text_lower for kw in regen_ag_keywords)
+
+
+_AI_SEM: Optional[asyncio.Semaphore] = None
+
+
+def _get_ai_sem() -> asyncio.Semaphore:
+    global _AI_SEM
+    if _AI_SEM is None:
+        _AI_SEM = asyncio.Semaphore(3)
+    return _AI_SEM
+
+
+async def _generate_and_store(project: str, keyword: str, tweet: Dict) -> None:
+    """Generate AI reply for a single tweet and persist it."""
+    async with _get_ai_sem():
+        try:
+            from ai.retweet import generate_retweet
+            reply = await generate_retweet(project, keyword, tweet)
+            if reply:
+                tweet_id = tweet.get("id") or tweet.get("tweet_id", "")
+                await update_ai_reply(tweet_id, reply)
+        except Exception as e:
+            logger.warning(f"AI generation error: {e}")
+
+
+async def monitor_keyword(project: str, keyword: str, since_hours: int = 8) -> None:
+    logger.info(f"[{project}] Checking keyword: '{keyword}'" + (f" (last {since_hours}h)" if since_hours else ""))
+
+    try:
+        tweets = await fetch_latest_tweets(keyword, max_pages=1, since_hours=since_hours)
+    except Exception as e:
+        logger.error(f"[{project}] Fetch failed for '{keyword}': {e}")
+        return
+
+    if not tweets:
+        logger.info(f"[{project}] No tweets for '{keyword}'")
+        return
+
+    notifiers = get_notifiers()
+    new_tweets: List[Dict] = []
+
+    for tweet in tweets:
+        text = (tweet.get("text") or "").strip()
+        # Skip retweets and very short/empty tweets
+        if text.startswith("RT @") or len(text) < 20:
+            continue
+        # Skip accounts with fewer than MIN_FOLLOWER_THRESHOLD followers
+        author = tweet.get("author") or {}
+        followers = author.get("followers") or 0
+        if followers < MIN_FOLLOWER_THRESHOLD:
+            continue
+        # Skip non-whitelisted exchange accounts
+        if _is_blocked_exchange(author):
+            logger.debug(f"Skipped exchange account: {author.get('userName')}")
+            continue
+        # Skip partnership/collaboration announcements
+        if _is_partnership_promo(text):
+            logger.debug(f"Skipped partnership promo: {text[:50]}...")
+            continue
+        # Skip meme coin mentions
+        if _contains_meme_coin(text):
+            logger.debug(f"Skipped meme coin mention: {text[:50]}...")
+            continue
+        # Skip nuclear energy mentions
+        if _contains_nuclear_energy(text):
+            logger.debug(f"Skipped nuclear energy mention: {text[:50]}...")
+            continue
+        # Skip political content
+        if _is_political_content(text):
+            logger.debug(f"Skipped political content: {text[:50]}...")
+            continue
+        # Skip non-energy content (music, fitness, etc using 'energy')
+        if _is_non_energy_content(text):
+            logger.debug(f"Skipped non-energy content: {text[:50]}...")
+            continue
+        # Skip adult/NSFW content
+        if _is_adult_content(text):
+            logger.debug(f"Skipped adult content: {text[:50]}...")
+            continue
+        # Skip consumer electronics (phones, laptops, car batteries)
+        if _is_consumer_electronics(text):
+            logger.debug(f"Skipped consumer electronics: {text[:50]}...")
+            continue
+        # Skip regenerative agriculture content
+        if _is_regenerative_agriculture(text):
+            logger.debug(f"Skipped regenerative agriculture: {text[:50]}...")
+            continue
+        # Skip tweets without media (images or videos) - only for new tweets
+        # Note: voted tweets are preserved regardless of media
+        ext = tweet.get("extendedEntities") or tweet.get("entities") or {}
+        media_list = ext.get("media") or []
+        if not media_list:
+            logger.debug(f"Skipped tweet without media: {text[:50]}...")
+            continue
+        # Generate AI draft before inserting so it's available immediately
+        from ai.retweet import generate_retweet
+        ai_reply = await generate_retweet(project, keyword, tweet)
+        # If this is a reply, fetch the original tweet text and media
+        reply_to_text = None
+        reply_to_media_url = None
+        if tweet.get("isReply") and tweet.get("inReplyToId"):
+            original = await fetch_tweet_by_id(tweet["inReplyToId"])
+            if original:
+                reply_to_text = original.get("text", "")
+                # Extract media from original tweet
+                ext_orig = original.get("extendedEntities") or original.get("entities") or {}
+                media_list_orig = ext_orig.get("media") or []
+                if media_list_orig:
+                    first = media_list_orig[0]
+                    reply_to_media_url = first.get("media_url_https") or first.get("media_url")
+        is_new = await insert_tweet(project, keyword, tweet, ai_reply=ai_reply, reply_to_text=reply_to_text, reply_to_media_url=reply_to_media_url)
+        if is_new:
+            new_tweets.append(tweet)
+            username = (
+                author.get("userName") or author.get("username") or tweet.get("username", "")
+            )
+            if username:
+                await record_account(username, project, keyword, followers=followers)
+
+    logger.info(f"[{project}] '{keyword}': {len(new_tweets)} new / {len(tweets)} fetched")
+
+
+async def handle_vote(tweet_id: str, voter: str) -> Dict:
+    """
+    Process a vote on a tweet. Auto-follow account if threshold reached.
+    Returns dict with result metadata for the API response.
+    """
+    was_new, username, project, vote_count = await vote_tweet(tweet_id, voter)
+    if not was_new:
+        return {"ok": False, "reason": "already_voted"}
+
+    result: Dict = {"ok": True, "username": username, "vote_count": vote_count}
+
+    if username and project and vote_count >= AUTO_FOLLOW_THRESHOLD:
+        success = await follow_user(username)
+        if success:
+            await mark_account_followed(username, project)
+        result["auto_followed"] = success
+
+    return result
+
+
+async def cleanup_low_follower_accounts(threshold: int = MIN_FOLLOWER_THRESHOLD) -> Dict:
+    """
+    Unfollow accounts with fewer than `threshold` followers, delete their tweets
+    and remove them from tracking. Returns a summary dict.
+    """
+    accounts = await get_low_follower_accounts(threshold)
+    if not accounts:
+        logger.info(f"No accounts with < {threshold} followers to clean up")
+        return {"unfollowed": 0, "deleted_tweets": 0, "removed_accounts": 0}
+
+    logger.info(f"Cleaning up {len(accounts)} accounts with < {threshold} followers")
+    unfollowed = 0
+    deleted_tweets = 0
+    seen_usernames: set = set()
+
+    for acc in accounts:
+        username = acc["username"]
+        if username in seen_usernames:
+            continue
+        seen_usernames.add(username)
+
+        if acc.get("followed"):
+            success = await unfollow_user(username)
+            if success:
+                unfollowed += 1
+
+        tweets_removed = await delete_account_and_tweets(username)
+        deleted_tweets += tweets_removed
+        logger.info(f"Removed @{username} (followers={acc.get('followers',0)}): {tweets_removed} tweets deleted")
+
+    logger.info(f"Cleanup complete: unfollowed={unfollowed}, tweets_deleted={deleted_tweets}, accounts_removed={len(seen_usernames)}")
+    return {"unfollowed": unfollowed, "deleted_tweets": deleted_tweets, "removed_accounts": len(seen_usernames)}
