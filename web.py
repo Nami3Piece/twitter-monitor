@@ -1127,6 +1127,53 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .keyword-stats-table th{{background:#f8fafc;padding:.5rem .8rem;font-size:.75rem}}
 .keyword-stats-table td{{padding:.5rem .8rem;font-size:.82rem}}
 </style>
+
+<script>
+// Navigation functions - defined in head to be available immediately
+var _activeTableId = 'tbl-all';
+
+function showTab(el, targetId) {{
+  document.querySelectorAll('.tab').forEach(t => {{
+    t.classList.remove('active');
+    t.style.background = '';
+    t.style.color = '';
+    t.style.borderColor = '';
+  }});
+  el.classList.add('active');
+  var c = el.dataset.color || '#0f172a';
+  el.style.background = c;
+  el.style.color = '#fff';
+  el.style.borderColor = c;
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById(targetId).classList.add('active');
+  // track active table for search
+  var tbl = document.getElementById(targetId).querySelector('table');
+  _activeTableId = tbl ? tbl.id : null;
+  if (typeof filterTable === 'function') filterTable();
+}}
+
+function showProj(el) {{
+  var proj = el.dataset.proj;
+  showTab(el, 'sec-' + proj);
+}}
+
+function showSub(el, targetId) {{
+  var parent = el.closest('.section');
+  parent.querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  parent.querySelectorAll('.subsection').forEach(s => {{ s.classList.remove('active'); s.style.display = 'none'; }});
+  var target = document.getElementById(targetId);
+  if (target) {{
+    target.classList.add('active');
+    target.style.display = 'block';
+  }}
+  // track active table for search
+  var tbl = target ? target.querySelector('table') : null;
+  _activeTableId = tbl ? tbl.id : null;
+  if (typeof filterTable === 'function') filterTable();
+}}
+</script>
+
 </head>
 <body>
 <header>
@@ -1349,7 +1396,7 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 </footer>
 
 <script>
-var _activeTableId = 'tbl-all';
+// _activeTableId already defined in head
 
 function openDonate() {{
   var m = document.getElementById('donate-modal');
@@ -1435,41 +1482,6 @@ function copyAddr(addr, btnId) {{
   }}).catch(function() {{
     toast('Copy failed — please copy manually', false);
   }});
-}}
-
-function showTab(el, targetId) {{
-  document.querySelectorAll('.tab').forEach(t => {{
-    t.classList.remove('active');
-    t.style.background = '';
-    t.style.color = '';
-    t.style.borderColor = '';
-  }});
-  el.classList.add('active');
-  var c = el.dataset.color || '#0f172a';
-  el.style.background = c;
-  el.style.color = '#fff';
-  el.style.borderColor = c;
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.getElementById(targetId).classList.add('active');
-  // track active table for search
-  var tbl = document.getElementById(targetId).querySelector('table');
-  _activeTableId = tbl ? tbl.id : null;
-  filterTable();
-}}
-
-function showProj(el) {{
-  var proj = el.dataset.proj;
-  showTab(el, 'sec-' + proj);
-}}
-
-function showSub(el, targetId) {{
-  var parent = el.closest('.section');
-  parent.querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  parent.querySelectorAll('.subsection').forEach(s => {{ s.classList.remove('active'); s.style.display = 'none'; }});
-  var target = document.getElementById(targetId);
-  target.style.display = 'block';
-  target.classList.add('active');
 }}
 
 function filterTable() {{
