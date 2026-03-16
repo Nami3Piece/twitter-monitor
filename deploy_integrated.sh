@@ -9,6 +9,13 @@ echo "整合部署：Twitter Monitor + Logo Agent"
 echo "=========================================="
 echo ""
 
+# 检查是否为 root 用户
+if [ "$EUID" -ne 0 ]; then
+    echo "❌ 请使用 root 用户或 sudo 执行此脚本"
+    echo "使用方法: sudo ./deploy_integrated.sh"
+    exit 1
+fi
+
 # ============================================
 # Part 1: 部署 Twitter Monitor
 # ============================================
