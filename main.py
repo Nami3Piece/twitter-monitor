@@ -3,8 +3,9 @@ twitter-monitor — main entry point.
 
 On startup:
   1. Runs every keyword once immediately (concurrency-limited to 3).
-  2. Launches a web dashboard on http://0.0.0.0:8080
-  3. Schedules recurring jobs every 8 hours (0, 8, 16 local time).
+  2. Schedules recurring jobs every 8 hours (0, 8, 16 local time).
+
+Note: Web dashboard is served separately by web.py
 """
 
 import asyncio
@@ -12,7 +13,6 @@ import datetime as dt
 import os
 import sys
 
-import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
@@ -21,10 +21,8 @@ from loguru import logger
 from config import PROJECTS
 from db.database import init_db, cleanup_old_tweets, get_daily_usage, get_daily_tweet_count
 from monitor.keyword_monitor import monitor_keyword, cleanup_low_follower_accounts
-from web import app as web_app
 
 SCHEDULE_HOURS = list(range(0, 24, 8))  # every 8 hours: 0, 8, 16
-WEB_PORT = int(os.getenv("PORT", 8080))
 
 
 def _configure_logging() -> None:
@@ -156,24 +154,15 @@ async def main() -> None:
     scheduler = _setup_scheduler()
     scheduler.start()
 
-    config = uvicorn.Config(
-        web_app,
-        host="0.0.0.0",
-        port=WEB_PORT,
-        log_level="warning",
-    )
-    server = uvicorn.Server(config)
-
-    logger.info(f"Dashboard → http://localhost:{WEB_PORT}")
+    logger.info("Starting initial fetch and scheduler...")
     logger.info("Press Ctrl+C to stop.")
 
-    # Web server and initial fetch run concurrently so the dashboard
-    # is immediately available while tweets are being collected.
+    # Run initial fetch and keep scheduler running
     try:
-        await asyncio.gather(
-            server.serve(),
-            run_all_now(),
-        )
+        await run_all_now()
+        # Keep the scheduler running indefinitely
+        while True:
+            await asyncio.sleep(3600)
     finally:
         scheduler.shutdown(wait=False)
 
