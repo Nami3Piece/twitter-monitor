@@ -30,6 +30,7 @@
 - 📋 一键复制到剪贴板
 - 🔄 API 失败时手动重试
 - 📊 实时字符数统计
+- ⚡ **按需生成**：只在 Voted 页面，点击时才生成（节约资源）
 
 ### 5. Web Dashboard
 - 📱 响应式设计，支持移动端
@@ -159,15 +160,21 @@ http://localhost:8000
 
 ### AI Retweet Draft 使用方法
 
-1. 在推文列表中找到感兴趣的推文
-2. 点击推文卡片上的 **"✨ AI Draft"** 按钮
-3. 等待 AI 生成3种风格的草稿（约2-3秒）
-4. 切换标签页查看不同风格：
+1. 进入 **"✓ Voted"** 页面（只有这个页面有 AI Draft 功能）
+2. 找到想要转发的推文
+3. 点击 **"✨ Generate Draft"** 按钮
+4. 等待 AI 生成3种风格的草稿（约2-3秒）
+5. 切换标签页查看不同风格：
    - 💼 Professional
    - 😊 Casual
    - 🎉 Enthusiastic
-5. 点击 **"📋 Copy to Clipboard"** 复制草稿
-6. 粘贴到 Twitter 进行转发
+6. 点击 **"📋 Copy to Clipboard"** 复制草稿
+7. 粘贴到 Twitter 进行转发
+
+**重要说明**：
+- ✅ AI Draft 功能**仅在 Voted 页面**可用
+- ✅ **按需生成**，点击时才调用 API（节约算力和存储）
+- ❌ All 页面和各项目页面**不显示** AI Draft 功能
 
 **注意**：如果 Claude API 不可用，会显示错误信息和 "🔄 Retry" 按钮，等待 API 恢复后手动重试。
 
