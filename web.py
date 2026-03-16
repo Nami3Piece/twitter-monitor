@@ -3748,6 +3748,7 @@ async def settings_page(user: Dict = Depends(_user_auth)):
 
     tier = sub.get("tier", "free")
     is_paid = tier in ("basic", "pro")
+    tier_badge = {"free": "Free", "basic": "Basic", "pro": "Pro"}.get(tier, "Free")
 
     # Load user's current filters if they have a paid plan
     filters_html = ""
