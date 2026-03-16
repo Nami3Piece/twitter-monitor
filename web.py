@@ -406,36 +406,11 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
     for r in rows:
         c = _PROJECT_COLOR.get(r.get("project", ""), "#3b82f6")
 
-        # AI engagement drafts for voted tweets
+        # AI Retweet Draft cell (only for voted section)
         if show_ai_draft:
-            import json
-            ai_quotes = r.get("ai_quotes") or "[]"
-            ai_comments = r.get("ai_comments") or "[]"
-            try:
-                quotes = json.loads(ai_quotes) if isinstance(ai_quotes, str) else ai_quotes
-                comments = json.loads(ai_comments) if isinstance(ai_comments, str) else ai_comments
-            except:
-                quotes = []
-                comments = []
-
-            if quotes and comments:
-                ai_cell = '<div class="ai-engagement">'
-                ai_cell += '<div class="ai-section"><strong>📝 Quote Versions:</strong>'
-                for i, q in enumerate(quotes[:3], 1):
-                    ai_cell += f'<div class="ai-version"><span class="version-label">V{i}</span> {_esc(q)}</div>'
-                ai_cell += '</div>'
-                ai_cell += '<div class="ai-section"><strong>💬 Comment Versions:</strong>'
-                for i, c in enumerate(comments[:3], 1):
-                    ai_cell += f'<div class="ai-version"><span class="version-label">V{i}</span> {_esc(c)}</div>'
-                ai_cell += '</div></div>'
-            else:
-                ai_cell = '<span class="ai-pending">⏳ Generating engagement drafts...</span>'
+            ai_cell = f'<button class="ai-draft-btn" onclick="openAIDraftModal(\'{r["tweet_id"]}\')">✨ Generate Draft</button>'
         else:
-            ai = _esc(r.get("ai_reply") or "")
-            ai_cell = (
-                f'<div class="ai-reply">{ai}</div>' if ai
-                else '<span class="ai-pending">AI generating…</span>'
-            )
+            ai_cell = ''
 
         vote_count = r.get("vote_count", 0)
         user_voted = r.get("user_voted", False)
@@ -485,9 +460,6 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
         user_voted = r.get("user_voted", False)
         my_vote_badge = '<span class="my-vote-badge">👤 My Vote</span>' if user_voted else ''
 
-        # AI Draft button (only in non-voted sections)
-        ai_draft_btn = '' if show_ai_draft else f'<button class="ai-draft-btn" onclick="openAIDraftModal(\'{r["tweet_id"]}\')">✨ AI Draft</button>'
-
         tweet_card = (
             f'<div class="tweet-card{"  hot" if (r.get("like_count") or 0) >= 50 else ""}{"  my-voted" if user_voted else ""}">'
             f'  <div class="tc-header">'
@@ -507,7 +479,6 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
             f'    <span class="tc-stat">🔁 {r.get("retweet_count") or 0}</span>'
             f'    <span class="tc-stat">💬 {r.get("reply_count") or 0}</span>'
             f'    <span class="tc-stat">👁 {r.get("view_count") or 0}</span>'
-            f'    {ai_draft_btn}'
             f'    <a class="tc-link" href="{_esc(r.get("url","#"))}" target="_blank">View Tweet ↗</a>'
             f'  </div>'
             f'</div>'
