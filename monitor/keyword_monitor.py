@@ -304,6 +304,7 @@ async def monitor_keyword(project: str, keyword: str, since_hours: int = 8) -> N
 async def handle_vote(tweet_id: str, voter: str) -> Dict:
     """
     Process a vote on a tweet. Auto-follow account if threshold reached.
+    Generate AI engagement drafts (quotes + comments) for voted tweets.
     Returns dict with result metadata for the API response.
     """
     was_new, username, project, vote_count = await vote_tweet(tweet_id, voter)
@@ -317,6 +318,38 @@ async def handle_vote(tweet_id: str, voter: str) -> Dict:
         if success:
             await mark_account_followed(username, project)
         result["auto_followed"] = success
+
+    # Generate AI engagement drafts for voted tweets
+    try:
+        from db.database import update_ai_engagement
+        from ai.engagement import generate_engagement_drafts
+        import aiosqlite
+        from config import DB_PATH
+
+        # Get tweet data
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT project, keyword, text, username FROM tweets WHERE tweet_id=?",
+                (tweet_id,)
+            ) as cur:
+                row = await cur.fetchone()
+
+        if row:
+            project, keyword, text, username = row
+            tweet_data = {"text": text, "username": username}
+
+            # Generate engagement drafts
+            drafts = await generate_engagement_drafts(project, keyword, tweet_data)
+
+            if drafts:
+                await update_ai_engagement(
+                    tweet_id,
+                    drafts.get("quotes", []),
+                    drafts.get("comments", [])
+                )
+                logger.info(f"Generated engagement drafts for {tweet_id}")
+    except Exception as e:
+        logger.warning(f"Failed to generate engagement drafts for {tweet_id}: {e}")
 
     return result
 

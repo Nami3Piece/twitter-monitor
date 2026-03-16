@@ -57,6 +57,8 @@ async def init_db() -> None:
             ("reply_to_text",       "TEXT"),
             ("media_url",           "TEXT"),
             ("reply_to_media_url",  "TEXT"),
+            ("ai_quotes",           "TEXT"),  # JSON array of 3 quote versions
+            ("ai_comments",         "TEXT"),  # JSON array of 3 comment versions
         ]:
             if col not in cols:
                 await db.execute(f"ALTER TABLE tweets ADD COLUMN {col} {defn}")
@@ -283,6 +285,17 @@ async def update_ai_reply(tweet_id: str, ai_reply: str) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "UPDATE tweets SET ai_reply=? WHERE tweet_id=?", (ai_reply, tweet_id)
+        )
+        await db.commit()
+
+
+async def update_ai_engagement(tweet_id: str, quotes: list, comments: list) -> None:
+    """Update AI-generated quotes and comments for a voted tweet."""
+    import json
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE tweets SET ai_quotes=?, ai_comments=? WHERE tweet_id=?",
+            (json.dumps(quotes), json.dumps(comments), tweet_id)
         )
         await db.commit()
 

@@ -405,11 +405,38 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
     out = []
     for r in rows:
         c = _PROJECT_COLOR.get(r.get("project", ""), "#3b82f6")
-        ai = _esc(r.get("ai_reply") or "")
-        ai_cell = (
-            f'<div class="ai-reply">{ai}</div>' if ai
-            else '<span class="ai-pending">AI generating…</span>'
-        )
+
+        # AI engagement drafts for voted tweets
+        if show_ai_draft:
+            import json
+            ai_quotes = r.get("ai_quotes") or "[]"
+            ai_comments = r.get("ai_comments") or "[]"
+            try:
+                quotes = json.loads(ai_quotes) if isinstance(ai_quotes, str) else ai_quotes
+                comments = json.loads(ai_comments) if isinstance(ai_comments, str) else ai_comments
+            except:
+                quotes = []
+                comments = []
+
+            if quotes and comments:
+                ai_cell = '<div class="ai-engagement">'
+                ai_cell += '<div class="ai-section"><strong>📝 Quote Versions:</strong>'
+                for i, q in enumerate(quotes[:3], 1):
+                    ai_cell += f'<div class="ai-version"><span class="version-label">V{i}</span> {_esc(q)}</div>'
+                ai_cell += '</div>'
+                ai_cell += '<div class="ai-section"><strong>💬 Comment Versions:</strong>'
+                for i, c in enumerate(comments[:3], 1):
+                    ai_cell += f'<div class="ai-version"><span class="version-label">V{i}</span> {_esc(c)}</div>'
+                ai_cell += '</div></div>'
+            else:
+                ai_cell = '<span class="ai-pending">⏳ Generating engagement drafts...</span>'
+        else:
+            ai = _esc(r.get("ai_reply") or "")
+            ai_cell = (
+                f'<div class="ai-reply">{ai}</div>' if ai
+                else '<span class="ai-pending">AI generating…</span>'
+            )
+
         vote_count = r.get("vote_count", 0)
         user_voted = r.get("user_voted", False)
 
@@ -1020,6 +1047,12 @@ tr.hidden{{display:none}}
 .ai-cell{{max-width:280px;word-break:break-word}}
 .ai-reply{{background:#f0fdf4;border-left:3px solid #22c55e;padding:.4rem .6rem;border-radius:0 4px 4px 0;font-size:.82rem;color:#166534;line-height:1.5}}
 .ai-pending{{font-size:.78rem;color:var(--muted);font-style:italic}}
+.ai-engagement{{display:flex;flex-direction:column;gap:.8rem}}
+.ai-section{{background:#fafbfc;border-radius:6px;padding:.6rem}}
+.ai-section strong{{display:block;font-size:.75rem;color:#475569;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.03em}}
+.ai-version{{background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:.5rem;margin-bottom:.4rem;font-size:.8rem;line-height:1.5;display:flex;gap:.5rem}}
+.ai-version:last-child{{margin-bottom:0}}
+.version-label{{display:inline-block;background:#3b82f6;color:#fff;font-size:.7rem;font-weight:700;padding:.15rem .4rem;border-radius:3px;flex-shrink:0}}
 .vote-btn{{padding:.3rem .7rem;border-radius:6px;border:1.5px solid #3b82f6;background:#fff;color:#3b82f6;font-size:.8rem;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap}}
 .vote-btn:hover{{background:#3b82f6;color:#fff}}
 .vote-btn.voted{{background:#22c55e;color:#fff;border-color:#22c55e;cursor:default}}
