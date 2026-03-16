@@ -398,9 +398,10 @@ def _build_top_events_html(events: List[Dict]) -> str:
     return f'<section class="top-events"><h2 class="section-title">🔥 Top Events <span class="section-sub">Last 24 hours · Sorted by engagement</span></h2><div class="event-grid">{"".join(cards)}</div></section>'
 
 
-def _tweet_rows(rows: List[Dict]) -> str:
+def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
     if not rows:
-        return '<tr><td colspan="8" class="empty">No tweets in last 24 hours</td></tr>'
+        colspan = "6" if show_ai_draft else "5"
+        return f'<tr><td colspan="{colspan}" class="empty">No tweets in last 24 hours</td></tr>'
     out = []
     for r in rows:
         c = _PROJECT_COLOR.get(r.get("project", ""), "#3b82f6")
@@ -485,8 +486,8 @@ def _tweet_rows(rows: List[Dict]) -> str:
             f'<td><input type="checkbox" class="tweet-checkbox" value="{r["tweet_id"]}"></td>'
             f'<td><span class="kw" style="background:{c}22;color:{c}">{_esc(r.get("keyword",""))}</span></td>'
             f'<td class="tweet-card-cell">{tweet_card}</td>'
-            f'<td class="ai-cell">{ai_cell}</td>'
-            f'<td>{vote_btn}</td>'
+            + (f'<td class="ai-cell">{ai_cell}</td>' if show_ai_draft else '')
+            + f'<td>{vote_btn}</td>'
             f'<td>{delete_btn}</td>'
             f'</tr>'
         )
@@ -852,9 +853,9 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
         '</div>'
         '<table id="tbl-all"><thead><tr>'
         '<th><input type="checkbox" onchange="toggleAll(this)"></th>'
-        '<th>Keyword</th><th>Tweet</th><th>AI Retweet Draft</th><th>Vote</th><th>Actions</th>'
+        '<th>Keyword</th><th>Tweet</th><th>Vote</th><th>Actions</th>'
         '</tr></thead><tbody>'
-        + _tweet_rows(all_rows)
+        + _tweet_rows(all_rows, show_ai_draft=False)
         + '</tbody></table></div>'
     )
 
@@ -870,7 +871,7 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
         '<th><input type="checkbox" onchange="toggleAll(this)"></th>'
         '<th>Keyword</th><th>Tweet</th><th>AI Retweet Draft</th><th>Vote</th><th>Actions</th>'
         '</tr></thead><tbody>'
-        + _tweet_rows(voted_rows)
+        + _tweet_rows(voted_rows, show_ai_draft=True)
         + '</tbody></table></div>'
     )
 
@@ -892,9 +893,9 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
     </div>
     <table><thead><tr>
       <th><input type="checkbox" onchange="toggleAll(this)"></th>
-      <th>Keyword</th><th>Tweet</th><th>AI Retweet Draft</th><th>Vote</th><th>Actions</th>
+      <th>Keyword</th><th>Tweet</th><th>Vote</th><th>Actions</th>
     </tr></thead><tbody>
-      {_tweet_rows(rows)}
+      {_tweet_rows(rows, show_ai_draft=False)}
     </tbody></table>
   </div>
   <div id="accounts-{name}" class="subsection" style="display:none">
