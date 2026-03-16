@@ -4111,4 +4111,4 @@ if __name__ == "__main__":
     from db.database import init_db
     asyncio.run(init_db())
     asyncio.run(_auth_module.init_auth_db())
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
