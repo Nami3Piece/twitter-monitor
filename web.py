@@ -1297,6 +1297,7 @@ async function copyAIDraft(modalType) {{
   <h1>🐦 Twitter Monitor Dashboard</h1>
   <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
     <div class="meta">Updated: {updated} &nbsp;|&nbsp; Showing last 24h tweets</div>
+    <a href="/logo/" target="_blank" style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #8b5cf6;background:transparent;color:#8b5cf6;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block">🎨 Logo Agent</a>
     <button onclick="openDonate()" style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #f59e0b;background:transparent;color:#f59e0b;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap">💛 Donate</button>
     {_upgrade_btn}
     {_user_menu_html}
