@@ -485,6 +485,9 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
         user_voted = r.get("user_voted", False)
         my_vote_badge = '<span class="my-vote-badge">👤 My Vote</span>' if user_voted else ''
 
+        # AI Draft button (only in non-voted sections)
+        ai_draft_btn = '' if show_ai_draft else f'<button class="ai-draft-btn" onclick="openAIDraftModal(\'{r["tweet_id"]}\')">✨ AI Draft</button>'
+
         tweet_card = (
             f'<div class="tweet-card{"  hot" if (r.get("like_count") or 0) >= 50 else ""}{"  my-voted" if user_voted else ""}">'
             f'  <div class="tc-header">'
@@ -504,6 +507,7 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
             f'    <span class="tc-stat">🔁 {r.get("retweet_count") or 0}</span>'
             f'    <span class="tc-stat">💬 {r.get("reply_count") or 0}</span>'
             f'    <span class="tc-stat">👁 {r.get("view_count") or 0}</span>'
+            f'    {ai_draft_btn}'
             f'    <a class="tc-link" href="{_esc(r.get("url","#"))}" target="_blank">View Tweet ↗</a>'
             f'  </div>'
             f'</div>'
@@ -1123,6 +1127,30 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .event-link{{font-size:.75rem;color:#60a5fa;text-decoration:none}}
 .event-link:hover{{text-decoration:underline}}
 .acct-insight{{padding:.6rem 1rem;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:.8rem;color:#92400e;margin-bottom:.8rem}}
+.ai-draft-btn{{background:#8b5cf6;color:#fff;border:none;padding:.3rem .7rem;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;transition:.2s}}
+.ai-draft-btn:hover{{background:#7c3aed}}
+#ai-draft-modal{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center}}
+#ai-draft-modal.show{{display:flex}}
+.ai-modal-content{{background:#fff;border-radius:12px;padding:2rem;max-width:600px;width:90%;max-height:80vh;overflow-y:auto}}
+.ai-modal-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem}}
+.ai-modal-title{{font-size:1.3rem;font-weight:700;color:#0f172a}}
+.ai-modal-close{{background:transparent;border:none;font-size:1.5rem;cursor:pointer;color:#64748b;padding:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:6px}}
+.ai-modal-close:hover{{background:#f1f5f9}}
+.ai-style-tabs{{display:flex;gap:.5rem;margin-bottom:1.5rem;border-bottom:2px solid #e2e8f0;padding-bottom:.5rem}}
+.ai-style-tab{{padding:.5rem 1rem;border:none;background:transparent;color:#64748b;font-size:.9rem;font-weight:600;cursor:pointer;border-radius:6px 6px 0 0;transition:.2s}}
+.ai-style-tab:hover{{background:#f8fafc;color:#475569}}
+.ai-style-tab.active{{background:#8b5cf6;color:#fff}}
+.ai-draft-box{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:1rem;margin-bottom:1rem;min-height:100px;display:none}}
+.ai-draft-box.active{{display:block}}
+.ai-draft-text{{color:#1e293b;line-height:1.6;font-size:.95rem;white-space:pre-wrap;word-break:break-word}}
+.ai-draft-loading{{text-align:center;color:#64748b;padding:2rem}}
+.ai-draft-error{{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:1rem;border-radius:8px;font-size:.9rem}}
+.ai-modal-actions{{display:flex;gap:.5rem;justify-content:flex-end}}
+.ai-copy-btn{{background:#22c55e;color:#fff;border:none;padding:.6rem 1.2rem;border-radius:6px;font-size:.9rem;font-weight:600;cursor:pointer;transition:.2s}}
+.ai-copy-btn:hover{{background:#16a34a}}
+.ai-copy-btn:disabled{{opacity:.5;cursor:not-allowed}}
+.ai-char-count{{font-size:.75rem;color:#64748b;margin-top:.5rem;text-align:right}}
+
 .keyword-stats-section{{padding:1rem 2rem;background:var(--card);border-bottom:1px solid var(--border)}}
 .keyword-stats-table{{margin-top:.8rem}}
 .keyword-stats-table th{{background:#f8fafc;padding:.5rem .8rem;font-size:.75rem}}
@@ -1214,6 +1242,57 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
     </div>
 
     <!-- Tabs -->
+
+<!-- AI Retweet Draft Modal -->
+<div id="ai-draft-modal">
+  <div class="ai-modal-content">
+    <div class="ai-modal-header">
+      <h2 class="ai-modal-title">✨ AI Retweet Draft</h2>
+      <button class="ai-modal-close" onclick="closeAIDraftModal()">×</button>
+    </div>
+
+    <div class="ai-style-tabs">
+      <button class="ai-style-tab active" data-style="professional" onclick="switchAIStyle('professional')">
+        💼 Professional
+      </button>
+      <button class="ai-style-tab" data-style="casual" onclick="switchAIStyle('casual')">
+        😊 Casual
+      </button>
+      <button class="ai-style-tab" data-style="enthusiastic" onclick="switchAIStyle('enthusiastic')">
+        🎉 Enthusiastic
+      </button>
+    </div>
+
+    <div id="ai-draft-loading" class="ai-draft-loading" style="display:none">
+      <div>⏳ Generating drafts with Claude AI...</div>
+    </div>
+
+    <div id="ai-draft-error" class="ai-draft-error" style="display:none"></div>
+
+    <div id="ai-draft-professional" class="ai-draft-box active">
+      <div class="ai-draft-text" id="ai-text-professional"></div>
+      <div class="ai-char-count" id="ai-count-professional"></div>
+    </div>
+
+    <div id="ai-draft-casual" class="ai-draft-box">
+      <div class="ai-draft-text" id="ai-text-casual"></div>
+      <div class="ai-char-count" id="ai-count-casual"></div>
+    </div>
+
+    <div id="ai-draft-enthusiastic" class="ai-draft-box">
+      <div class="ai-draft-text" id="ai-text-enthusiastic"></div>
+      <div class="ai-char-count" id="ai-count-enthusiastic"></div>
+    </div>
+
+    <div class="ai-modal-actions">
+      <button class="ai-copy-btn" id="ai-copy-btn" onclick="copyAIDraft()">
+        📋 Copy to Clipboard
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Donate Modal -->
     <div style="display:flex;gap:.5rem;margin-bottom:1.5rem">
       <button onclick="switchDonateTab('btc')" id="dtab-btc" class="dtab active-dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #f59e0b;background:#fffbeb;color:#92400e;font-weight:600;cursor:pointer;font-size:.83rem">₿ Bitcoin</button>
       <button onclick="switchDonateTab('akre')" id="dtab-akre" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #e2e8f0;background:#fff;color:#64748b;font-weight:600;cursor:pointer;font-size:.83rem">🌱 $AKRE</button>
@@ -1537,6 +1616,112 @@ function deleteItems(tweetIds) {{
 
 setTimeout(() => location.reload(), 10 * 60 * 1000);
 
+// ── AI Retweet Draft Modal ────────────────────────────────────────────────────
+
+let currentAIDrafts = {{}};
+let currentAIStyle = 'professional';
+
+async function openAIDraftModal(tweetId) {{
+  const modal = document.getElementById('ai-draft-modal');
+  const loading = document.getElementById('ai-draft-loading');
+  const error = document.getElementById('ai-draft-error');
+  const copyBtn = document.getElementById('ai-copy-btn');
+
+  // Reset state
+  modal.classList.add('show');
+  loading.style.display = 'block';
+  error.style.display = 'none';
+  copyBtn.disabled = true;
+  currentAIDrafts = {{}};
+  currentAIStyle = 'professional';
+
+  // Hide all draft boxes
+  document.querySelectorAll('.ai-draft-box').forEach(box => box.classList.remove('active'));
+  document.querySelectorAll('.ai-style-tab').forEach(tab => tab.classList.remove('active'));
+  document.querySelector('.ai-style-tab[data-style="professional"]').classList.add('active');
+
+  try {{
+    const response = await fetch('/api/ai-retweet-draft', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{tweet_id: tweetId}})
+    }});
+
+    const data = await response.json();
+
+    if (!data.ok) {{
+      throw new Error(data.error || 'Failed to generate drafts');
+    }}
+
+    currentAIDrafts = data.drafts;
+
+    // Populate draft boxes
+    ['professional', 'casual', 'enthusiastic'].forEach(style => {{
+      const text = currentAIDrafts[style] || '';
+      document.getElementById(`ai-text-${{style}}`).textContent = text;
+      document.getElementById(`ai-count-${{style}}`).textContent = `${{text.length}} characters`;
+    }});
+
+    // Show first draft
+    document.getElementById('ai-draft-professional').classList.add('active');
+    copyBtn.disabled = false;
+    loading.style.display = 'none';
+
+  }} catch (err) {{
+    loading.style.display = 'none';
+    error.style.display = 'block';
+    error.textContent = '❌ ' + err.message;
+  }}
+}}
+
+function closeAIDraftModal() {{
+  document.getElementById('ai-draft-modal').classList.remove('show');
+}}
+
+function switchAIStyle(style) {{
+  currentAIStyle = style;
+
+  // Update tabs
+  document.querySelectorAll('.ai-style-tab').forEach(tab => {{
+    tab.classList.toggle('active', tab.dataset.style === style);
+  }});
+
+  // Update draft boxes
+  document.querySelectorAll('.ai-draft-box').forEach(box => {{
+    box.classList.toggle('active', box.id === `ai-draft-${{style}}`);
+  }});
+}}
+
+async function copyAIDraft() {{
+  const text = currentAIDrafts[currentAIStyle];
+  if (!text) return;
+
+  try {{
+    await navigator.clipboard.writeText(text);
+    const btn = document.getElementById('ai-copy-btn');
+    const originalText = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    btn.style.background = '#22c55e';
+    setTimeout(() => {{
+      btn.textContent = originalText;
+      btn.style.background = '#22c55e';
+    }}, 2000);
+    toast('Draft copied to clipboard!', true);
+  }} catch (err) {{
+    toast('Failed to copy', false);
+  }}
+}}
+
+// Close modal on background click
+document.addEventListener('DOMContentLoaded', () => {{
+  const modal = document.getElementById('ai-draft-modal');
+  if (modal) {{
+    modal.addEventListener('click', (e) => {{
+      if (e.target === modal) closeAIDraftModal();
+    }});
+  }}
+}});
+
 // ── Announcement ──────────────────────────────────────────────────────────────
 function closeAnnouncement() {{
   document.getElementById('announcement-modal').style.display = 'none';
@@ -1649,6 +1834,10 @@ class DeleteRequest(BaseModel):
     tweet_ids: List[str]
 
 
+class AIRetweetRequest(BaseModel):
+    tweet_id: str
+
+
 @app.post("/api/vote")
 async def api_vote(req: VoteRequest, user: Dict = Depends(_user_auth)) -> JSONResponse:
     # Free tier cannot vote
@@ -1676,6 +1865,45 @@ async def api_delete(req: DeleteRequest, _: None = Depends(_auth)) -> JSONRespon
     from db.database import delete_tweets
     count = await delete_tweets(req.tweet_ids)
     return JSONResponse({"ok": True, "deleted": count})
+
+
+@app.post("/api/ai-retweet-draft")
+async def api_ai_retweet_draft(req: AIRetweetRequest, user: Dict = Depends(_user_auth)) -> JSONResponse:
+    """Generate AI retweet drafts with 3 style options."""
+    try:
+        # Fetch tweet details
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM tweets WHERE tweet_id = ?",
+                (req.tweet_id,)
+            ) as cur:
+                row = await cur.fetchone()
+                if not row:
+                    return JSONResponse({"ok": False, "error": "Tweet not found"}, status_code=404)
+                tweet = dict(row)
+
+        # Generate drafts using Claude API
+        from ai.claude_retweet import generate_retweet_drafts
+
+        drafts = await generate_retweet_drafts(
+            project=tweet.get("project", ""),
+            keyword=tweet.get("keyword", ""),
+            tweet_text=tweet.get("text", ""),
+            username=tweet.get("username", "")
+        )
+
+        if not drafts:
+            return JSONResponse({"ok": False, "error": "Failed to generate drafts"}, status_code=500)
+
+        return JSONResponse({
+            "ok": True,
+            "drafts": drafts
+        })
+
+    except Exception as e:
+        logger.error(f"AI retweet draft error: {e}")
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 @app.get("/api/tweets")
