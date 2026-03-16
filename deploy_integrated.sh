@@ -25,7 +25,29 @@ echo ""
 
 # 1. 安装基础依赖
 apt update
-apt install -y python3 python3-pip python3-venv git nginx supervisor docker.io docker-compose
+apt install -y python3 python3-pip python3-venv git nginx supervisor
+
+# 安装 Docker（处理冲突）
+if ! command -v docker &> /dev/null; then
+    # 移除可能冲突的包
+    apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
+
+    # 安装 Docker
+    apt install -y ca-certificates curl gnupg lsb-release
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    apt update
+    apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+else
+    echo "Docker 已安装"
+fi
+
+# 安装 docker-compose
+if ! command -v docker-compose &> /dev/null; then
+    curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+fi
 
 # 2. 部署 Twitter Monitor
 mkdir -p /var/www/twitter-monitor
