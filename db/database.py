@@ -487,13 +487,14 @@ async def get_daily_tweet_count(date: Optional[str] = None) -> int:
 
 
 async def delete_tweets(tweet_ids: List[str]) -> int:
-    """Delete tweets by IDs. Returns count of deleted tweets."""
+    """Delete tweets by IDs. Only deletes unvoted tweets to preserve voting history. Returns count of deleted tweets."""
     if not tweet_ids:
         return 0
     async with aiosqlite.connect(DB_PATH) as db:
         placeholders = ",".join("?" * len(tweet_ids))
+        # Only delete tweets that have NOT been voted on (voted = 0 or NULL)
         cur = await db.execute(
-            f"DELETE FROM tweets WHERE tweet_id IN ({placeholders})",
+            f"DELETE FROM tweets WHERE tweet_id IN ({placeholders}) AND (voted = 0 OR voted IS NULL)",
             tweet_ids
         )
         await db.commit()
