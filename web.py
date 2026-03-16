@@ -1655,6 +1655,11 @@ async function openAIDraftModal(tweetId) {{
 
     currentAIDrafts = data.drafts;
 
+    // Check if drafts are empty (API unavailable)
+    if (!currentAIDrafts || Object.keys(currentAIDrafts).length === 0) {{
+      throw new Error('Claude API is currently unavailable. Please try again later.');
+    }}
+
     // Populate draft boxes
     ['professional', 'casual', 'enthusiastic'].forEach(style => {{
       const text = currentAIDrafts[style] || '';
@@ -1670,7 +1675,7 @@ async function openAIDraftModal(tweetId) {{
   }} catch (err) {{
     loading.style.display = 'none';
     error.style.display = 'block';
-    error.textContent = '❌ ' + err.message;
+    error.innerHTML = '❌ ' + err.message + '<br><button onclick="openAIDraftModal(\'' + tweetId + '\')" style="margin-top:.8rem;padding:.5rem 1rem;background:#8b5cf6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">🔄 Retry</button>';
   }}
 }}
 

@@ -94,45 +94,13 @@ Keep each draft concise and engaging. Add relevant hashtags if appropriate."""
 
         # Validate all 3 drafts exist
         if len(drafts) != 3:
-            logger.warning(f"Claude returned incomplete drafts, using fallback")
-            return _generate_fallback_drafts(project, keyword, tweet_text, username)
+            logger.warning(f"Claude returned incomplete drafts: {drafts}")
+            return {}
 
         logger.info(f"Generated 3 drafts for @{username}")
         return drafts
 
     except Exception as e:
-        logger.warning(f"Claude API error, using fallback: {e}")
-        return _generate_fallback_drafts(project, keyword, tweet_text, username)
-
-
-def _generate_fallback_drafts(project: str, keyword: str, tweet_text: str, username: str) -> Dict[str, str]:
-    """Fallback template-based draft generation when API is unavailable."""
-    import random
-
-    # Project-specific context
-    project_tags = {
-        "ARKREEN": ["#DePIN", "#RenewableEnergy", "#Web3Energy"],
-        "GREENBTC": ["#GreenBitcoin", "#SustainableMining", "#BitcoinEnergy"],
-        "TLAY": ["#DePIN", "#MachineEconomy", "#IoT"],
-        "AI_RENAISSANCE": ["#AI", "#Claude", "#AIAgent"]
-    }
-
-    tags = project_tags.get(project, ["#Web3", "#DePIN"])[:2]
-    tag_str = " ".join(tags)
-
-    # Truncate tweet text for excerpt
-    excerpt = tweet_text[:80] + "..." if len(tweet_text) > 80 else tweet_text
-
-    drafts = {
-        "professional": f"Insightful perspective on {keyword}. This aligns with industry trends we're seeing in {project}. {tag_str}",
-        "casual": f"Love this take on {keyword}! 💡 Really resonates with what we're building. {tag_str}",
-        "enthusiastic": f"This is exactly what we need more of! 🚀 {keyword} is the future! {tag_str}"
-    }
-
-    # Ensure under 240 chars
-    for style in drafts:
-        if len(drafts[style]) > 240:
-            drafts[style] = drafts[style][:237] + "..."
-
-    logger.info(f"Generated fallback drafts for @{username}")
-    return drafts
+        logger.error(f"Claude API error: {e}")
+        # Return empty dict to signal failure - no fallback generation
+        return {}

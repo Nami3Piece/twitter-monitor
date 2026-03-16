@@ -37,7 +37,10 @@ async def test_ai_draft():
                     print(f"  {text}")
                     print(f"  ({len(text)} chars)")
             else:
-                print("✗ No drafts generated (API may be disabled or failed)")
+                print("✗ No drafts generated")
+                print("  Reason: Claude API is unavailable or returned empty response")
+                print("  Action: User should manually retry when API is available")
+                return False
 
         except Exception as e:
             print(f"✗ Error: {e}")
