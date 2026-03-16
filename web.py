@@ -408,9 +408,11 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
 
         # AI Retweet Draft cell (only for voted section)
         if show_ai_draft:
-            ai_cell = f'<button class="ai-draft-btn" onclick="openAIDraftModal(\'{r["tweet_id"]}\')">✨ Generate Draft</button>'
+            ai_retweet_cell = f'<button class="ai-draft-btn" onclick="openAIRetweetModal(\'{r["tweet_id"]}\')">✨ Generate Draft</button>'
+            ai_reply_cell = f'<button class="ai-draft-btn" onclick="openAIReplyModal(\'{r["tweet_id"]}\')">✨ Generate Draft</button>'
         else:
-            ai_cell = ''
+            ai_retweet_cell = ''
+            ai_reply_cell = ''
 
         vote_count = r.get("vote_count", 0)
         user_voted = r.get("user_voted", False)
@@ -488,7 +490,8 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
             f'<td><input type="checkbox" class="tweet-checkbox" value="{r["tweet_id"]}"></td>'
             f'<td><span class="kw" style="background:{c}22;color:{c}">{_esc(r.get("keyword",""))}</span></td>'
             f'<td class="tweet-card-cell">{tweet_card}</td>'
-            + (f'<td class="ai-cell">{ai_cell}</td>' if show_ai_draft else '')
+            + (f'<td class="ai-cell">{ai_retweet_cell}</td>' if show_ai_draft else '')
+            + (f'<td class="ai-cell">{ai_reply_cell}</td>' if show_ai_draft else '')
             + f'<td>{vote_btn}</td>'
             f'<td>{delete_btn}</td>'
             f'</tr>'
@@ -871,7 +874,7 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
         '</div>'
         '<table><thead><tr>'
         '<th><input type="checkbox" onchange="toggleAll(this)"></th>'
-        '<th>Keyword</th><th>Tweet</th><th>AI Retweet Draft</th><th>Vote</th><th>Actions</th>'
+        '<th>Keyword</th><th>Tweet</th><th>AI Retweet Draft</th><th>AI Reply Draft</th><th>Vote</th><th>Actions</th>'
         '</tr></thead><tbody>'
         + _tweet_rows(voted_rows, show_ai_draft=True)
         + '</tbody></table></div>'
@@ -1172,6 +1175,120 @@ function showSub(el, targetId) {{
   _activeTableId = tbl ? tbl.id : null;
   if (typeof filterTable === 'function') filterTable();
 }}
+
+// AI Draft Modal Functions
+let currentAIDrafts = {{}};
+let currentAIStyle = 'professional';
+let currentModalType = 'retweet'; // 'retweet' or 'reply'
+
+async function openAIRetweetModal(tweetId) {{
+  currentModalType = 'retweet';
+  await openAIModal(tweetId, '/api/ai-retweet-draft', 'ai-retweet-modal');
+}}
+
+async function openAIReplyModal(tweetId) {{
+  currentModalType = 'reply';
+  await openAIModal(tweetId, '/api/ai-reply-draft', 'ai-reply-modal');
+}}
+
+async function openAIModal(tweetId, apiUrl, modalId) {{
+  const modal = document.getElementById(modalId);
+  const loading = modal.querySelector('.ai-draft-loading');
+  const error = modal.querySelector('.ai-draft-error');
+  const copyBtn = modal.querySelector('.ai-copy-btn');
+
+  // Reset state
+  modal.classList.add('show');
+  loading.style.display = 'block';
+  error.style.display = 'none';
+  copyBtn.disabled = true;
+  currentAIDrafts = {{}};
+  currentAIStyle = 'professional';
+
+  // Hide all draft boxes
+  modal.querySelectorAll('.ai-draft-box').forEach(box => box.classList.remove('active'));
+  modal.querySelectorAll('.ai-style-tab').forEach(tab => tab.classList.remove('active'));
+  modal.querySelector('.ai-style-tab[data-style="professional"]').classList.add('active');
+
+  try {{
+    const response = await fetch(apiUrl, {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{tweet_id: tweetId}})
+    }});
+
+    const data = await response.json();
+
+    if (!data.ok) {{
+      throw new Error(data.error || 'Failed to generate drafts');
+    }}
+
+    currentAIDrafts = data.drafts;
+
+    // Check if drafts are empty
+    if (!currentAIDrafts || Object.keys(currentAIDrafts).length === 0) {{
+      throw new Error('Claude API is currently unavailable. Please try again later.');
+    }}
+
+    // Populate draft boxes
+    ['professional', 'casual', 'enthusiastic'].forEach(style => {{
+      const text = currentAIDrafts[style] || '';
+      modal.querySelector(`#ai-text-${{style}}-${{currentModalType}}`).textContent = text;
+      modal.querySelector(`#ai-count-${{style}}-${{currentModalType}}`).textContent = `${{text.length}} characters`;
+    }});
+
+    // Show first draft
+    modal.querySelector(`#ai-draft-professional-${{currentModalType}}`).classList.add('active');
+    copyBtn.disabled = false;
+    loading.style.display = 'none';
+
+  }} catch (err) {{
+    loading.style.display = 'none';
+    error.style.display = 'block';
+    const retryFunc = currentModalType === 'retweet' ? 'openAIRetweetModal' : 'openAIReplyModal';
+    error.innerHTML = '❌ ' + err.message + '<br><button onclick="' + retryFunc + '(\'' + tweetId + '\')" style="margin-top:.8rem;padding:.5rem 1rem;background:#8b5cf6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">🔄 Retry</button>';
+  }}
+}}
+
+function closeAIModal(modalId) {{
+  document.getElementById(modalId).classList.remove('show');
+}}
+
+function switchAIStyle(style, modalType) {{
+  currentAIStyle = style;
+  const modal = document.getElementById(`ai-${{modalType}}-modal`);
+
+  // Update tabs
+  modal.querySelectorAll('.ai-style-tab').forEach(tab => {{
+    tab.classList.toggle('active', tab.dataset.style === style);
+  }});
+
+  // Update draft boxes
+  modal.querySelectorAll('.ai-draft-box').forEach(box => {{
+    box.classList.toggle('active', box.id === `ai-draft-${{style}}-${{modalType}}`);
+  }});
+}}
+
+async function copyAIDraft(modalType) {{
+  const text = currentAIDrafts[currentAIStyle];
+  if (!text) return;
+
+  try {{
+    await navigator.clipboard.writeText(text);
+    const modal = document.getElementById(`ai-${{modalType}}-modal`);
+    const btn = modal.querySelector('.ai-copy-btn');
+    const originalText = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    btn.style.background = '#22c55e';
+    setTimeout(() => {{
+      btn.textContent = originalText;
+      btn.style.background = '#22c55e';
+    }}, 2000);
+    if (typeof toast === 'function') toast('Draft copied to clipboard!', true);
+  }} catch (err) {{
+    if (typeof toast === 'function') toast('Failed to copy', false);
+  }}
+}}
 </script>
 
 </head>
@@ -1262,48 +1379,97 @@ function showSub(el, targetId) {{
     <!-- Tabs -->
 
 <!-- AI Retweet Draft Modal -->
-<div id="ai-draft-modal">
+<div id="ai-retweet-modal">
   <div class="ai-modal-content">
     <div class="ai-modal-header">
       <h2 class="ai-modal-title">✨ AI Retweet Draft</h2>
-      <button class="ai-modal-close" onclick="closeAIDraftModal()">×</button>
+      <button class="ai-modal-close" onclick="closeAIModal('ai-retweet-modal')">×</button>
     </div>
 
     <div class="ai-style-tabs">
-      <button class="ai-style-tab active" data-style="professional" onclick="switchAIStyle('professional')">
+      <button class="ai-style-tab active" data-style="professional" onclick="switchAIStyle('professional', 'retweet')">
         💼 Professional
       </button>
-      <button class="ai-style-tab" data-style="casual" onclick="switchAIStyle('casual')">
+      <button class="ai-style-tab" data-style="casual" onclick="switchAIStyle('casual', 'retweet')">
         😊 Casual
       </button>
-      <button class="ai-style-tab" data-style="enthusiastic" onclick="switchAIStyle('enthusiastic')">
+      <button class="ai-style-tab" data-style="enthusiastic" onclick="switchAIStyle('enthusiastic', 'retweet')">
         🎉 Enthusiastic
       </button>
     </div>
 
-    <div id="ai-draft-loading" class="ai-draft-loading" style="display:none">
+    <div class="ai-draft-loading" style="display:none">
       <div>⏳ Generating drafts with Claude AI...</div>
     </div>
 
-    <div id="ai-draft-error" class="ai-draft-error" style="display:none"></div>
+    <div class="ai-draft-error" style="display:none"></div>
 
-    <div id="ai-draft-professional" class="ai-draft-box active">
-      <div class="ai-draft-text" id="ai-text-professional"></div>
-      <div class="ai-char-count" id="ai-count-professional"></div>
+    <div id="ai-draft-professional-retweet" class="ai-draft-box active">
+      <div class="ai-draft-text" id="ai-text-professional-retweet"></div>
+      <div class="ai-char-count" id="ai-count-professional-retweet"></div>
     </div>
 
-    <div id="ai-draft-casual" class="ai-draft-box">
-      <div class="ai-draft-text" id="ai-text-casual"></div>
-      <div class="ai-char-count" id="ai-count-casual"></div>
+    <div id="ai-draft-casual-retweet" class="ai-draft-box">
+      <div class="ai-draft-text" id="ai-text-casual-retweet"></div>
+      <div class="ai-char-count" id="ai-count-casual-retweet"></div>
     </div>
 
-    <div id="ai-draft-enthusiastic" class="ai-draft-box">
-      <div class="ai-draft-text" id="ai-text-enthusiastic"></div>
-      <div class="ai-char-count" id="ai-count-enthusiastic"></div>
+    <div id="ai-draft-enthusiastic-retweet" class="ai-draft-box">
+      <div class="ai-draft-text" id="ai-text-enthusiastic-retweet"></div>
+      <div class="ai-char-count" id="ai-count-enthusiastic-retweet"></div>
     </div>
 
     <div class="ai-modal-actions">
-      <button class="ai-copy-btn" id="ai-copy-btn" onclick="copyAIDraft()">
+      <button class="ai-copy-btn" onclick="copyAIDraft('retweet')">
+        📋 Copy to Clipboard
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- AI Reply Draft Modal -->
+<div id="ai-reply-modal">
+  <div class="ai-modal-content">
+    <div class="ai-modal-header">
+      <h2 class="ai-modal-title">💬 AI Reply Draft</h2>
+      <button class="ai-modal-close" onclick="closeAIModal('ai-reply-modal')">×</button>
+    </div>
+
+    <div class="ai-style-tabs">
+      <button class="ai-style-tab active" data-style="professional" onclick="switchAIStyle('professional', 'reply')">
+        💼 Professional
+      </button>
+      <button class="ai-style-tab" data-style="casual" onclick="switchAIStyle('casual', 'reply')">
+        😊 Casual
+      </button>
+      <button class="ai-style-tab" data-style="enthusiastic" onclick="switchAIStyle('enthusiastic', 'reply')">
+        🎉 Enthusiastic
+      </button>
+    </div>
+
+    <div class="ai-draft-loading" style="display:none">
+      <div>⏳ Generating drafts with Claude AI...</div>
+    </div>
+
+    <div class="ai-draft-error" style="display:none"></div>
+
+    <div id="ai-draft-professional-reply" class="ai-draft-box active">
+      <div class="ai-draft-text" id="ai-text-professional-reply"></div>
+      <div class="ai-char-count" id="ai-count-professional-reply"></div>
+    </div>
+
+    <div id="ai-draft-casual-reply" class="ai-draft-box">
+      <div class="ai-draft-text" id="ai-text-casual-reply"></div>
+      <div class="ai-char-count" id="ai-count-casual-reply"></div>
+    </div>
+
+    <div id="ai-draft-enthusiastic-reply" class="ai-draft-box">
+      <div class="ai-draft-text" id="ai-text-enthusiastic-reply"></div>
+      <div class="ai-char-count" id="ai-count-enthusiastic-reply"></div>
+    </div>
+
+    <div class="ai-modal-actions">
+      <button class="ai-copy-btn" onclick="copyAIDraft('reply')">
         📋 Copy to Clipboard
       </button>
     </div>
@@ -1599,117 +1765,6 @@ function deleteItems(tweetIds) {{
 
 setTimeout(() => location.reload(), 10 * 60 * 1000);
 
-// ── AI Retweet Draft Modal ────────────────────────────────────────────────────
-
-let currentAIDrafts = {{}};
-let currentAIStyle = 'professional';
-
-async function openAIDraftModal(tweetId) {{
-  const modal = document.getElementById('ai-draft-modal');
-  const loading = document.getElementById('ai-draft-loading');
-  const error = document.getElementById('ai-draft-error');
-  const copyBtn = document.getElementById('ai-copy-btn');
-
-  // Reset state
-  modal.classList.add('show');
-  loading.style.display = 'block';
-  error.style.display = 'none';
-  copyBtn.disabled = true;
-  currentAIDrafts = {{}};
-  currentAIStyle = 'professional';
-
-  // Hide all draft boxes
-  document.querySelectorAll('.ai-draft-box').forEach(box => box.classList.remove('active'));
-  document.querySelectorAll('.ai-style-tab').forEach(tab => tab.classList.remove('active'));
-  document.querySelector('.ai-style-tab[data-style="professional"]').classList.add('active');
-
-  try {{
-    const response = await fetch('/api/ai-retweet-draft', {{
-      method: 'POST',
-      headers: {{'Content-Type': 'application/json'}},
-      body: JSON.stringify({{tweet_id: tweetId}})
-    }});
-
-    const data = await response.json();
-
-    if (!data.ok) {{
-      throw new Error(data.error || 'Failed to generate drafts');
-    }}
-
-    currentAIDrafts = data.drafts;
-
-    // Check if drafts are empty (API unavailable)
-    if (!currentAIDrafts || Object.keys(currentAIDrafts).length === 0) {{
-      throw new Error('Claude API is currently unavailable. Please try again later.');
-    }}
-
-    // Populate draft boxes
-    ['professional', 'casual', 'enthusiastic'].forEach(style => {{
-      const text = currentAIDrafts[style] || '';
-      document.getElementById(`ai-text-${{style}}`).textContent = text;
-      document.getElementById(`ai-count-${{style}}`).textContent = `${{text.length}} characters`;
-    }});
-
-    // Show first draft
-    document.getElementById('ai-draft-professional').classList.add('active');
-    copyBtn.disabled = false;
-    loading.style.display = 'none';
-
-  }} catch (err) {{
-    loading.style.display = 'none';
-    error.style.display = 'block';
-    error.innerHTML = '❌ ' + err.message + '<br><button onclick="openAIDraftModal(\'' + tweetId + '\')" style="margin-top:.8rem;padding:.5rem 1rem;background:#8b5cf6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">🔄 Retry</button>';
-  }}
-}}
-
-function closeAIDraftModal() {{
-  document.getElementById('ai-draft-modal').classList.remove('show');
-}}
-
-function switchAIStyle(style) {{
-  currentAIStyle = style;
-
-  // Update tabs
-  document.querySelectorAll('.ai-style-tab').forEach(tab => {{
-    tab.classList.toggle('active', tab.dataset.style === style);
-  }});
-
-  // Update draft boxes
-  document.querySelectorAll('.ai-draft-box').forEach(box => {{
-    box.classList.toggle('active', box.id === `ai-draft-${{style}}`);
-  }});
-}}
-
-async function copyAIDraft() {{
-  const text = currentAIDrafts[currentAIStyle];
-  if (!text) return;
-
-  try {{
-    await navigator.clipboard.writeText(text);
-    const btn = document.getElementById('ai-copy-btn');
-    const originalText = btn.textContent;
-    btn.textContent = '✓ Copied!';
-    btn.style.background = '#22c55e';
-    setTimeout(() => {{
-      btn.textContent = originalText;
-      btn.style.background = '#22c55e';
-    }}, 2000);
-    toast('Draft copied to clipboard!', true);
-  }} catch (err) {{
-    toast('Failed to copy', false);
-  }}
-}}
-
-// Close modal on background click
-document.addEventListener('DOMContentLoaded', () => {{
-  const modal = document.getElementById('ai-draft-modal');
-  if (modal) {{
-    modal.addEventListener('click', (e) => {{
-      if (e.target === modal) closeAIDraftModal();
-    }});
-  }}
-}});
-
 // ── Announcement ──────────────────────────────────────────────────────────────
 function closeAnnouncement() {{
   document.getElementById('announcement-modal').style.display = 'none';
@@ -1891,6 +1946,45 @@ async def api_ai_retweet_draft(req: AIRetweetRequest, user: Dict = Depends(_user
 
     except Exception as e:
         logger.error(f"AI retweet draft error: {e}")
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/ai-reply-draft")
+async def api_ai_reply_draft(req: AIRetweetRequest, user: Dict = Depends(_user_auth)) -> JSONResponse:
+    """Generate AI reply drafts with 3 style options."""
+    try:
+        # Fetch tweet details
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM tweets WHERE tweet_id = ?",
+                (req.tweet_id,)
+            ) as cur:
+                row = await cur.fetchone()
+                if not row:
+                    return JSONResponse({"ok": False, "error": "Tweet not found"}, status_code=404)
+                tweet = dict(row)
+
+        # Generate drafts using Claude API
+        from ai.claude_reply import generate_reply_drafts
+
+        drafts = await generate_reply_drafts(
+            project=tweet.get("project", ""),
+            keyword=tweet.get("keyword", ""),
+            tweet_text=tweet.get("text", ""),
+            username=tweet.get("username", "")
+        )
+
+        if not drafts:
+            return JSONResponse({"ok": False, "error": "Failed to generate drafts"}, status_code=500)
+
+        return JSONResponse({
+            "ok": True,
+            "drafts": drafts
+        })
+
+    except Exception as e:
+        logger.error(f"AI reply draft error: {e}")
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
