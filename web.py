@@ -1246,7 +1246,7 @@ async function openAIModal(tweetId, apiUrl, modalId) {{
     loading.style.display = 'none';
     error.style.display = 'block';
     const retryFunc = currentModalType === 'retweet' ? 'openAIRetweetModal' : 'openAIReplyModal';
-    error.innerHTML = '❌ ' + err.message + '<br><button onclick="' + retryFunc + '(\'' + tweetId + '\')" style="margin-top:.8rem;padding:.5rem 1rem;background:#8b5cf6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">🔄 Retry</button>';
+    error.innerHTML = '❌ ' + err.message + '<br><button onclick="' + retryFunc + '(\\'' + tweetId + '\\')" style="margin-top:.8rem;padding:.5rem 1rem;background:#8b5cf6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">🔄 Retry</button>';
   }}
 }}
 
