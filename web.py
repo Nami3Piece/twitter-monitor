@@ -920,7 +920,7 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
     _is_paid = (
         _sub_tier in ("basic", "pro")
         and _sub_status == "active"
-        and (not _sub_expires or _dt.datetime.fromisoformat(_sub_expires) > _dt.datetime.utcnow())
+        and (not _sub_expires or _dt.datetime.fromisoformat(_sub_expires) > _dt.datetime.now(_dt.timezone.utc))
     ) if nickname != "visitor" else False
 
     if _is_paid:
