@@ -1103,8 +1103,8 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .acct-insight{{padding:.6rem 1rem;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:.8rem;color:#92400e;margin-bottom:.8rem}}
 .ai-draft-btn{{background:#8b5cf6;color:#fff;border:none;padding:.3rem .7rem;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;transition:.2s}}
 .ai-draft-btn:hover{{background:#7c3aed}}
-#ai-draft-modal{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center}}
-#ai-draft-modal.show{{display:flex}}
+#ai-retweet-modal,#ai-reply-modal{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center}}
+#ai-retweet-modal.show,#ai-reply-modal.show{{display:flex}}
 .ai-modal-content{{background:#fff;border-radius:12px;padding:2rem;max-width:600px;width:90%;max-height:80vh;overflow-y:auto}}
 .ai-modal-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem}}
 .ai-modal-title{{font-size:1.3rem;font-weight:700;color:#0f172a}}
