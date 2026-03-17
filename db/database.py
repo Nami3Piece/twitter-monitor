@@ -418,7 +418,7 @@ async def cleanup_old_tweets() -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
             "DELETE FROM tweets WHERE created_at_iso < datetime('now', '-24 hours') "
-            "AND voted = 0"
+            "AND (voted = 0 OR voted IS NULL) "
             "AND created_at_iso IS NOT NULL AND created_at_iso != ''"
         )
         await db.commit()
