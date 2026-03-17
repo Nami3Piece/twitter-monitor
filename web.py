@@ -13,6 +13,11 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 import aiosqlite
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
