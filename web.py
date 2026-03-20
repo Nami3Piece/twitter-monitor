@@ -1354,25 +1354,26 @@ async function copyAIDraft(modalType) {{
   <div style="background:#1e293b;border-radius:16px;padding:2.5rem;max-width:560px;width:calc(100% - 2rem);box-shadow:0 25px 60px rgba(0,0,0,.6);position:relative">
     <button onclick="closeAnnouncement()" style="position:absolute;top:1.2rem;right:1.2rem;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#64748b">✕</button>
     <div style="text-align:center;margin-bottom:1.5rem">
-      <div style="font-size:3rem;margin-bottom:.5rem">🎉</div>
+      <div style="font-size:3rem;margin-bottom:.5rem">📰</div>
       <h2 style="font-size:1.5rem;color:#f1f5f9;margin-bottom:.5rem">新功能上线 / New Feature</h2>
-      <p style="color:#94a3b8;font-size:.95rem">Contract Generator for Pro Users</p>
+      <p style="color:#94a3b8;font-size:.95rem">Daily X Digest — 每日新闻播报</p>
     </div>
     <div style="background:#0f172a;border-radius:10px;padding:1.5rem;margin-bottom:1.5rem">
       <div style="margin-bottom:1.2rem">
-        <div style="color:#22c55e;font-weight:600;margin-bottom:.3rem">📄 合同生成 / Contract Generator</div>
-        <p style="color:#cbd5e1;font-size:.88rem">Pro 用户现可一键生成 eCandle 产品销售合同（中英文 PDF+Word），填写采购方信息即可下载。<br><span style="color:#94a3b8">Pro users can now generate eCandle sales contracts (CN/EN, PDF+Word) with one click.</span></p>
+        <div style="color:#22c55e;font-weight:600;margin-bottom:.3rem">🎙️ 中英文语音播报</div>
+        <p style="color:#cbd5e1;font-size:.88rem">每天北京时间 8:00，AI 自动生成 ARKREEN、GreenBTC、TLAY、AI Renaissance 四大项目的中英文新闻摘要，并配有真人语音朗读。<br><span style="color:#94a3b8">Daily bilingual digest with audio for all 4 projects, published at 8:00 AM Beijing time.</span></p>
       </div>
       <div style="margin-bottom:1.2rem">
-        <div style="color:#3b82f6;font-weight:600;margin-bottom:.3rem">🤖 Agent-Friendly API</div>
-        <p style="color:#cbd5e1;font-size:.88rem">Train your AI agent to browse and vote on tweets automatically. Get your API key in Settings.</p>
+        <div style="color:#3b82f6;font-weight:600;margin-bottom:.3rem">🔗 原文链接直达</div>
+        <p style="color:#cbd5e1;font-size:.88rem">每条新闻附带原始 X 推文链接，一键跳转查看完整内容。<br><span style="color:#94a3b8">Each news item links directly to the original X post.</span></p>
       </div>
       <div>
-        <div style="color:#34a853;font-weight:600;margin-bottom:.3rem">🔐 Google Sign-In</div>
-        <p style="color:#cbd5e1;font-size:.88rem">Now supports Google OAuth alongside wallet and email login.</p>
+        <div style="color:#f59e0b;font-weight:600;margin-bottom:.3rem">📅 历史归档</div>
+        <p style="color:#cbd5e1;font-size:.88rem">可查阅最近 30 天的历史播报记录。<br><span style="color:#94a3b8">Browse up to 30 days of past digests.</span></p>
       </div>
     </div>
-    <button onclick="closeAnnouncement()" style="width:100%;padding:.8rem;background:#22c55e;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">Got it! 知道了</button>
+    <a href="/digest" style="display:block;width:100%;padding:.8rem;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;text-align:center;text-decoration:none">立即体验 / Try it now 🎙️</a>
+    <button onclick="closeAnnouncement()" style="width:100%;padding:.6rem;background:transparent;color:#64748b;border:none;border-radius:8px;font-size:.9rem;cursor:pointer;margin-top:.5rem">稍后再说 / Maybe later</button>
   </div>
 </div>
 
@@ -1410,9 +1411,25 @@ async function copyAIDraft(modalType) {{
       </div>
 
       <div>
-        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">运费/件 USD / Shipping per unit</label>
-        <input id="ct-shipping" type="number" value="50" min="0"
-          style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">运费类型 / Shipping Type</label>
+        <select id="ct-shipping-type" onchange="onShippingTypeChange()"
+          style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none;margin-bottom:.5rem">
+          <option value="domestic">国内快递 / Domestic</option>
+          <option value="international" selected>国际快递 / International</option>
+          <option value="custom">自定义 / Custom</option>
+        </select>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+          <div>
+            <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">运费/件 USD</label>
+            <input id="ct-shipping" type="number" value="50" min="0"
+              style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+          </div>
+          <div>
+            <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">运输方式 / Method</label>
+            <input id="ct-shipping-method" type="text" value="DHL/FedEx"
+              style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+          </div>
+        </div>
       </div>
 
       <div>
@@ -1434,6 +1451,54 @@ async function copyAIDraft(modalType) {{
           style="margin-top:.5rem;padding:.4rem .8rem;background:#1e3a5f;color:#93c5fd;border:1px solid #334155;border-radius:6px;font-size:.82rem;cursor:pointer">
           + 添加产品 / Add Product
         </button>
+      </div>
+
+      <div>
+        <button type="button" onclick="toggleTerms(this)"
+          style="width:100%;padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;font-size:.85rem;cursor:pointer;text-align:left">
+          ⚙️ 合同条款 / Contract Terms ▼
+        </button>
+        <div id="ct-terms-area" style="display:none;padding:.8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;margin-top:.4rem;display:none">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.6rem">
+            <div>
+              <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">付款期限 / Payment Days</label>
+              <div style="display:flex;align-items:center;gap:.4rem">
+                <input id="ct-payment-days" type="number" value="7" min="1"
+                  style="flex:1;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.85rem;outline:none">
+                <span style="color:#64748b;font-size:.8rem;white-space:nowrap">工作日</span>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">发货时间 / Shipping Days</label>
+              <div style="display:flex;align-items:center;gap:.4rem">
+                <input id="ct-shipping-days" type="number" value="15" min="1"
+                  style="flex:1;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.85rem;outline:none">
+                <span style="color:#64748b;font-size:.8rem;white-space:nowrap">工作日</span>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">质保期 / Warranty</label>
+              <div style="display:flex;align-items:center;gap:.4rem">
+                <input id="ct-warranty-months" type="number" value="12" min="1"
+                  style="flex:1;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.85rem;outline:none">
+                <span style="color:#64748b;font-size:.8rem;white-space:nowrap">个月</span>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">违约金 / Penalty</label>
+              <div style="display:flex;align-items:center;gap:.4rem">
+                <input id="ct-penalty-pct" type="number" value="10" min="0" max="100" step="0.1"
+                  style="flex:1;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.85rem;outline:none">
+                <span style="color:#64748b;font-size:.8rem">%</span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">争议解决条款 / Dispute Clause（留空使用默认）</label>
+            <textarea id="ct-dispute-clause" placeholder="留空使用默认条款..."
+              style="width:100%;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.82rem;outline:none;resize:vertical;min-height:60px"></textarea>
+          </div>
+        </div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
@@ -1916,6 +1981,24 @@ if ('{nickname}' !== 'visitor' && !localStorage.getItem('announcement_seen_v3'))
 let _ctRowIdx = 0;
 let _ctLogoB64 = null;
 
+function onShippingTypeChange() {{
+  const type = document.getElementById('ct-shipping-type').value;
+  if (type === 'domestic') {{
+    document.getElementById('ct-shipping').value = 30;
+    document.getElementById('ct-shipping-method').value = '顺丰/圆通';
+  }} else if (type === 'international') {{
+    document.getElementById('ct-shipping').value = 50;
+    document.getElementById('ct-shipping-method').value = 'DHL/FedEx';
+  }}
+}}
+
+function toggleTerms(btn) {{
+  const area = document.getElementById('ct-terms-area');
+  const open = area.style.display !== 'none';
+  area.style.display = open ? 'none' : 'block';
+  btn.textContent = (open ? '⚙️ 合同条款 / Contract Terms ▼' : '⚙️ 合同条款 / Contract Terms ▲');
+}}
+
 function handleLogoUpload(input) {{
   const file = input.files[0];
   if (!file) return;
@@ -2098,6 +2181,12 @@ async function generateContract() {{
         lang:   document.getElementById('ct-lang').value,
         format: document.getElementById('ct-format').value,
         logo_b64: _ctLogoB64,
+        shipping_method: document.getElementById('ct-shipping-method').value.trim(),
+        payment_days:    parseInt(document.getElementById('ct-payment-days').value) || 7,
+        shipping_days:   parseInt(document.getElementById('ct-shipping-days').value) || 15,
+        warranty_months: parseInt(document.getElementById('ct-warranty-months').value) || 12,
+        penalty_pct:     parseFloat(document.getElementById('ct-penalty-pct').value) || 10,
+        dispute_clause:  document.getElementById('ct-dispute-clause').value.trim(),
       }}),
     }});
     const d = await r.json();
@@ -4634,6 +4723,12 @@ class ContractRequest(BaseModel):
     lang: str = "both"    # "cn" | "en" | "both"
     format: str = "both"  # "pdf" | "docx" | "both"
     logo_b64: str = ""    # base64 logo image (optional)
+    shipping_method: str = "DHL/FedEx"
+    payment_days: int = 7
+    shipping_days: int = 15
+    warranty_months: int = 12
+    penalty_pct: float = 10.0
+    dispute_clause: str = ""
 
 
 @app.post("/api/contract/generate")
@@ -4672,6 +4767,12 @@ async def api_contract_generate(req: ContractRequest, user: Dict = Depends(_user
             "lang":   req.lang,
             "format": req.format,
             "logo_b64": req.logo_b64,
+            "shipping_method": req.shipping_method,
+            "payment_days":    req.payment_days,
+            "shipping_days":   req.shipping_days,
+            "warranty_months": req.warranty_months,
+            "penalty_pct":     req.penalty_pct,
+            "dispute_clause":  req.dispute_clause,
         })
     except Exception as e:
         logger.error(f"Contract generation error: {e}")

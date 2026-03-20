@@ -138,6 +138,10 @@ def _setup_scheduler() -> AsyncIOScheduler:
     # Daily API usage report at 23:00 UTC
     scheduler.add_job(_send_daily_report, CronTrigger(hour=23, minute=0), id="daily_report")
 
+    # Daily Digest at UTC 0:00 (Beijing 8:00)
+    from digest_runner import run_daily_digest
+    scheduler.add_job(run_daily_digest, CronTrigger(hour=0, minute=0), id="daily_digest")
+
     return scheduler
 
 

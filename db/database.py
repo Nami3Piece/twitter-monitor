@@ -116,6 +116,19 @@ async def init_db() -> None:
                 used_at     TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Pending TX queue — unverified transactions awaiting blockchain confirmation
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS pending_tx_queue (
+                tx_hash     TEXT PRIMARY KEY,
+                user_id     TEXT NOT NULL,
+                tier        TEXT NOT NULL,
+                period      TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'pending',
+                error       TEXT,
+                submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                resolved_at  TEXT
+            )
+        """)
         # User keyword log — track monthly keyword additions per user
         await db.execute("""
             CREATE TABLE IF NOT EXISTS user_keyword_log (
@@ -166,6 +179,18 @@ async def init_db() -> None:
             )
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_shared_list_tweets_list ON shared_list_tweets(list_id)")
+        # Daily digests
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS digests (
+                date        TEXT PRIMARY KEY,
+                content_zh  TEXT,
+                content_en  TEXT,
+                audio_zh    TEXT,
+                audio_en    TEXT,
+                tweet_id    TEXT,
+                created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         await db.commit()
     logger.info(f"Database ready: {DB_PATH}")
 
@@ -185,6 +210,49 @@ async def record_tx_hash(tx_hash: str, user_id: str) -> None:
         await db.execute(
             "INSERT OR IGNORE INTO used_tx_hashes (tx_hash, user_id) VALUES (?, ?)",
             (tx_hash.lower(), user_id),
+        )
+        await db.commit()
+
+
+async def enqueue_pending_tx(tx_hash: str, user_id: str, tier: str, period: str) -> None:
+    """Insert a TX into the pending queue (status=pending)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO pending_tx_queue (tx_hash, user_id, tier, period) VALUES (?, ?, ?, ?)",
+            (tx_hash.lower(), user_id, tier, period),
+        )
+        await db.commit()
+
+
+async def get_pending_tx_status(tx_hash: str) -> Optional[dict]:
+    """Return status row for a pending TX, or None if not found."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT tx_hash, user_id, tier, period, status, error, submitted_at, resolved_at "
+            "FROM pending_tx_queue WHERE tx_hash=?",
+            (tx_hash.lower(),),
+        ) as cur:
+            row = await cur.fetchone()
+    if row is None:
+        return None
+    return {
+        "tx_hash":      row[0],
+        "user_id":      row[1],
+        "tier":         row[2],
+        "period":       row[3],
+        "status":       row[4],
+        "error":        row[5],
+        "submitted_at": row[6],
+        "resolved_at":  row[7],
+    }
+
+
+async def resolve_pending_tx(tx_hash: str, status: str, error: Optional[str] = None) -> None:
+    """Update a pending TX to 'confirmed' or 'failed'."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE pending_tx_queue SET status=?, error=?, resolved_at=CURRENT_TIMESTAMP WHERE tx_hash=?",
+            (status, error, tx_hash.lower()),
         )
         await db.commit()
 
