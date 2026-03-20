@@ -2030,6 +2030,7 @@ async def dashboard(request: Request) -> str:
                 (user.get("wallet_addr") or "")[:8] or "visitor") if user else "visitor"
     current_user_id = user["id"] if user else None
     sub = (await _auth_module.get_subscription(current_user_id) or {}) if current_user_id else {}
+    logger.debug(f"[dashboard] user_id={current_user_id} sub={sub}")
     data: Dict[str, List[Dict]] = {}
     accs: Dict[str, List[Dict]] = {}
     for project in PROJECTS:
