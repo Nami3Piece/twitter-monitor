@@ -1160,6 +1160,21 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .keyword-stats-table td{{padding:.5rem .8rem;font-size:.82rem}}
 </style>
 
+<style>
+#announce-modal{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center}}
+#announce-modal.show{{display:flex}}
+.announce-card{{background:#1e293b;border-radius:16px;padding:2rem;max-width:560px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.5);border:1px solid #334155}}
+.announce-title{{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin-bottom:1.5rem;text-align:center}}
+.announce-features{{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem}}
+.announce-feature{{background:#0f172a;border-radius:10px;padding:1rem;border:1px solid #334155;text-align:center}}
+.announce-feature-icon{{font-size:1.8rem;margin-bottom:.5rem}}
+.announce-feature-name{{font-weight:700;color:#f1f5f9;font-size:.9rem;margin-bottom:.3rem}}
+.announce-feature-desc{{font-size:.78rem;color:#94a3b8;line-height:1.5}}
+.announce-feature-link{{display:inline-block;margin-top:.6rem;padding:.3rem .8rem;background:#3b82f6;color:#fff;border-radius:6px;text-decoration:none;font-size:.78rem;font-weight:600}}
+.announce-close{{width:100%;padding:.7rem;background:#334155;color:#f1f5f9;border:none;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer}}
+.announce-close:hover{{background:#475569}}
+</style>
+
 <script>
 // Navigation functions - defined in head to be available immediately
 var _activeTableId = 'tbl-all';
@@ -1370,6 +1385,15 @@ async function copyAIDraft(modalType) {{
 
     <div style="display:grid;gap:.8rem">
       <div>
+        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">Logo（可选，每页页眉显示 / Optional, shown on every page）</label>
+        <div style="display:flex;align-items:center;gap:.8rem">
+          <input id="ct-logo-input" type="file" accept="image/*" onchange="handleLogoUpload(this)"
+            style="font-size:.78rem;color:#94a3b8;flex:1">
+          <img id="ct-logo-preview" style="display:none;height:36px;border-radius:4px;border:1px solid #334155">
+          <button id="ct-logo-clear" type="button" onclick="clearLogo()" style="display:none;padding:.3rem .5rem;background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;border-radius:5px;font-size:.75rem;cursor:pointer">✕</button>
+        </div>
+      </div>
+      <div>
         <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">采购方名称 / Buyer Name *</label>
         <input id="ct-buyer-name" type="text" placeholder="e.g. Acme Corp Ltd."
           style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
@@ -1392,6 +1416,18 @@ async function copyAIDraft(modalType) {{
       </div>
 
       <div>
+        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">公司 Logo（可选，显示在合同每页）/ Company Logo (optional)</label>
+        <div style="display:flex;align-items:center;gap:.8rem">
+          <input type="file" id="ct-logo-input" accept="image/*" onchange="handleLogoUpload(this)"
+            style="font-size:.8rem;color:#94a3b8;flex:1">
+          <div id="ct-logo-preview" style="display:none">
+            <img id="ct-logo-img" style="height:40px;border-radius:4px;border:1px solid #334155;object-fit:contain;background:#fff;padding:2px">
+            <button type="button" onclick="removeLogo()" style="margin-left:.4rem;background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;cursor:pointer">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
         <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.5rem">产品列表 / Products *</label>
         <div id="ct-products" style="display:grid;gap:.6rem"></div>
         <button type="button" onclick="addProductRow()"
@@ -1402,11 +1438,10 @@ async function copyAIDraft(modalType) {{
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
         <div>
-          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">语言 / Language</label>
-          <select id="ct-lang" style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
-            <option value="both">中英双语 / Both</option>
-            <option value="cn">仅中文 / CN only</option>
-            <option value="en">仅英文 / EN only</option>
+          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">语言 / Language</label>          <select id="ct-lang" style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+            <option value="cn">中文简体 / Simplified CN</option>
+            <option value="tw">中文繁体 / Traditional CN</option>
+            <option value="en">英文 / English</option>
           </select>
         </div>
         <div>
@@ -1879,6 +1914,28 @@ if ('{nickname}' !== 'visitor' && !localStorage.getItem('announcement_seen_v3'))
 
 // ── Contract Modal ─────────────────────────────────────────────────────────────
 let _ctRowIdx = 0;
+let _ctLogoB64 = null;
+
+function handleLogoUpload(input) {{
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) {{ toast('Logo 不能超过2MB', false); input.value=''; return; }}
+  const reader = new FileReader();
+  reader.onload = e => {{
+    _ctLogoB64 = e.target.result.split(',')[1];
+    document.getElementById('ct-logo-preview').src = e.target.result;
+    document.getElementById('ct-logo-preview').style.display = 'block';
+    document.getElementById('ct-logo-clear').style.display = 'inline-block';
+  }};
+  reader.readAsDataURL(file);
+}}
+
+function clearLogo() {{
+  _ctLogoB64 = null;
+  document.getElementById('ct-logo-input').value = '';
+  document.getElementById('ct-logo-preview').style.display = 'none';
+  document.getElementById('ct-logo-clear').style.display = 'none';
+}}
 
 function openContractModal() {{
   document.getElementById('contract-modal').style.display = 'flex';
@@ -1894,6 +1951,26 @@ function closeContractModal() {{
 document.getElementById('contract-modal').addEventListener('click', function(e) {{
   if (e.target === this) closeContractModal();
 }});
+
+let _ctLogob64 = '';
+function handleLogoUpload(input) {{
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) {{ toast('Logo 不能超过 2MB', false); input.value=''; return; }}
+  const reader = new FileReader();
+  reader.onload = e => {{
+    _ctLogob64 = e.target.result.split(',')[1];
+    document.getElementById('ct-logo-img').src = e.target.result;
+    document.getElementById('ct-logo-preview').style.display = 'flex';
+    document.getElementById('ct-logo-preview').style.alignItems = 'center';
+  }};
+  reader.readAsDataURL(file);
+}}
+function removeLogo() {{
+  _ctLogob64 = '';
+  document.getElementById('ct-logo-input').value = '';
+  document.getElementById('ct-logo-preview').style.display = 'none';
+}}
 
 function addProductRow() {{
   const idx = _ctRowIdx++;
@@ -2020,6 +2097,7 @@ async function generateContract() {{
         shipping_per_unit: parseFloat(document.getElementById('ct-shipping').value) || 50,
         lang:   document.getElementById('ct-lang').value,
         format: document.getElementById('ct-format').value,
+        logo_b64: _ctLogoB64,
       }}),
     }});
     const d = await r.json();
@@ -4555,6 +4633,7 @@ class ContractRequest(BaseModel):
     shipping_per_unit: float = 50.0
     lang: str = "both"    # "cn" | "en" | "both"
     format: str = "both"  # "pdf" | "docx" | "both"
+    logo_b64: str = ""    # base64 logo image (optional)
 
 
 @app.post("/api/contract/generate")
@@ -4592,6 +4671,7 @@ async def api_contract_generate(req: ContractRequest, user: Dict = Depends(_user
             "shipping_per_unit": req.shipping_per_unit,
             "lang":   req.lang,
             "format": req.format,
+            "logo_b64": req.logo_b64,
         })
     except Exception as e:
         logger.error(f"Contract generation error: {e}")
@@ -4628,6 +4708,175 @@ async def api_contract_download(token: str, filename: str, user: Dict = Depends(
     media = "application/pdf" if filename.endswith(".pdf") else \
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     return FileResponse(path, media_type=media, filename=filename)
+
+
+# ── Daily Digest ──────────────────────────────────────────────────────────────
+
+import re as _re
+
+_AUDIO_DIR = os.getenv("AUDIO_DIR", "data/audio")
+
+
+async def _fetch_digest(date: str) -> Optional[Dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM digests WHERE date=?", (date,)
+        ) as cur:
+            row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def _fetch_digest_dates(limit: int = 30) -> List[str]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT date FROM digests ORDER BY date DESC LIMIT ?", (limit,)
+        ) as cur:
+            rows = await cur.fetchall()
+    return [r[0] for r in rows]
+
+
+def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: str) -> str:
+    date_options = "".join(
+        f'<option value="{d}" {"selected" if d == selected_date else ""}>{d}</option>'
+        for d in dates
+    )
+
+    if not digest:
+        content_block = '<div style="text-align:center;padding:3rem;color:#64748b">该日期暂无播报内容</div>'
+    else:
+        content_zh = _esc(digest.get("content_zh") or "").replace("\n", "<br>")
+        content_en = _esc(digest.get("content_en") or "").replace("\n", "<br>")
+        audio_zh = digest.get("audio_zh") or ""
+        audio_en = digest.get("audio_en") or ""
+        tweet_id = digest.get("tweet_id") or ""
+
+        audio_zh_block = (
+            f'<audio controls style="width:100%;margin:.5rem 0"><source src="/audio/{_esc(audio_zh)}" type="audio/mpeg">Your browser does not support audio.</audio>'
+            if audio_zh else '<p style="color:#94a3b8;font-size:.85rem">音频生成中...</p>'
+        )
+        audio_en_block = (
+            f'<audio controls style="width:100%;margin:.5rem 0"><source src="/audio/{_esc(audio_en)}" type="audio/mpeg">Your browser does not support audio.</audio>'
+            if audio_en else '<p style="color:#94a3b8;font-size:.85rem">Audio generating...</p>'
+        )
+        tweet_link = (
+            f'<a href="https://x.com/i/web/status/{_esc(tweet_id)}" target="_blank" '
+            f'style="display:inline-block;margin-top:.5rem;padding:.4rem 1rem;background:#1d9bf0;color:#fff;'
+            f'border-radius:6px;text-decoration:none;font-size:.85rem;font-weight:600">🐦 View on X</a>'
+            if tweet_id else ""
+        )
+
+        content_block = f"""
+<div style="background:#1e293b;border-radius:12px;padding:1.5rem;margin-bottom:1.5rem">
+  <div style="display:flex;gap:.5rem;margin-bottom:1.2rem">
+    <button onclick="showDigestTab('zh')" id="tab-zh"
+      style="padding:.5rem 1.2rem;border-radius:6px;border:none;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer;font-size:.9rem">
+      🇨🇳 中文版
+    </button>
+    <button onclick="showDigestTab('en')" id="tab-en"
+      style="padding:.5rem 1.2rem;border-radius:6px;border:none;background:#334155;color:#94a3b8;font-weight:600;cursor:pointer;font-size:.9rem">
+      🇺🇸 English
+    </button>
+  </div>
+
+  <div id="digest-zh">
+    <div style="margin-bottom:1rem">
+      <div style="color:#94a3b8;font-size:.8rem;margin-bottom:.3rem">🎙️ 中文语音</div>
+      {audio_zh_block}
+    </div>
+    <div style="background:#0f172a;border-radius:8px;padding:1.2rem;color:#e2e8f0;font-size:.9rem;line-height:1.8;max-height:500px;overflow-y:auto">
+      {content_zh}
+    </div>
+  </div>
+
+  <div id="digest-en" style="display:none">
+    <div style="margin-bottom:1rem">
+      <div style="color:#94a3b8;font-size:.8rem;margin-bottom:.3rem">🎙️ English Audio</div>
+      {audio_en_block}
+    </div>
+    <div style="background:#0f172a;border-radius:8px;padding:1.2rem;color:#e2e8f0;font-size:.9rem;line-height:1.8;max-height:500px;overflow-y:auto">
+      {content_en}
+    </div>
+  </div>
+
+  {tweet_link}
+</div>
+<script>
+function showDigestTab(lang) {{
+  document.getElementById('digest-zh').style.display = lang === 'zh' ? 'block' : 'none';
+  document.getElementById('digest-en').style.display = lang === 'en' ? 'block' : 'none';
+  document.getElementById('tab-zh').style.background = lang === 'zh' ? '#3b82f6' : '#334155';
+  document.getElementById('tab-zh').style.color = lang === 'zh' ? '#fff' : '#94a3b8';
+  document.getElementById('tab-en').style.background = lang === 'en' ? '#3b82f6' : '#334155';
+  document.getElementById('tab-en').style.color = lang === 'en' ? '#fff' : '#94a3b8';
+}}
+</script>
+"""
+
+    return f"""<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Daily X Digest — {selected_date}</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#f1f5f9;min-height:100vh}}
+header{{background:#020617;padding:1rem 2rem;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1e293b}}
+header h1{{font-size:1.1rem;font-weight:700;color:#f1f5f9}}
+.back-link{{color:#60a5fa;text-decoration:none;font-size:.85rem}}
+.back-link:hover{{text-decoration:underline}}
+main{{max-width:900px;margin:0 auto;padding:1.5rem 1.5rem}}
+select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:6px;padding:.5rem .8rem;font-size:.9rem;cursor:pointer}}
+</style>
+</head>
+<body>
+<header>
+  <h1>📰 Daily X Digest</h1>
+  <a href="/" class="back-link">← Back to Monitor</a>
+</header>
+<main>
+  <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap">
+    <h2 style="font-size:1.2rem;color:#f1f5f9">每日新闻播报</h2>
+    <select onchange="location.href='/digest/'+this.value">
+      {date_options if date_options else '<option>No digests yet</option>'}
+    </select>
+    <span style="color:#64748b;font-size:.8rem">最近30天 · 北京时间每天8:00发布</span>
+  </div>
+  {content_block}
+</main>
+</body>
+</html>"""
+
+
+@app.get("/digest", response_class=HTMLResponse)
+async def digest_latest():
+    dates = await _fetch_digest_dates(30)
+    if not dates:
+        return HTMLResponse(_build_digest_page(None, [], ""))
+    latest = dates[0]
+    digest = await _fetch_digest(latest)
+    return HTMLResponse(_build_digest_page(digest, dates, latest))
+
+
+@app.get("/digest/{date}", response_class=HTMLResponse)
+async def digest_by_date(date: str):
+    if not _re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=400, detail="Invalid date format")
+    dates = await _fetch_digest_dates(30)
+    digest = await _fetch_digest(date)
+    return HTMLResponse(_build_digest_page(digest, dates, date))
+
+
+@app.get("/audio/{filename}")
+async def serve_audio(filename: str):
+    from fastapi.responses import FileResponse
+    if not _re.match(r"^[\w\-]+\.mp3$", filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    path = os.path.join(_AUDIO_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Audio not found")
+    return FileResponse(path, media_type="audio/mpeg")
 
 
 if __name__ == "__main__":
