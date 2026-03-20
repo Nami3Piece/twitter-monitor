@@ -74,7 +74,7 @@ ENTHUSIASTIC: [draft]
 Keep each draft concise and engaging. Add relevant hashtags if appropriate."""
 
         response = await client.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-opus-4-6",
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}]
         )
