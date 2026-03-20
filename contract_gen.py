@@ -1,14 +1,15 @@
 """
-contract_gen.py — eCandle sales contract generator (PDF + Word, CN/EN).
+contract_gen.py — Generic sales contract generator (PDF + Word, CN/EN).
 Usage:
     result = generate_contract(params)
     # result = {"cn_pdf": "/tmp/...", "en_pdf": "/tmp/...", "cn_docx": "/tmp/...", "en_docx": "/tmp/..."}
 """
 
 import os
+import base64
 import tempfile
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -24,54 +25,93 @@ def _fmt_num(n) -> str:
         return str(n)
 
 
+def _decode_images(products: List[Dict], tmpdir: str) -> List[Dict]:
+    """Decode base64 spec_images to temp files, return updated products list."""
+    result = []
+    for i, p in enumerate(products):
+        imgs = p.get("spec_images", [])
+        paths = []
+        for j, b64 in enumerate(imgs[:3]):
+            try:
+                data = base64.b64decode(b64)
+                ext = "jpg"
+                if data[:8] == b'\x89PNG\r\n\x1a\n':
+                    ext = "png"
+                fpath = os.path.join(tmpdir, f"spec_{i}_{j}.{ext}")
+                with open(fpath, "wb") as f:
+                    f.write(data)
+                paths.append(fpath)
+            except Exception:
+                pass
+        result.append({**p, "_img_paths": paths})
+    return result
+
+
 # ── contract data builder ─────────────────────────────────────────────────────
 
 def _build_data(params: Dict) -> Dict:
     buyer_name    = params.get("buyer_name", "")
     buyer_address = params.get("buyer_address", "")
     buyer_contact = params.get("buyer_contact", "")
-    qty_red       = int(params.get("qty_red", 1))
-    qty_green     = int(params.get("qty_green", 1))
-    unit_price    = float(params.get("unit_price", 299))
     shipping_per  = float(params.get("shipping_per_unit", 50))
-    qty_total     = qty_red + qty_green
-    goods_total   = qty_total * unit_price
+    products      = params.get("products", [])
+    if not products:
+        raise ValueError("At least one product is required")
+
+    # Normalize products
+    norm = []
+    for p in products:
+        qty        = int(p.get("qty", 1))
+        unit_price = float(p.get("unit_price", 0))
+        norm.append({
+            "name":       p.get("name", ""),
+            "sku":        p.get("sku", ""),
+            "qty":        qty,
+            "unit_price": unit_price,
+            "subtotal":   qty * unit_price,
+            "spec_text":  p.get("spec_text", ""),
+            "spec_images": p.get("spec_images", []),
+        })
+
+    qty_total      = sum(p["qty"] for p in norm)
+    goods_total    = sum(p["subtotal"] for p in norm)
     shipping_total = qty_total * shipping_per
-    grand_total   = goods_total + shipping_total
+    grand_total    = goods_total + shipping_total
+
+    needs_spec = any(
+        len(p.get("spec_text", "")) > 20 or p.get("spec_images")
+        for p in norm
+    )
 
     return {
-        "buyer_name":    buyer_name,
-        "buyer_address": buyer_address,
-        "buyer_contact": buyer_contact,
-        "qty_red":       qty_red,
-        "qty_green":     qty_green,
-        "qty_total":     qty_total,
-        "unit_price":    unit_price,
-        "shipping_per":  shipping_per,
-        "goods_total":   goods_total,
+        "buyer_name":     buyer_name,
+        "buyer_address":  buyer_address,
+        "buyer_contact":  buyer_contact,
+        "products":       norm,
+        "qty_total":      qty_total,
+        "shipping_per":   shipping_per,
+        "goods_total":    goods_total,
         "shipping_total": shipping_total,
-        "grand_total":   grand_total,
-        "date":          _today(),
-        "seller_name":   "Arkreen Network Ltd.",
+        "grand_total":    grand_total,
+        "needs_spec":     needs_spec,
+        "date":           _today(),
+        "seller_name":    "Arkreen Network Ltd.",
         "seller_address": "Suite 1, 2nd Floor, The Sotheby Building, Rodney Bay, Gros-Islet, Saint Lucia",
         "seller_contact": "nami3piece@gmail.com",
-        "product_name_cn": "eCandle 智能绿色蜡烛",
-        "product_name_en": "eCandle Smart Green Candle",
     }
 
 
-# ── PDF generator ─────────────────────────────────────────────────────────────
+# ── PDF generator CN ──────────────────────────────────────────────────────────
 
-def _gen_pdf_cn(d: Dict, path: str) -> None:
+def _gen_pdf_cn(d: Dict, path: str, tmpdir: str) -> None:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
     from reportlab.lib import colors
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
-    # Try to register a CJK font; fall back to Helvetica if unavailable
     _cn_font = "Helvetica"
     for font_path in [
         "/System/Library/Fonts/PingFang.ttc",
@@ -89,17 +129,20 @@ def _gen_pdf_cn(d: Dict, path: str) -> None:
     doc = SimpleDocTemplate(path, pagesize=A4,
                             leftMargin=2*cm, rightMargin=2*cm,
                             topMargin=2*cm, bottomMargin=2*cm)
-    styles = getSampleStyleSheet()
     title_style = ParagraphStyle("title", fontName=_cn_font, fontSize=16,
                                  spaceAfter=6, alignment=1, leading=22)
     h2_style    = ParagraphStyle("h2", fontName=_cn_font, fontSize=12,
                                  spaceAfter=4, spaceBefore=12, leading=18)
+    h3_style    = ParagraphStyle("h3", fontName=_cn_font, fontSize=11,
+                                 spaceAfter=4, spaceBefore=8, leading=16)
     body_style  = ParagraphStyle("body", fontName=_cn_font, fontSize=10,
                                  spaceAfter=4, leading=16)
 
+    products_with_imgs = _decode_images(d["products"], tmpdir)
+
     story = []
-    story.append(Paragraph("eCandle 产品销售合同", title_style))
-    story.append(Paragraph(f"合同编号：ECA-{d['date'].replace('-','')}-001", body_style))
+    story.append(Paragraph("产品销售合同", title_style))
+    story.append(Paragraph(f"合同编号：CTR-{d['date'].replace('-','')}-001", body_style))
     story.append(Paragraph(f"签订日期：{d['date']}", body_style))
     story.append(Spacer(1, 0.4*cm))
 
@@ -113,16 +156,14 @@ def _gen_pdf_cn(d: Dict, path: str) -> None:
     story.append(Paragraph(f"<b>联系方式：</b>{d['buyer_contact']}", body_style))
 
     story.append(Paragraph("二、产品信息", h2_style))
-    tdata = [
-        ["产品名称", "规格/颜色", "数量", "单价（USD）", "小计（USD）"],
-        [d["product_name_cn"], "红色款", str(d["qty_red"]),
-         _fmt_num(d["unit_price"]), _fmt_num(d["qty_red"] * d["unit_price"])],
-        [d["product_name_cn"], "绿色款", str(d["qty_green"]),
-         _fmt_num(d["unit_price"]), _fmt_num(d["qty_green"] * d["unit_price"])],
-        ["运费", f"每件 USD {_fmt_num(d['shipping_per'])}", str(d["qty_total"]),
-         _fmt_num(d["shipping_per"]), _fmt_num(d["shipping_total"])],
-        ["", "", "", "合计", _fmt_num(d["grand_total"])],
-    ]
+    tdata = [["产品名称", "产品编号/SKU", "数量", "单价(USD)", "小计(USD)"]]
+    for p in d["products"]:
+        tdata.append([p["name"], p["sku"], str(p["qty"]),
+                      _fmt_num(p["unit_price"]), _fmt_num(p["subtotal"])])
+    tdata.append(["运费", f"每件 USD {_fmt_num(d['shipping_per'])}", str(d["qty_total"]),
+                  _fmt_num(d["shipping_per"]), _fmt_num(d["shipping_total"])])
+    tdata.append(["", "", "", "合计", _fmt_num(d["grand_total"])])
+
     t = Table(tdata, colWidths=[4.5*cm, 3*cm, 2*cm, 3*cm, 3*cm])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1e3a5f")),
@@ -132,7 +173,6 @@ def _gen_pdf_cn(d: Dict, path: str) -> None:
         ("GRID",       (0,0), (-1,-1), 0.5, colors.HexColor("#e2e8f0")),
         ("ALIGN",      (2,0), (-1,-1), "CENTER"),
         ("BACKGROUND", (0,-1), (-1,-1), colors.HexColor("#f0fdf4")),
-        ("FONTNAME",   (0,-1), (-1,-1), _cn_font),
         ("ROWBACKGROUNDS", (0,1), (-1,-2), [colors.white, colors.HexColor("#f8fafc")]),
     ]))
     story.append(t)
@@ -170,14 +210,42 @@ def _gen_pdf_cn(d: Dict, path: str) -> None:
     ]))
     story.append(sig_t)
 
+    # Spec section
+    if d["needs_spec"]:
+        story.append(Spacer(1, 1*cm))
+        story.append(Paragraph("附件：产品规格说明 / Product Specifications", h2_style))
+        for p in products_with_imgs:
+            spec_text = p.get("spec_text", "")
+            img_paths = p.get("_img_paths", [])
+            if len(spec_text) <= 20 and not img_paths:
+                continue
+            label = f"[{p['sku']}] {p['name']}" if p.get("sku") else p["name"]
+            story.append(Paragraph(label, h3_style))
+            if spec_text:
+                story.append(Paragraph(spec_text, body_style))
+            for img_path in img_paths:
+                try:
+                    img = RLImage(img_path, width=15*cm)
+                    img_w, img_h = img.imageWidth, img.imageHeight
+                    if img_h > 0:
+                        ratio = img_w / img_h
+                        display_h = min(15*cm / ratio, 200)
+                        img = RLImage(img_path, width=15*cm, height=display_h)
+                    story.append(img)
+                    story.append(Spacer(1, 0.3*cm))
+                except Exception:
+                    pass
+
     doc.build(story)
 
 
-def _gen_pdf_en(d: Dict, path: str) -> None:
+# ── PDF generator EN ──────────────────────────────────────────────────────────
+
+def _gen_pdf_en(d: Dict, path: str, tmpdir: str) -> None:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
     from reportlab.lib import colors
 
     doc = SimpleDocTemplate(path, pagesize=A4,
@@ -187,12 +255,16 @@ def _gen_pdf_en(d: Dict, path: str) -> None:
                                  spaceAfter=6, alignment=1, leading=22)
     h2_style    = ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=12,
                                  spaceAfter=4, spaceBefore=12, leading=18)
+    h3_style    = ParagraphStyle("h3", fontName="Helvetica-Bold", fontSize=11,
+                                 spaceAfter=4, spaceBefore=8, leading=16)
     body_style  = ParagraphStyle("body", fontName="Helvetica", fontSize=10,
                                  spaceAfter=4, leading=16)
 
+    products_with_imgs = _decode_images(d["products"], tmpdir)
+
     story = []
-    story.append(Paragraph("SALES CONTRACT — eCandle Product", title_style))
-    story.append(Paragraph(f"Contract No.: ECA-{d['date'].replace('-','')}-001", body_style))
+    story.append(Paragraph("SALES CONTRACT", title_style))
+    story.append(Paragraph(f"Contract No.: CTR-{d['date'].replace('-','')}-001", body_style))
     story.append(Paragraph(f"Date: {d['date']}", body_style))
     story.append(Spacer(1, 0.4*cm))
 
@@ -206,17 +278,15 @@ def _gen_pdf_en(d: Dict, path: str) -> None:
     story.append(Paragraph(f"<b>Contact:</b> {d['buyer_contact']}", body_style))
 
     story.append(Paragraph("2. Products", h2_style))
-    tdata = [
-        ["Product", "Variant", "Qty", "Unit Price (USD)", "Subtotal (USD)"],
-        [d["product_name_en"], "Red", str(d["qty_red"]),
-         _fmt_num(d["unit_price"]), _fmt_num(d["qty_red"] * d["unit_price"])],
-        [d["product_name_en"], "Green", str(d["qty_green"]),
-         _fmt_num(d["unit_price"]), _fmt_num(d["qty_green"] * d["unit_price"])],
-        ["Shipping", f"USD {_fmt_num(d['shipping_per'])} / unit", str(d["qty_total"]),
-         _fmt_num(d["shipping_per"]), _fmt_num(d["shipping_total"])],
-        ["", "", "", "TOTAL", _fmt_num(d["grand_total"])],
-    ]
-    t = Table(tdata, colWidths=[4.5*cm, 2.5*cm, 2*cm, 3.5*cm, 3*cm])
+    tdata = [["Product Name", "Product No./SKU", "Qty", "Unit Price (USD)", "Subtotal (USD)"]]
+    for p in d["products"]:
+        tdata.append([p["name"], p["sku"], str(p["qty"]),
+                      _fmt_num(p["unit_price"]), _fmt_num(p["subtotal"])])
+    tdata.append(["Shipping", f"USD {_fmt_num(d['shipping_per'])} / unit", str(d["qty_total"]),
+                  _fmt_num(d["shipping_per"]), _fmt_num(d["shipping_total"])])
+    tdata.append(["", "", "", "TOTAL", _fmt_num(d["grand_total"])])
+
+    t = Table(tdata, colWidths=[4.5*cm, 3*cm, 2*cm, 3*cm, 3*cm])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1e3a5f")),
         ("TEXTCOLOR",  (0,0), (-1,0), colors.white),
@@ -264,28 +334,54 @@ def _gen_pdf_en(d: Dict, path: str) -> None:
     ]))
     story.append(sig_t)
 
+    if d["needs_spec"]:
+        story.append(Spacer(1, 1*cm))
+        story.append(Paragraph("Appendix: Product Specifications", h2_style))
+        for p in products_with_imgs:
+            spec_text = p.get("spec_text", "")
+            img_paths = p.get("_img_paths", [])
+            if len(spec_text) <= 20 and not img_paths:
+                continue
+            label = f"[{p['sku']}] {p['name']}" if p.get("sku") else p["name"]
+            story.append(Paragraph(label, h3_style))
+            if spec_text:
+                story.append(Paragraph(spec_text, body_style))
+            for img_path in img_paths:
+                try:
+                    img = RLImage(img_path, width=15*cm)
+                    img_w, img_h = img.imageWidth, img.imageHeight
+                    if img_h > 0:
+                        ratio = img_w / img_h
+                        display_h = min(15*cm / ratio, 200)
+                        img = RLImage(img_path, width=15*cm, height=display_h)
+                    story.append(img)
+                    story.append(Spacer(1, 0.3*cm))
+                except Exception:
+                    pass
+
     doc.build(story)
 
 
-# ── Word generator ────────────────────────────────────────────────────────────
+# ── Word generator CN ─────────────────────────────────────────────────────────
 
-def _gen_docx_cn(d: Dict, path: str) -> None:
+def _gen_docx_cn(d: Dict, path: str, tmpdir: str) -> None:
     from docx import Document
-    from docx.shared import Pt, Cm, RGBColor
+    from docx.shared import Pt, Cm
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
+    products_with_imgs = _decode_images(d["products"], tmpdir)
+
     doc = Document()
-    # Page margins
     for section in doc.sections:
         section.left_margin   = Cm(2.5)
         section.right_margin  = Cm(2.5)
         section.top_margin    = Cm(2.5)
         section.bottom_margin = Cm(2.5)
 
-    title = doc.add_heading("eCandle 产品销售合同", 0)
+    title = doc.add_heading("产品销售合同", 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    doc.add_paragraph(f"合同编号：ECA-{d['date'].replace('-','')}-001")
+    doc.add_paragraph(f"合同编号：CTR-{d['date'].replace('-','')}-001")
     doc.add_paragraph(f"签订日期：{d['date']}")
 
     doc.add_heading("一、甲乙双方信息", 1)
@@ -301,21 +397,20 @@ def _gen_docx_cn(d: Dict, path: str) -> None:
     table = doc.add_table(rows=1, cols=5)
     table.style = "Table Grid"
     hdr = table.rows[0].cells
-    for i, h in enumerate(["产品名称", "规格/颜色", "数量", "单价（USD）", "小计（USD）"]):
+    for i, h in enumerate(["产品名称", "产品编号/SKU", "数量", "单价(USD)", "小计(USD)"]):
         hdr[i].text = h
-    rows_data = [
-        [d["product_name_cn"], "红色款", str(d["qty_red"]),
-         _fmt_num(d["unit_price"]), _fmt_num(d["qty_red"] * d["unit_price"])],
-        [d["product_name_cn"], "绿色款", str(d["qty_green"]),
-         _fmt_num(d["unit_price"]), _fmt_num(d["qty_green"] * d["unit_price"])],
-        ["运费", f"每件 USD {_fmt_num(d['shipping_per'])}", str(d["qty_total"]),
-         _fmt_num(d["shipping_per"]), _fmt_num(d["shipping_total"])],
-        ["", "", "", "合计", _fmt_num(d["grand_total"])],
-    ]
-    for row_data in rows_data:
+    for p in d["products"]:
         row = table.add_row().cells
-        for i, val in enumerate(row_data):
+        for i, val in enumerate([p["name"], p["sku"], str(p["qty"]),
+                                  _fmt_num(p["unit_price"]), _fmt_num(p["subtotal"])]):
             row[i].text = val
+    ship_row = table.add_row().cells
+    for i, val in enumerate(["运费", f"每件 USD {_fmt_num(d['shipping_per'])}", str(d["qty_total"]),
+                              _fmt_num(d["shipping_per"]), _fmt_num(d["shipping_total"])]):
+        ship_row[i].text = val
+    total_row = table.add_row().cells
+    total_row[3].text = "合计"
+    total_row[4].text = _fmt_num(d["grand_total"])
 
     doc.add_heading("三、付款方式", 1)
     doc.add_paragraph("乙方应在合同签订后 7 个工作日内完成付款，支持 USDT（Polygon 网络）或银行电汇。")
@@ -342,13 +437,34 @@ def _gen_docx_cn(d: Dict, path: str) -> None:
     sig_table.cell(2, 0).text = f"日期：{d['date']}"
     sig_table.cell(2, 1).text = "日期：___________"
 
+    if d["needs_spec"]:
+        doc.add_heading("附件：产品规格说明 / Product Specifications", 1)
+        for p in products_with_imgs:
+            spec_text = p.get("spec_text", "")
+            img_paths = p.get("_img_paths", [])
+            if len(spec_text) <= 20 and not img_paths:
+                continue
+            label = f"[{p['sku']}] {p['name']}" if p.get("sku") else p["name"]
+            doc.add_heading(label, 2)
+            if spec_text:
+                doc.add_paragraph(spec_text)
+            for img_path in img_paths:
+                try:
+                    doc.add_picture(img_path, width=Cm(15))
+                except Exception:
+                    pass
+
     doc.save(path)
 
 
-def _gen_docx_en(d: Dict, path: str) -> None:
+# ── Word generator EN ─────────────────────────────────────────────────────────
+
+def _gen_docx_en(d: Dict, path: str, tmpdir: str) -> None:
     from docx import Document
-    from docx.shared import Cm
+    from docx.shared import Pt, Cm
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    products_with_imgs = _decode_images(d["products"], tmpdir)
 
     doc = Document()
     for section in doc.sections:
@@ -357,10 +473,10 @@ def _gen_docx_en(d: Dict, path: str) -> None:
         section.top_margin    = Cm(2.5)
         section.bottom_margin = Cm(2.5)
 
-    title = doc.add_heading("SALES CONTRACT — eCandle Product", 0)
+    title = doc.add_heading("SALES CONTRACT", 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    doc.add_paragraph(f"Contract No.: ECA-{d['date'].replace('-','')}-001")
+    doc.add_paragraph(f"Contract No.: CTR-{d['date'].replace('-','')}-001")
     doc.add_paragraph(f"Date: {d['date']}")
 
     doc.add_heading("1. Parties", 1)
@@ -376,21 +492,20 @@ def _gen_docx_en(d: Dict, path: str) -> None:
     table = doc.add_table(rows=1, cols=5)
     table.style = "Table Grid"
     hdr = table.rows[0].cells
-    for i, h in enumerate(["Product", "Variant", "Qty", "Unit Price (USD)", "Subtotal (USD)"]):
+    for i, h in enumerate(["Product Name", "Product No./SKU", "Qty", "Unit Price (USD)", "Subtotal (USD)"]):
         hdr[i].text = h
-    rows_data = [
-        [d["product_name_en"], "Red", str(d["qty_red"]),
-         _fmt_num(d["unit_price"]), _fmt_num(d["qty_red"] * d["unit_price"])],
-        [d["product_name_en"], "Green", str(d["qty_green"]),
-         _fmt_num(d["unit_price"]), _fmt_num(d["qty_green"] * d["unit_price"])],
-        ["Shipping", f"USD {_fmt_num(d['shipping_per'])} / unit", str(d["qty_total"]),
-         _fmt_num(d["shipping_per"]), _fmt_num(d["shipping_total"])],
-        ["", "", "", "TOTAL", _fmt_num(d["grand_total"])],
-    ]
-    for row_data in rows_data:
+    for p in d["products"]:
         row = table.add_row().cells
-        for i, val in enumerate(row_data):
+        for i, val in enumerate([p["name"], p["sku"], str(p["qty"]),
+                                  _fmt_num(p["unit_price"]), _fmt_num(p["subtotal"])]):
             row[i].text = val
+    ship_row = table.add_row().cells
+    for i, val in enumerate(["Shipping", f"USD {_fmt_num(d['shipping_per'])} / unit", str(d["qty_total"]),
+                              _fmt_num(d["shipping_per"]), _fmt_num(d["shipping_total"])]):
+        ship_row[i].text = val
+    total_row = table.add_row().cells
+    total_row[3].text = "TOTAL"
+    total_row[4].text = _fmt_num(d["grand_total"])
 
     doc.add_heading("3. Payment", 1)
     doc.add_paragraph("Buyer shall complete payment within 7 business days of contract signing. Accepted: USDT (Polygon) or bank wire.")
@@ -417,6 +532,23 @@ def _gen_docx_en(d: Dict, path: str) -> None:
     sig_table.cell(2, 0).text = f"Date: {d['date']}"
     sig_table.cell(2, 1).text = "Date: ___________"
 
+    if d["needs_spec"]:
+        doc.add_heading("Appendix: Product Specifications", 1)
+        for p in products_with_imgs:
+            spec_text = p.get("spec_text", "")
+            img_paths = p.get("_img_paths", [])
+            if len(spec_text) <= 20 and not img_paths:
+                continue
+            label = f"[{p['sku']}] {p['name']}" if p.get("sku") else p["name"]
+            doc.add_heading(label, 2)
+            if spec_text:
+                doc.add_paragraph(spec_text)
+            for img_path in img_paths:
+                try:
+                    doc.add_picture(img_path, width=Cm(15))
+                except Exception:
+                    pass
+
     doc.save(path)
 
 
@@ -440,23 +572,65 @@ def generate_contract(params: Dict) -> Dict[str, str]:
     want_docx = fmt in ("docx", "both")
 
     if want_cn and want_pdf:
-        p = os.path.join(tmpdir, "eCandle_合同_CN.pdf")
-        _gen_pdf_cn(d, p)
+        p = os.path.join(tmpdir, "Contract_CN.pdf")
+        _gen_pdf_cn(d, p, tmpdir)
         result["cn_pdf"] = p
 
     if want_en and want_pdf:
-        p = os.path.join(tmpdir, "eCandle_Contract_EN.pdf")
-        _gen_pdf_en(d, p)
+        p = os.path.join(tmpdir, "Contract_EN.pdf")
+        _gen_pdf_en(d, p, tmpdir)
         result["en_pdf"] = p
 
     if want_cn and want_docx:
-        p = os.path.join(tmpdir, "eCandle_合同_CN.docx")
-        _gen_docx_cn(d, p)
+        p = os.path.join(tmpdir, "Contract_CN.docx")
+        _gen_docx_cn(d, p, tmpdir)
         result["cn_docx"] = p
 
     if want_en and want_docx:
-        p = os.path.join(tmpdir, "eCandle_Contract_EN.docx")
-        _gen_docx_en(d, p)
+        p = os.path.join(tmpdir, "Contract_EN.docx")
+        _gen_docx_en(d, p, tmpdir)
+        result["en_docx"] = p
+
+    return result
+
+
+# ── public API ────────────────────────────────────────────────────────────────
+
+def generate_contract(params: Dict) -> Dict[str, str]:
+    """
+    Generate contract files based on params.
+    Returns dict of {key: filepath} for requested formats/languages.
+    Keys: cn_pdf, en_pdf, cn_docx, en_docx (subset based on lang/format params).
+    """
+    d      = _build_data(params)
+    lang   = params.get("lang", "both")    # "cn" | "en" | "both"
+    fmt    = params.get("format", "both")  # "pdf" | "docx" | "both"
+    tmpdir = tempfile.mkdtemp(prefix="contract_")
+    result: Dict[str, str] = {}
+
+    want_cn   = lang in ("cn", "both")
+    want_en   = lang in ("en", "both")
+    want_pdf  = fmt in ("pdf", "both")
+    want_docx = fmt in ("docx", "both")
+
+    if want_cn and want_pdf:
+        p = os.path.join(tmpdir, "Contract_CN.pdf")
+        _gen_pdf_cn(d, p, tmpdir)
+        result["cn_pdf"] = p
+
+    if want_en and want_pdf:
+        p = os.path.join(tmpdir, "Contract_EN.pdf")
+        _gen_pdf_en(d, p, tmpdir)
+        result["en_pdf"] = p
+
+    if want_cn and want_docx:
+        p = os.path.join(tmpdir, "Contract_CN.docx")
+        _gen_docx_cn(d, p, tmpdir)
+        result["cn_docx"] = p
+
+    if want_en and want_docx:
+        p = os.path.join(tmpdir, "Contract_EN.docx")
+        _gen_docx_en(d, p, tmpdir)
         result["en_docx"] = p
 
     return result

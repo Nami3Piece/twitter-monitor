@@ -1366,7 +1366,7 @@ async function copyAIDraft(modalType) {{
   <div style="background:#1e293b;border-radius:16px;padding:2rem;max-width:560px;width:calc(100% - 2rem);box-shadow:0 25px 60px rgba(0,0,0,.6);position:relative;max-height:90vh;overflow-y:auto">
     <button onclick="closeContractModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#64748b">✕</button>
     <h2 style="color:#f1f5f9;font-size:1.3rem;margin-bottom:.3rem">📄 合同生成 / Contract Generator</h2>
-    <p style="color:#64748b;font-size:.82rem;margin-bottom:1.2rem">填写采购方信息，生成 eCandle 销售合同</p>
+    <p style="color:#64748b;font-size:.82rem;margin-bottom:1.2rem">填写采购方信息，生成销售合同</p>
 
     <div style="display:grid;gap:.8rem">
       <div>
@@ -1384,30 +1384,22 @@ async function copyAIDraft(modalType) {{
         <input id="ct-buyer-contact" type="text" placeholder="e.g. contact@company.com"
           style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
-        <div>
-          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">红色款数量 / Red Qty</label>
-          <input id="ct-qty-red" type="number" value="1" min="0"
-            style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
-        </div>
-        <div>
-          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">绿色款数量 / Green Qty</label>
-          <input id="ct-qty-green" type="number" value="1" min="0"
-            style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
-        </div>
+
+      <div>
+        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">运费/件 USD / Shipping per unit</label>
+        <input id="ct-shipping" type="number" value="50" min="0"
+          style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
-        <div>
-          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">单价 USD / Unit Price</label>
-          <input id="ct-unit-price" type="number" value="299" min="1"
-            style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
-        </div>
-        <div>
-          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">运费/件 USD / Shipping</label>
-          <input id="ct-shipping" type="number" value="50" min="0"
-            style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
-        </div>
+
+      <div>
+        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.5rem">产品列表 / Products *</label>
+        <div id="ct-products" style="display:grid;gap:.6rem"></div>
+        <button type="button" onclick="addProductRow()"
+          style="margin-top:.5rem;padding:.4rem .8rem;background:#1e3a5f;color:#93c5fd;border:1px solid #334155;border-radius:6px;font-size:.82rem;cursor:pointer">
+          + 添加产品 / Add Product
+        </button>
       </div>
+
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
         <div>
           <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">语言 / Language</label>
@@ -1886,9 +1878,12 @@ if ('{nickname}' !== 'visitor' && !localStorage.getItem('announcement_seen_v3'))
 }}
 
 // ── Contract Modal ─────────────────────────────────────────────────────────────
+let _ctRowIdx = 0;
+
 function openContractModal() {{
   document.getElementById('contract-modal').style.display = 'flex';
   document.body.style.overflow = 'hidden';
+  if (document.getElementById('ct-products').children.length === 0) addProductRow();
 }}
 function closeContractModal() {{
   document.getElementById('contract-modal').style.display = 'none';
@@ -1900,14 +1895,110 @@ document.getElementById('contract-modal').addEventListener('click', function(e) 
   if (e.target === this) closeContractModal();
 }});
 
+function addProductRow() {{
+  const idx = _ctRowIdx++;
+  const wrap = document.createElement('div');
+  wrap.dataset.idx = idx;
+  wrap.style.cssText = 'background:#0f172a;border:1px solid #334155;border-radius:8px;padding:.6rem .8rem';
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:2fr 1.2fr .7fr 1fr auto;gap:.4rem;align-items:center">
+      <input data-field="name" type="text" placeholder="产品名称 / Name"
+        style="padding:.4rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.82rem;outline:none">
+      <input data-field="sku" type="text" placeholder="SKU"
+        style="padding:.4rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.82rem;outline:none">
+      <input data-field="qty" type="number" value="1" min="1"
+        style="padding:.4rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.82rem;outline:none">
+      <input data-field="unit_price" type="number" value="0" min="0" placeholder="单价 USD"
+        style="padding:.4rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.82rem;outline:none">
+      <div style="display:flex;gap:.3rem">
+        <button type="button" onclick="toggleSpec(this)" title="规格说明"
+          style="padding:.3rem .5rem;background:#1e3a5f;color:#93c5fd;border:1px solid #334155;border-radius:5px;font-size:.75rem;cursor:pointer">📋</button>
+        <button type="button" onclick="removeProductRow(this)" title="删除"
+          style="padding:.3rem .5rem;background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;border-radius:5px;font-size:.75rem;cursor:pointer">✕</button>
+      </div>
+    </div>
+    <div class="spec-area" style="display:none;margin-top:.5rem;padding-top:.5rem;border-top:1px solid #1e293b">
+      <textarea data-field="spec_text" placeholder="规格说明文字 / Spec text (>20字时自动生成规格章节)"
+        style="width:100%;padding:.4rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.8rem;outline:none;resize:vertical;min-height:60px"></textarea>
+      <div style="margin-top:.4rem">
+        <label style="font-size:.75rem;color:#64748b">图片 / Images (≤3张, ≤2MB each)</label>
+        <input type="file" accept="image/*" multiple onchange="handleSpecImages(this)"
+          style="display:block;margin-top:.3rem;font-size:.78rem;color:#94a3b8">
+        <div class="spec-img-preview" style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem"></div>
+      </div>
+    </div>
+  `;
+  document.getElementById('ct-products').appendChild(wrap);
+}}
+
+function removeProductRow(btn) {{
+  const row = btn.closest('[data-idx]');
+  if (document.getElementById('ct-products').children.length <= 1) {{
+    toast('至少保留一个产品行', false); return;
+  }}
+  row.remove();
+}}
+
+function toggleSpec(btn) {{
+  const area = btn.closest('[data-idx]').querySelector('.spec-area');
+  area.style.display = area.style.display === 'none' ? 'block' : 'none';
+}}
+
+function handleSpecImages(input) {{
+  const row = input.closest('[data-idx]');
+  const preview = row.querySelector('.spec-img-preview');
+  const existing = preview.querySelectorAll('img').length;
+  const files = Array.from(input.files);
+  let added = 0;
+  for (const file of files) {{
+    if (existing + added >= 3) {{ toast('最多3张图片', false); break; }}
+    if (file.size > 2 * 1024 * 1024) {{ toast('图片不能超过2MB: ' + file.name, false); continue; }}
+    const reader = new FileReader();
+    reader.onload = e => {{
+      const img = document.createElement('img');
+      img.src = e.target.result;
+      img.dataset.b64 = e.target.result.split(',')[1];
+      img.style.cssText = 'width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid #334155';
+      const wrap = document.createElement('div');
+      wrap.style.position = 'relative';
+      const del = document.createElement('button');
+      del.textContent = '✕';
+      del.style.cssText = 'position:absolute;top:-4px;right:-4px;background:#7f1d1d;color:#fff;border:none;border-radius:50%;width:16px;height:16px;font-size:9px;cursor:pointer;line-height:16px;padding:0';
+      del.onclick = () => wrap.remove();
+      wrap.appendChild(img);
+      wrap.appendChild(del);
+      preview.appendChild(wrap);
+    }};
+    reader.readAsDataURL(file);
+    added++;
+  }}
+  input.value = '';
+}}
+
 async function generateContract() {{
   const name    = document.getElementById('ct-buyer-name').value.trim();
   const address = document.getElementById('ct-buyer-address').value.trim();
   const contact = document.getElementById('ct-buyer-contact').value.trim();
   if (!name || !address || !contact) {{
-    toast('请填写采购方名称、地址和联系方式', false);
-    return;
+    toast('请填写采购方名称、地址和联系方式', false); return;
   }}
+
+  const rows = document.getElementById('ct-products').querySelectorAll('[data-idx]');
+  const products = [];
+  for (const row of rows) {{
+    const pname = row.querySelector('[data-field="name"]').value.trim();
+    if (!pname) {{ toast('请填写所有产品名称', false); return; }}
+    const imgs = Array.from(row.querySelectorAll('.spec-img-preview img')).map(i => i.dataset.b64);
+    products.push({{
+      name:       pname,
+      sku:        row.querySelector('[data-field="sku"]').value.trim(),
+      qty:        parseInt(row.querySelector('[data-field="qty"]').value) || 1,
+      unit_price: parseFloat(row.querySelector('[data-field="unit_price"]').value) || 0,
+      spec_text:  row.querySelector('[data-field="spec_text"]').value.trim(),
+      spec_images: imgs,
+    }});
+  }}
+
   const btn = document.getElementById('ct-gen-btn');
   const status = document.getElementById('ct-status');
   const dlArea = document.getElementById('ct-download');
@@ -1925,9 +2016,7 @@ async function generateContract() {{
         buyer_name:    name,
         buyer_address: address,
         buyer_contact: contact,
-        qty_red:       parseInt(document.getElementById('ct-qty-red').value) || 1,
-        qty_green:     parseInt(document.getElementById('ct-qty-green').value) || 1,
-        unit_price:    parseFloat(document.getElementById('ct-unit-price').value) || 299,
+        products:      products,
         shipping_per_unit: parseFloat(document.getElementById('ct-shipping').value) || 50,
         lang:   document.getElementById('ct-lang').value,
         format: document.getElementById('ct-format').value,
@@ -4449,13 +4538,20 @@ async def api_set_nickname(req: NicknameRequest, user: Dict = Depends(_user_auth
 
 # ── Contract generation ───────────────────────────────────────────────────────
 
+class ProductItem(BaseModel):
+    name: str
+    sku: str = ""
+    qty: int = 1
+    unit_price: float = 0.0
+    spec_text: str = ""
+    spec_images: List[str] = []  # base64 strings, max 3
+
+
 class ContractRequest(BaseModel):
     buyer_name: str
     buyer_address: str
     buyer_contact: str
-    qty_red: int = 1
-    qty_green: int = 1
-    unit_price: float = 299.0
+    products: List[ProductItem]
     shipping_per_unit: float = 50.0
     lang: str = "both"    # "cn" | "en" | "both"
     format: str = "both"  # "pdf" | "docx" | "both"
@@ -4479,9 +4575,11 @@ async def api_contract_generate(req: ContractRequest, user: Dict = Depends(_user
     if not is_pro:
         raise HTTPException(status_code=403, detail="pro_required")
 
-    if req.qty_red < 0 or req.qty_green < 0:
+    if not req.products:
+        raise HTTPException(status_code=400, detail="At least one product is required")
+    if any(p.qty < 0 for p in req.products):
         raise HTTPException(status_code=400, detail="Quantities must be non-negative")
-    if req.qty_red + req.qty_green == 0:
+    if sum(p.qty for p in req.products) == 0:
         raise HTTPException(status_code=400, detail="Total quantity must be at least 1")
 
     try:
@@ -4490,9 +4588,7 @@ async def api_contract_generate(req: ContractRequest, user: Dict = Depends(_user
             "buyer_name":    req.buyer_name,
             "buyer_address": req.buyer_address,
             "buyer_contact": req.buyer_contact,
-            "qty_red":       req.qty_red,
-            "qty_green":     req.qty_green,
-            "unit_price":    req.unit_price,
+            "products":      [p.model_dump() for p in req.products],
             "shipping_per_unit": req.shipping_per_unit,
             "lang":   req.lang,
             "format": req.format,
