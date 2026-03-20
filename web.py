@@ -922,10 +922,20 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
     _sub_tier = sub.get("tier", "free")
     _sub_status = sub.get("status", "")
     _sub_expires = sub.get("expires_at", "")
+    def _check_expires(exp: str) -> bool:
+        if not exp:
+            return True
+        try:
+            dt = _dt.datetime.fromisoformat(exp)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=_dt.timezone.utc)
+            return dt > _dt.datetime.now(_dt.timezone.utc)
+        except ValueError:
+            return True
     _is_paid = (
         _sub_tier in ("basic", "pro")
         and _sub_status == "active"
-        and (not _sub_expires or _dt.datetime.fromisoformat(_sub_expires) > _dt.datetime.now(_dt.timezone.utc))
+        and _check_expires(_sub_expires)
     ) if nickname != "visitor" else False
 
     if _is_paid:
