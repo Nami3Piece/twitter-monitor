@@ -951,6 +951,20 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
             '✨ Sign In to Vote</a>'
         )
 
+    if _is_paid and _sub_tier == "pro":
+        _contract_btn = (
+            '<button onclick="openContractModal()" style="padding:.4rem .9rem;border-radius:6px;'
+            'border:1.5px solid #22c55e;background:transparent;color:#22c55e;font-size:.82rem;'
+            'font-weight:600;cursor:pointer;white-space:nowrap">📄 Contract</button>'
+        )
+    else:
+        _contract_btn = (
+            '<button onclick="alert(\'Contract generation is a Pro feature. Upgrade to Pro to access.\')"'
+            ' style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #475569;'
+            'background:transparent;color:#475569;font-size:.82rem;font-weight:600;cursor:pointer;'
+            'white-space:nowrap">🔒 Contract</button>'
+        )
+
     if nickname != "visitor":
         _user_menu_html = (
             '<div id="user-menu" style="position:relative">'
@@ -1304,6 +1318,7 @@ async function copyAIDraft(modalType) {{
     <div class="meta">Updated: {updated} &nbsp;|&nbsp; Showing last 24h tweets</div>
     <a href="/logo/" target="_blank" style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #8b5cf6;background:transparent;color:#8b5cf6;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block">🎨 Logo Agent</a>
     <button onclick="openDonate()" style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #f59e0b;background:transparent;color:#f59e0b;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap">💛 Donate</button>
+    {_contract_btn}
     {_upgrade_btn}
     {_user_menu_html}
   </div>
@@ -1315,24 +1330,101 @@ async function copyAIDraft(modalType) {{
     <button onclick="closeAnnouncement()" style="position:absolute;top:1.2rem;right:1.2rem;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#64748b">✕</button>
     <div style="text-align:center;margin-bottom:1.5rem">
       <div style="font-size:3rem;margin-bottom:.5rem">🎉</div>
-      <h2 style="font-size:1.5rem;color:#f1f5f9;margin-bottom:.5rem">Platform Upgrade Complete!</h2>
-      <p style="color:#94a3b8;font-size:.95rem">New features just launched</p>
+      <h2 style="font-size:1.5rem;color:#f1f5f9;margin-bottom:.5rem">新功能上线 / New Feature</h2>
+      <p style="color:#94a3b8;font-size:.95rem">Contract Generator for Pro Users</p>
     </div>
     <div style="background:#0f172a;border-radius:10px;padding:1.5rem;margin-bottom:1.5rem">
+      <div style="margin-bottom:1.2rem">
+        <div style="color:#22c55e;font-weight:600;margin-bottom:.3rem">📄 合同生成 / Contract Generator</div>
+        <p style="color:#cbd5e1;font-size:.88rem">Pro 用户现可一键生成 eCandle 产品销售合同（中英文 PDF+Word），填写采购方信息即可下载。<br><span style="color:#94a3b8">Pro users can now generate eCandle sales contracts (CN/EN, PDF+Word) with one click.</span></p>
+      </div>
       <div style="margin-bottom:1.2rem">
         <div style="color:#3b82f6;font-weight:600;margin-bottom:.3rem">🤖 Agent-Friendly API</div>
         <p style="color:#cbd5e1;font-size:.88rem">Train your AI agent to browse and vote on tweets automatically. Get your API key in Settings.</p>
       </div>
-      <div style="margin-bottom:1.2rem">
+      <div>
         <div style="color:#34a853;font-weight:600;margin-bottom:.3rem">🔐 Google Sign-In</div>
         <p style="color:#cbd5e1;font-size:.88rem">Now supports Google OAuth alongside wallet and email login.</p>
       </div>
+    </div>
+    <button onclick="closeAnnouncement()" style="width:100%;padding:.8rem;background:#22c55e;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">Got it! 知道了</button>
+  </div>
+</div>
+
+<!-- Contract Modal -->
+<div id="contract-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center">
+  <div style="background:#1e293b;border-radius:16px;padding:2rem;max-width:560px;width:calc(100% - 2rem);box-shadow:0 25px 60px rgba(0,0,0,.6);position:relative;max-height:90vh;overflow-y:auto">
+    <button onclick="closeContractModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#64748b">✕</button>
+    <h2 style="color:#f1f5f9;font-size:1.3rem;margin-bottom:.3rem">📄 合同生成 / Contract Generator</h2>
+    <p style="color:#64748b;font-size:.82rem;margin-bottom:1.2rem">填写采购方信息，生成 eCandle 销售合同</p>
+
+    <div style="display:grid;gap:.8rem">
       <div>
-        <div style="color:#f59e0b;font-weight:600;margin-bottom:.3rem">💎 Pro Subscriptions (Coming Soon)</div>
-        <p style="color:#cbd5e1;font-size:.88rem">Advanced features and higher API limits for power users.</p>
+        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">采购方名称 / Buyer Name *</label>
+        <input id="ct-buyer-name" type="text" placeholder="e.g. Acme Corp Ltd."
+          style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+      </div>
+      <div>
+        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">采购方地址 / Buyer Address *</label>
+        <input id="ct-buyer-address" type="text" placeholder="e.g. 123 Main St, City, Country"
+          style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+      </div>
+      <div>
+        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">联系方式 / Contact *</label>
+        <input id="ct-buyer-contact" type="text" placeholder="e.g. contact@company.com"
+          style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
+        <div>
+          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">红色款数量 / Red Qty</label>
+          <input id="ct-qty-red" type="number" value="1" min="0"
+            style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+        </div>
+        <div>
+          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">绿色款数量 / Green Qty</label>
+          <input id="ct-qty-green" type="number" value="1" min="0"
+            style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
+        <div>
+          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">单价 USD / Unit Price</label>
+          <input id="ct-unit-price" type="number" value="299" min="1"
+            style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+        </div>
+        <div>
+          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">运费/件 USD / Shipping</label>
+          <input id="ct-shipping" type="number" value="50" min="0"
+            style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
+        <div>
+          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">语言 / Language</label>
+          <select id="ct-lang" style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+            <option value="both">中英双语 / Both</option>
+            <option value="cn">仅中文 / CN only</option>
+            <option value="en">仅英文 / EN only</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">格式 / Format</label>
+          <select id="ct-format" style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
+            <option value="both">PDF + Word</option>
+            <option value="pdf">PDF only</option>
+            <option value="docx">Word only</option>
+          </select>
+        </div>
       </div>
     </div>
-    <button onclick="closeAnnouncement()" style="width:100%;padding:.8rem;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">Got it!</button>
+
+    <div id="ct-status" style="display:none;margin-top:.8rem;padding:.6rem .8rem;background:#1e3a5f;border-radius:6px;color:#93c5fd;font-size:.85rem"></div>
+    <div id="ct-download" style="display:none;margin-top:.8rem"></div>
+
+    <button id="ct-gen-btn" onclick="generateContract()"
+      style="width:100%;margin-top:1.2rem;padding:.8rem;background:#22c55e;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">
+      🚀 生成合同 / Generate
+    </button>
   </div>
 </div>
 
@@ -1774,13 +1866,78 @@ setTimeout(() => location.reload(), 10 * 60 * 1000);
 // ── Announcement ──────────────────────────────────────────────────────────────
 function closeAnnouncement() {{
   document.getElementById('announcement-modal').style.display = 'none';
-  localStorage.setItem('announcement_seen_v2', 'true');
+  localStorage.setItem('announcement_seen_v3', 'true');
 }}
 // Show announcement once per user
-if ('{nickname}' !== 'visitor' && !localStorage.getItem('announcement_seen_v2')) {{
+if ('{nickname}' !== 'visitor' && !localStorage.getItem('announcement_seen_v3')) {{
   setTimeout(() => {{
     document.getElementById('announcement-modal').style.display = 'flex';
   }}, 800);
+}}
+
+// ── Contract Modal ─────────────────────────────────────────────────────────────
+function openContractModal() {{
+  document.getElementById('contract-modal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}}
+function closeContractModal() {{
+  document.getElementById('contract-modal').style.display = 'none';
+  document.body.style.overflow = '';
+  document.getElementById('ct-status').style.display = 'none';
+  document.getElementById('ct-download').style.display = 'none';
+}}
+document.getElementById('contract-modal').addEventListener('click', function(e) {{
+  if (e.target === this) closeContractModal();
+}});
+
+async function generateContract() {{
+  const name    = document.getElementById('ct-buyer-name').value.trim();
+  const address = document.getElementById('ct-buyer-address').value.trim();
+  const contact = document.getElementById('ct-buyer-contact').value.trim();
+  if (!name || !address || !contact) {{
+    toast('请填写采购方名称、地址和联系方式', false);
+    return;
+  }}
+  const btn = document.getElementById('ct-gen-btn');
+  const status = document.getElementById('ct-status');
+  const dlArea = document.getElementById('ct-download');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating...';
+  status.style.display = 'block';
+  status.textContent = '正在生成合同文件，请稍候...';
+  dlArea.style.display = 'none';
+
+  try {{
+    const r = await fetch('/api/contract/generate', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{
+        buyer_name:    name,
+        buyer_address: address,
+        buyer_contact: contact,
+        qty_red:       parseInt(document.getElementById('ct-qty-red').value) || 1,
+        qty_green:     parseInt(document.getElementById('ct-qty-green').value) || 1,
+        unit_price:    parseFloat(document.getElementById('ct-unit-price').value) || 299,
+        shipping_per_unit: parseFloat(document.getElementById('ct-shipping').value) || 50,
+        lang:   document.getElementById('ct-lang').value,
+        format: document.getElementById('ct-format').value,
+      }}),
+    }});
+    const d = await r.json();
+    if (!r.ok || !d.ok) {{
+      status.textContent = '❌ ' + (d.detail || d.error || 'Generation failed');
+      return;
+    }}
+    status.style.display = 'none';
+    dlArea.style.display = 'block';
+    dlArea.innerHTML = '<p style="color:#22c55e;font-weight:600;margin-bottom:.8rem">✅ 合同生成成功！</p>' +
+      d.files.map(f => `<a href="${{f.url}}" download="${{f.name}}" style="display:block;padding:.5rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#60a5fa;text-decoration:none;font-size:.85rem;margin-bottom:.4rem">⬇️ ${{f.name}}</a>`).join('');
+  }} catch(e) {{
+    status.textContent = '❌ Network error: ' + e.message;
+  }} finally {{
+    btn.disabled = false;
+    btn.textContent = '🚀 生成合同 / Generate';
+  }}
 }}
 
 // ── User menu ─────────────────────────────────────────────────────────────────
@@ -3678,7 +3835,7 @@ class AkreSubscribeRequest(BaseModel):
 async def api_subscribe_akre(req: AkreSubscribeRequest, user: Dict = Depends(_user_auth)):
     """Verify AKRE on-chain payment and activate subscription."""
     import datetime as _dt
-    from db.database import is_tx_used, record_tx_hash
+    from db.database import is_tx_used, record_tx_hash, enqueue_pending_tx
 
     tier   = req.tier.lower()
     period = req.period.lower()
@@ -3695,7 +3852,9 @@ async def api_subscribe_akre(req: AkreSubscribeRequest, user: Dict = Depends(_us
 
     result = await _auth_module.verify_akre_tx(tx, tier, period, _DONATE_EVM_ADDR)
     if not result["ok"]:
-        raise HTTPException(status_code=402, detail=result["error"])
+        # Blockchain not yet confirmed — queue for async retry
+        await enqueue_pending_tx(tx, user["id"], tier, period)
+        return {"ok": False, "queued": True, "detail": result["error"]}
 
     days = 365 if period == "annual" else 30
     expires_at = (_dt.datetime.utcnow() + _dt.timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
@@ -3704,6 +3863,33 @@ async def api_subscribe_akre(req: AkreSubscribeRequest, user: Dict = Depends(_us
     await record_tx_hash(tx, user["id"])
 
     return {"ok": True, "tier": tier, "expires_at": expires_at, "amount": result["amount"]}
+
+
+@app.get("/api/subscribe/status")
+async def api_subscribe_status(tx_hash: str, user: Dict = Depends(_user_auth)):
+    """Poll status of a pending AKRE subscription TX."""
+    from db.database import get_pending_tx_status, is_tx_used
+
+    tx = tx_hash.strip().lower()
+    if not tx.startswith("0x") or len(tx) != 66:
+        raise HTTPException(status_code=400, detail="Invalid TX hash format")
+
+    # Already confirmed and activated
+    if await is_tx_used(tx):
+        return {"status": "confirmed"}
+
+    row = await get_pending_tx_status(tx)
+    if row is None:
+        raise HTTPException(status_code=404, detail="TX not found in queue")
+
+    return {
+        "status":       row["status"],   # pending | confirmed | failed
+        "tier":         row["tier"],
+        "period":       row["period"],
+        "error":        row["error"],
+        "submitted_at": row["submitted_at"],
+        "resolved_at":  row["resolved_at"],
+    }
 
 
 @app.get("/api/me")
@@ -3962,6 +4148,61 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
   </div>
 </div>
 
+<!-- Payment verification modal -->
+<div id="pay-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center">
+  <div id="pay-modal" style="background:#0f172a;border:1px solid #334155;border-radius:12px;padding:1.5rem;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+    <!-- Step 1: verifying -->
+    <div id="pms-verifying">
+      <div style="font-size:1.1rem;font-weight:700;color:#f1f5f9;margin-bottom:.6rem">✅ Payment received!</div>
+      <p style="font-size:.85rem;color:#94a3b8;margin-bottom:.8rem">We're verifying your transaction on Polygon.</p>
+      <div style="background:#1e293b;border-radius:6px;padding:.6rem .8rem;margin-bottom:.8rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem">
+        <code id="pms-txhash" style="font-size:.75rem;color:#3b82f6;word-break:break-all"></code>
+        <a id="pms-txlink" href="#" target="_blank" style="font-size:.75rem;color:#22c55e;white-space:nowrap;flex-shrink:0">Polygonscan ↗</a>
+      </div>
+      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem">
+        <div class="pay-spinner"></div>
+        <span id="pms-progress" style="font-size:.82rem;color:#94a3b8">Checking… (0/12)</span>
+      </div>
+      <p style="font-size:.78rem;color:#64748b;margin-bottom:1rem">Usually takes 1–2 minutes.</p>
+      <button onclick="checkStatusNow()" style="width:100%;padding:.5rem;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#94a3b8;font-size:.82rem;cursor:pointer">Check status now</button>
+    </div>
+    <!-- Step 2: success -->
+    <div id="pms-success" style="display:none;text-align:center">
+      <div style="font-size:2rem;margin-bottom:.5rem">🎉</div>
+      <div style="font-size:1.1rem;font-weight:700;color:#22c55e;margin-bottom:.4rem">Subscription activated!</div>
+      <p id="pms-success-msg" style="font-size:.85rem;color:#94a3b8;margin-bottom:1rem"></p>
+      <p style="font-size:.78rem;color:#64748b">Reloading page…</p>
+    </div>
+    <!-- Step 3: timeout / check later -->
+    <div id="pms-later" style="display:none">
+      <div style="font-size:1.1rem;font-weight:700;color:#f59e0b;margin-bottom:.6rem">⏳ Still verifying…</div>
+      <p style="font-size:.85rem;color:#94a3b8;margin-bottom:.8rem">We'll activate your account within 1 hour. You can close this page safely.</p>
+      <div style="background:#1e293b;border-radius:6px;padding:.6rem .8rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem">
+        <code id="pms-txhash2" style="font-size:.75rem;color:#3b82f6;word-break:break-all"></code>
+        <a id="pms-txlink2" href="#" target="_blank" style="font-size:.75rem;color:#22c55e;white-space:nowrap;flex-shrink:0">Polygonscan ↗</a>
+      </div>
+      <div style="display:flex;gap:.6rem">
+        <button onclick="checkStatusNow()" style="flex:1;padding:.5rem;border-radius:6px;border:1px solid #3b82f6;background:#1e293b;color:#3b82f6;font-size:.82rem;cursor:pointer">Check status</button>
+        <button onclick="closePayModal()" style="flex:1;padding:.5rem;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#64748b;font-size:.82rem;cursor:pointer">Close</button>
+      </div>
+    </div>
+    <!-- Step 4: failed -->
+    <div id="pms-failed" style="display:none">
+      <div style="font-size:1.1rem;font-weight:700;color:#f87171;margin-bottom:.6rem">✗ Verification failed</div>
+      <p id="pms-error-msg" style="font-size:.85rem;color:#94a3b8;margin-bottom:1rem"></p>
+      <button onclick="closePayModal()" style="width:100%;padding:.5rem;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#64748b;font-size:.82rem;cursor:pointer">Close</button>
+    </div>
+  </div>
+</div>
+<style>
+.pay-spinner {{
+  width:18px;height:18px;border-radius:50%;
+  border:2px solid #334155;border-top-color:#3b82f6;
+  animation:pay-spin .8s linear infinite;flex-shrink:0;
+}}
+@keyframes pay-spin {{ to {{ transform:rotate(360deg) }} }}
+</style>
+
 <script>
 async function createKey() {{
   const name = prompt('API Key name (optional):', 'My Agent');
@@ -4038,22 +4279,107 @@ async function submitSubscribe() {{
     msg.textContent = 'Invalid TX hash. Must be 66 characters starting with 0x.';
     return;
   }}
-  msg.style.display = 'block'; msg.style.color = '#fbbf24';
-  msg.textContent = 'Verifying on Polygon blockchain…';
+
+  // Show immediate confirmation modal
+  _payTx = tx;
+  _payPollCount = 0;
+  _payPollTimer = null;
+  const short = tx.slice(0,10) + '…' + tx.slice(-6);
+  const psLink = 'https://polygonscan.com/tx/' + tx;
+  document.getElementById('pms-txhash').textContent = short;
+  document.getElementById('pms-txlink').href = psLink;
+  document.getElementById('pms-txhash2').textContent = short;
+  document.getElementById('pms-txlink2').href = psLink;
+  document.getElementById('pms-verifying').style.display = '';
+  document.getElementById('pms-success').style.display = 'none';
+  document.getElementById('pms-later').style.display = 'none';
+  document.getElementById('pms-failed').style.display = 'none';
+  const overlay = document.getElementById('pay-modal-overlay');
+  overlay.style.display = 'flex';
+
+  // Submit to backend
   const r = await fetch('/api/subscribe/akre', {{
     method: 'POST',
     headers: {{'Content-Type': 'application/json'}},
     body: JSON.stringify({{ tier: _tier, period: _period, tx_hash: tx }}),
   }});
   const d = await r.json();
-  if (r.ok) {{
-    msg.style.color = '#22c55e';
-    msg.textContent = '✓ Activated! ' + d.tier.toUpperCase() + ' plan until ' + d.expires_at.slice(0,10);
-    setTimeout(() => location.reload(), 2000);
-  }} else {{
-    msg.style.color = '#f87171';
-    msg.textContent = '✗ ' + (d.detail || 'Verification failed');
+
+  if (r.ok && d.ok) {{
+    // Instant success (blockchain already confirmed)
+    _showPaySuccess(d);
+    return;
   }}
+
+  if (d.queued) {{
+    // Queued for async verification — start polling
+    _startPayPoll();
+    return;
+  }}
+
+  // Hard error (duplicate tx, bad format, etc.)
+  document.getElementById('pms-verifying').style.display = 'none';
+  document.getElementById('pms-failed').style.display = '';
+  document.getElementById('pms-error-msg').textContent = d.detail || 'Verification failed';
+}}
+
+let _payTx = '', _payPollCount = 0, _payPollTimer = null;
+const _PAY_POLL_MAX = 12; // 12 × 5s = 60s
+
+function _startPayPoll() {{
+  _payPollTimer = setInterval(_doPoll, 5000);
+}}
+
+async function _doPoll() {{
+  _payPollCount++;
+  document.getElementById('pms-progress').textContent =
+    'Checking… (' + _payPollCount + '/' + _PAY_POLL_MAX + ')';
+
+  if (_payPollCount >= _PAY_POLL_MAX) {{
+    clearInterval(_payPollTimer);
+    document.getElementById('pms-verifying').style.display = 'none';
+    document.getElementById('pms-later').style.display = '';
+    return;
+  }}
+
+  try {{
+    const r = await fetch('/api/subscribe/status?tx_hash=' + encodeURIComponent(_payTx));
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.status === 'confirmed') {{
+      clearInterval(_payPollTimer);
+      _showPaySuccess(d);
+    }} else if (d.status === 'failed') {{
+      clearInterval(_payPollTimer);
+      document.getElementById('pms-verifying').style.display = 'none';
+      document.getElementById('pms-failed').style.display = '';
+      document.getElementById('pms-error-msg').textContent = d.error || 'Verification failed';
+    }}
+  }} catch(e) {{ /* network hiccup — keep polling */ }}
+}}
+
+async function checkStatusNow() {{
+  _payPollCount = 0;
+  document.getElementById('pms-later').style.display = 'none';
+  document.getElementById('pms-verifying').style.display = '';
+  document.getElementById('pms-progress').textContent = 'Checking…';
+  clearInterval(_payPollTimer);
+  await _doPoll();
+  if (_payPollCount < _PAY_POLL_MAX) _startPayPoll();
+}}
+
+function _showPaySuccess(d) {{
+  document.getElementById('pms-verifying').style.display = 'none';
+  document.getElementById('pms-success').style.display = '';
+  const tier = (d.tier || _tier).toUpperCase();
+  const exp  = d.expires_at ? ' until ' + d.expires_at.slice(0,10) : '';
+  document.getElementById('pms-success-msg').textContent = tier + ' plan activated' + exp + '.';
+  setTimeout(() => location.reload(), 2500);
+}}
+
+function closePayModal() {{
+  clearInterval(_payPollTimer);
+  document.getElementById('pay-modal-overlay').style.display = 'none';
 }}
 
 async function addFilter(type) {{
@@ -4108,6 +4434,93 @@ async def api_set_nickname(req: NicknameRequest, user: Dict = Depends(_user_auth
         raise HTTPException(status_code=400, detail="Nickname cannot be empty")
     await _auth_module.update_nickname(user["id"], name)
     return {"ok": True, "nickname": name}
+
+
+# ── Contract generation ───────────────────────────────────────────────────────
+
+class ContractRequest(BaseModel):
+    buyer_name: str
+    buyer_address: str
+    buyer_contact: str
+    qty_red: int = 1
+    qty_green: int = 1
+    unit_price: float = 299.0
+    shipping_per_unit: float = 50.0
+    lang: str = "both"    # "cn" | "en" | "both"
+    format: str = "both"  # "pdf" | "docx" | "both"
+
+
+@app.post("/api/contract/generate")
+async def api_contract_generate(req: ContractRequest, user: Dict = Depends(_user_auth)):
+    """Generate eCandle sales contract. Pro users only."""
+    import datetime as _dt
+    import zipfile
+    from fastapi.responses import FileResponse
+
+    sub = await _auth_module.get_subscription(user["id"]) or {}
+    tier   = sub.get("tier", "free")
+    status = sub.get("status", "")
+    expires = sub.get("expires_at", "")
+    is_pro = (
+        tier == "pro" and status == "active" and
+        (not expires or _dt.datetime.fromisoformat(expires) > _dt.datetime.now(_dt.timezone.utc))
+    )
+    if not is_pro:
+        raise HTTPException(status_code=403, detail="pro_required")
+
+    if req.qty_red < 0 or req.qty_green < 0:
+        raise HTTPException(status_code=400, detail="Quantities must be non-negative")
+    if req.qty_red + req.qty_green == 0:
+        raise HTTPException(status_code=400, detail="Total quantity must be at least 1")
+
+    try:
+        from contract_gen import generate_contract
+        files = generate_contract({
+            "buyer_name":    req.buyer_name,
+            "buyer_address": req.buyer_address,
+            "buyer_contact": req.buyer_contact,
+            "qty_red":       req.qty_red,
+            "qty_green":     req.qty_green,
+            "unit_price":    req.unit_price,
+            "shipping_per_unit": req.shipping_per_unit,
+            "lang":   req.lang,
+            "format": req.format,
+        })
+    except Exception as e:
+        logger.error(f"Contract generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Store files in a temp dir accessible via /api/contract/download/<token>/<filename>
+    import uuid, shutil
+    token = uuid.uuid4().hex
+    serve_dir = f"/tmp/contract_{token}"
+    os.makedirs(serve_dir, exist_ok=True)
+    file_list = []
+    for key, src_path in files.items():
+        fname = os.path.basename(src_path)
+        dst = os.path.join(serve_dir, fname)
+        shutil.copy2(src_path, dst)
+        file_list.append({"name": fname, "url": f"/api/contract/download/{token}/{fname}"})
+
+    return JSONResponse({"ok": True, "files": file_list})
+
+
+@app.get("/api/contract/download/{token}/{filename}")
+async def api_contract_download(token: str, filename: str, user: Dict = Depends(_user_auth)):
+    """Serve a generated contract file."""
+    import re
+    # Sanitize inputs
+    if not re.match(r'^[0-9a-f]{32}$', token):
+        raise HTTPException(status_code=400, detail="Invalid token")
+    if not re.match(r'^[\w\-. ]+\.(pdf|docx)$', filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    path = f"/tmp/contract_{token}/{filename}"
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="File not found or expired")
+    from fastapi.responses import FileResponse
+    media = "application/pdf" if filename.endswith(".pdf") else \
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return FileResponse(path, media_type=media, filename=filename)
 
 
 if __name__ == "__main__":
