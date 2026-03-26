@@ -189,6 +189,8 @@ async def init_db() -> None:
                 audio_en    TEXT,
                 tweet_id    TEXT,
                 created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         # Deleted tweets audit — track why tweets were removed
         await db.execute("""
             CREATE TABLE IF NOT EXISTS deleted_tweets (

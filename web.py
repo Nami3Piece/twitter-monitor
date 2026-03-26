@@ -2579,6 +2579,143 @@ async def api_accounts(
     return result
 
 
+
+
+@app.get("/api/admin/dashboard")
+async def api_admin_dashboard(_: str = Depends(_auth)) -> JSONResponse:
+    """Real-time dashboard data for admin console."""
+    import subprocess, shutil, os, time
+    from pathlib import Path
+
+    result = {}
+
+    # ── Users & subscriptions ─────────────────────────────────────────────
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        async with db.execute("""
+            SELECT u.id, u.nickname, u.email, u.x_username, u.auth_type,
+                   u.created_at, u.last_login,
+                   s.tier, s.status AS sub_status, s.expires_at
+            FROM users u
+            LEFT JOIN subscriptions s ON u.id = s.user_id
+            ORDER BY u.created_at
+        """) as cur:
+            users = [dict(r) for r in await cur.fetchall()]
+
+        async with db.execute("""
+            SELECT tier, count(*) as cnt FROM subscriptions
+            WHERE status='active' GROUP BY tier
+        """) as cur:
+            tier_counts = {r[0]: r[1] for r in await cur.fetchall()}
+
+        async with db.execute("""
+            SELECT project, count(*) as cnt FROM tweets GROUP BY project
+        """) as cur:
+            tweet_by_project = {r[0]: r[1] for r in await cur.fetchall()}
+
+        total_tweets = sum(tweet_by_project.values())
+
+        async with db.execute("""
+            SELECT date, created_at FROM digests ORDER BY date DESC LIMIT 1
+        """) as cur:
+            row = await cur.fetchone()
+            last_digest = dict(row) if row else {}
+
+    result["users"] = {
+        "total": len(users),
+        "pro": tier_counts.get("pro", 0),
+        "basic": tier_counts.get("basic", 0),
+        "free": len(users) - sum(tier_counts.values()),
+        "list": users,
+    }
+
+    result["tweets"] = {
+        "total": total_tweets,
+        "by_project": tweet_by_project,
+    }
+
+    result["digest"] = last_digest
+
+    # ── System stats ──────────────────────────────────────────────────────
+    try:
+        with open("/proc/meminfo") as f:
+            mem = {}
+            for line in f:
+                k, v = line.split(":")
+                mem[k.strip()] = int(v.strip().split()[0])
+        mem_total_mb = mem["MemTotal"] // 1024
+        mem_avail_mb = mem.get("MemAvailable", mem.get("MemFree", 0)) // 1024
+        mem_used_mb = mem_total_mb - mem_avail_mb
+        swap_total_mb = mem.get("SwapTotal", 0) // 1024
+        swap_free_mb = mem.get("SwapFree", 0) // 1024
+        swap_used_mb = swap_total_mb - swap_free_mb
+    except Exception:
+        mem_total_mb = mem_used_mb = swap_total_mb = swap_used_mb = 0
+
+    try:
+        disk = shutil.disk_usage("/var/www/twitter-monitor/data")
+        disk_total_gb = round(disk.total / 1e9, 1)
+        disk_used_gb = round(disk.used / 1e9, 1)
+    except Exception:
+        disk_total_gb = disk_used_gb = 0
+
+    try:
+        load1, load5, load15 = os.getloadavg()
+    except Exception:
+        load1 = 0.0
+
+    try:
+        with open("/proc/uptime") as f:
+            uptime_s = int(float(f.read().split()[0]))
+        days, rem = divmod(uptime_s, 86400)
+        hours = rem // 3600
+        uptime_str = f"{days}d {hours}h"
+    except Exception:
+        uptime_str = "unknown"
+
+    result["system"] = {
+        "mem_used_mb": mem_used_mb,
+        "mem_total_mb": mem_total_mb,
+        "mem_pct": round(mem_used_mb / mem_total_mb * 100) if mem_total_mb else 0,
+        "swap_used_mb": swap_used_mb,
+        "swap_total_mb": swap_total_mb,
+        "disk_used_gb": disk_used_gb,
+        "disk_total_gb": disk_total_gb,
+        "disk_pct": round(disk_used_gb / disk_total_gb * 100) if disk_total_gb else 0,
+        "load1": round(load1, 2),
+        "uptime": uptime_str,
+    }
+
+    # ── Service status ────────────────────────────────────────────────────
+    try:
+        out = subprocess.check_output(
+            ["sudo", "supervisorctl", "status"], text=True, timeout=5
+        )
+        services = []
+        for line in out.strip().splitlines():
+            parts = line.split()
+            if len(parts) >= 2:
+                services.append({"name": parts[0], "status": parts[1]})
+    except Exception:
+        services = []
+    result["services"] = services
+
+    # ── Backups ───────────────────────────────────────────────────────────
+    backup_dir = Path("/var/www/twitter-monitor/backups")
+    backups = []
+    if backup_dir.exists():
+        for f in sorted(backup_dir.glob("*.db"), key=lambda x: x.stat().st_mtime, reverse=True)[:7]:
+            stat = f.stat()
+            backups.append({
+                "name": f.name,
+                "size_kb": round(stat.st_size / 1024),
+                "mtime": time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)),
+            })
+    result["backups"] = backups
+
+    return JSONResponse(result)
+
 @app.post("/api/admin/cleanup-low-followers")
 async def api_cleanup_low_followers(_: None = Depends(_auth)) -> JSONResponse:
     from monitor.keyword_monitor import cleanup_low_follower_accounts
