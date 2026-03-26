@@ -108,7 +108,7 @@ VERSION 2: [quote text]
 VERSION 3: [quote text]"""
 
         quote_response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=1000,
             messages=[{"role": "user", "content": quote_prompt}]
         )
@@ -144,7 +144,7 @@ VERSION 2: [comment text]
 VERSION 3: [comment text]"""
 
         comment_response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=1000,
             messages=[{"role": "user", "content": comment_prompt}]
         )

@@ -43,6 +43,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"]          = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"]       = "geolocation=(), camera=(), microphone=()"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'"
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
@@ -173,8 +174,7 @@ async def _fetch_tweets(project: Optional[str] = None, voted_only: bool = False,
 
 async def _fetch_top_events(current_user: Optional[str] = None) -> List[Dict]:
     """Return top 4 most-engaged tweets in last 24h, one per project.
-    Score mirrors X algorithm weights: replies*13.5 + retweets*20 + likes*1
-    Tweets with reply_count >= 3 are flagged as having genuine discussion.
+    Score = likes + retweets*2 + replies*1.5 (×10 if mentions official account)
     """
     from db.database import get_tweet_votes
 
@@ -201,20 +201,14 @@ async def _fetch_top_events(current_user: Optional[str] = None) -> List[Dict]:
             # Calculate score with official account boost
             official = OFFICIAL_ACCOUNTS.get(project, "")
             for row in rows:
-                likes    = row.get("like_count") or 0
+                likes = row.get("like_count") or 0
                 retweets = row.get("retweet_count") or 0
-                replies  = row.get("reply_count") or 0
+                replies = row.get("reply_count") or 0
+                score = likes + retweets * 2 + replies * 1.5
 
-                # X-algorithm-inspired weights: retweets > replies > likes
-                score = likes * 1 + retweets * 20 + replies * 13.5
-
-                # Official account mention boost
                 text = (row.get("text") or "").lower()
                 if official and f"@{official.lower()}" in text:
                     score *= 10
-
-                # Flag genuine discussion (reply_count >= 3)
-                row["has_discussion"] = replies >= 3
 
                 row["score"] = score
 
@@ -401,11 +395,10 @@ def _build_top_events_html(events: List[Dict]) -> str:
   <div class="event-footer">
     <span class="event-likes">❤️ {likes:,}</span>
     <span class="event-likes">🔁 {retweets:,}</span>
-    <span class="event-likes {'discussion-badge' if ev.get('has_discussion') else ''}">💬 {replies:,}{' 🔥' if ev.get('has_discussion') else ''}</span>
+    <span class="event-likes">💬 {replies:,}</span>
     <span class="event-likes">👁 {ev.get("view_count") or 0:,}</span>
     {vote_btn}
     <a class="event-link" href="{url}" target="_blank">View Tweet ↗</a>
-    <button class="event-delete-btn" onclick="deleteEventCard(this, \'{tweet_id}\')" title="删除">🗑️</button>
   </div>
 </div>""")
     return f'<section class="top-events"><h2 class="section-title">🔥 Top Events <span class="section-sub">Last 24 hours · Sorted by engagement</span></h2><div class="event-grid">{"".join(cards)}</div></section>'
@@ -930,20 +923,10 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
     _sub_tier = sub.get("tier", "free")
     _sub_status = sub.get("status", "")
     _sub_expires = sub.get("expires_at", "")
-    def _check_expires(exp: str) -> bool:
-        if not exp:
-            return True
-        try:
-            dt = _dt.datetime.fromisoformat(exp)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=_dt.timezone.utc)
-            return dt > _dt.datetime.now(_dt.timezone.utc)
-        except ValueError:
-            return True
     _is_paid = (
         _sub_tier in ("basic", "pro")
         and _sub_status == "active"
-        and _check_expires(_sub_expires)
+        and (not _sub_expires or _dt.datetime.fromisoformat(_sub_expires) > _dt.datetime.now(_dt.timezone.utc))
     ) if nickname != "visitor" else False
 
     if _is_paid:
@@ -967,20 +950,6 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
             'background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;font-size:.82rem;'
             'font-weight:700;text-decoration:none;white-space:nowrap">'
             '✨ Sign In to Vote</a>'
-        )
-
-    if _is_paid and _sub_tier == "pro":
-        _contract_btn = (
-            '<button onclick="openContractModal()" style="padding:.4rem .9rem;border-radius:6px;'
-            'border:1.5px solid #22c55e;background:transparent;color:#22c55e;font-size:.82rem;'
-            'font-weight:600;cursor:pointer;white-space:nowrap">📄 Contract</button>'
-        )
-    else:
-        _contract_btn = (
-            '<button onclick="alert(\'Contract generation is a Pro feature. Upgrade to Pro to access.\')"'
-            ' style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #475569;'
-            'background:transparent;color:#475569;font-size:.82rem;font-weight:600;cursor:pointer;'
-            'white-space:nowrap">🔒 Contract</button>'
         )
 
     if nickname != "visitor":
@@ -1020,27 +989,6 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
             'border:1.5px solid #64748b;color:#94a3b8;font-size:.82rem;font-weight:600;'
             'text-decoration:none;white-space:nowrap">Sign In</a>'
         )
-
-    # Build ticker bar HTML
-    ticker_bar = ""
-    _ti = locals().get("ticker_items")
-    if _ti:
-        def _ticker_text(row):
-            username = row.get("username","")
-            text = (row.get("text") or "")[:80].replace('"', '&quot;').replace('<','&lt;').replace('>','&gt;')
-            if len(row.get("text","")) > 80:
-                text += "…"
-            url = row.get("url","#") or "#"
-            replies = row.get("reply_count") or 0
-            likes = row.get("like_count") or 0
-            hot = " 🔥" if replies >= 3 else ""
-            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
-        items_html = "".join(_ticker_text(r) for r in (_ti or []))
-        # Duplicate for seamless loop
-        ticker_bar = f'''<div class="ticker-wrap">
-  <span class="ticker-label">🔥 LIVE</span>
-  <span class="ticker-track">{items_html}{items_html}</span>
-</div>'''
 
     return f"""<!DOCTYPE html>
 <html lang="zh">
@@ -1157,10 +1105,7 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .event-footer{{display:flex;justify-content:space-between;align-items:center;padding-top:.4rem;border-top:1px solid #334155}}
 .event-likes{{color:#fb7185;font-size:.82rem;font-weight:600}}
 .event-link{{font-size:.75rem;color:#60a5fa;text-decoration:none}}
-.discussion-badge{{color:#f59e0b;font-weight:600}}
 .event-link:hover{{text-decoration:underline}}
-.event-delete-btn{{background:none;border:none;cursor:pointer;font-size:.8rem;opacity:.55;padding:.2rem .4rem;border-radius:4px;transition:opacity .15s,background .15s}}
-.event-delete-btn:hover{{opacity:1;background:rgba(239,68,68,.12)}}
 .acct-insight{{padding:.6rem 1rem;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:.8rem;color:#92400e;margin-bottom:.8rem}}
 .ai-draft-btn{{background:#8b5cf6;color:#fff;border:none;padding:.3rem .7rem;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;transition:.2s}}
 .ai-draft-btn:hover{{background:#7c3aed}}
@@ -1190,21 +1135,6 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .keyword-stats-table{{margin-top:.8rem}}
 .keyword-stats-table th{{background:#f8fafc;padding:.5rem .8rem;font-size:.75rem}}
 .keyword-stats-table td{{padding:.5rem .8rem;font-size:.82rem}}
-</style>
-
-<style>
-#announce-modal{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center}}
-#announce-modal.show{{display:flex}}
-.announce-card{{background:#1e293b;border-radius:16px;padding:2rem;max-width:560px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.5);border:1px solid #334155}}
-.announce-title{{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin-bottom:1.5rem;text-align:center}}
-.announce-features{{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem}}
-.announce-feature{{background:#0f172a;border-radius:10px;padding:1rem;border:1px solid #334155;text-align:center}}
-.announce-feature-icon{{font-size:1.8rem;margin-bottom:.5rem}}
-.announce-feature-name{{font-weight:700;color:#f1f5f9;font-size:.9rem;margin-bottom:.3rem}}
-.announce-feature-desc{{font-size:.78rem;color:#94a3b8;line-height:1.5}}
-.announce-feature-link{{display:inline-block;margin-top:.6rem;padding:.3rem .8rem;background:#3b82f6;color:#fff;border-radius:6px;text-decoration:none;font-size:.78rem;font-weight:600}}
-.announce-close{{width:100%;padding:.7rem;background:#334155;color:#f1f5f9;border:none;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer}}
-.announce-close:hover{{background:#475569}}
 </style>
 
 <script>
@@ -1369,16 +1299,12 @@ async function copyAIDraft(modalType) {{
 
 </head>
 <body>
-<span id="page-top"></span>
 <header>
   <h1>🐦 Twitter Monitor Dashboard</h1>
   <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
     <div class="meta">Updated: {updated} &nbsp;|&nbsp; Showing last 24h tweets</div>
-    <a href="#page-bottom" style="padding:.35rem .75rem;border-radius:6px;border:1px solid #334155;background:transparent;color:#64748b;font-size:.78rem;cursor:pointer;white-space:nowrap;flex-shrink:0;text-decoration:none;display:inline-block" title="Jump to bottom">↓ Bottom</a>
-    <a href="/digest" style="padding:.4rem .9rem;border-radius:20px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:.82rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;box-shadow:0 2px 12px rgba(168,85,247,.45);letter-spacing:.01em"><span style="font-size:1rem">🎙️</span> Daily Digest</a>
     <a href="/logo/" target="_blank" style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #8b5cf6;background:transparent;color:#8b5cf6;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block">🎨 Logo Agent</a>
     <button onclick="openDonate()" style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #f59e0b;background:transparent;color:#f59e0b;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap">💛 Donate</button>
-    {_contract_btn}
     {_upgrade_btn}
     {_user_menu_html}
   </div>
@@ -1389,179 +1315,25 @@ async function copyAIDraft(modalType) {{
   <div style="background:#1e293b;border-radius:16px;padding:2.5rem;max-width:560px;width:calc(100% - 2rem);box-shadow:0 25px 60px rgba(0,0,0,.6);position:relative">
     <button onclick="closeAnnouncement()" style="position:absolute;top:1.2rem;right:1.2rem;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#64748b">✕</button>
     <div style="text-align:center;margin-bottom:1.5rem">
-      <div style="font-size:3rem;margin-bottom:.5rem">📰</div>
-      <h2 style="font-size:1.5rem;color:#f1f5f9;margin-bottom:.5rem">新功能上线 / New Feature</h2>
-      <p style="color:#94a3b8;font-size:.95rem">Daily X Digest — 每日新闻播报</p>
+      <div style="font-size:3rem;margin-bottom:.5rem">🎉</div>
+      <h2 style="font-size:1.5rem;color:#f1f5f9;margin-bottom:.5rem">Platform Upgrade Complete!</h2>
+      <p style="color:#94a3b8;font-size:.95rem">New features just launched</p>
     </div>
     <div style="background:#0f172a;border-radius:10px;padding:1.5rem;margin-bottom:1.5rem">
       <div style="margin-bottom:1.2rem">
-        <div style="color:#22c55e;font-weight:600;margin-bottom:.3rem">🎙️ 中英文语音播报</div>
-        <p style="color:#cbd5e1;font-size:.88rem">每天北京时间 8:00，AI 自动生成 ARKREEN、GreenBTC、TLAY、AI Renaissance 四大项目的中英文新闻摘要，并配有真人语音朗读。<br><span style="color:#94a3b8">Daily bilingual digest with audio for all 4 projects, published at 8:00 AM Beijing time.</span></p>
+        <div style="color:#3b82f6;font-weight:600;margin-bottom:.3rem">🤖 Agent-Friendly API</div>
+        <p style="color:#cbd5e1;font-size:.88rem">Train your AI agent to browse and vote on tweets automatically. Get your API key in Settings.</p>
       </div>
       <div style="margin-bottom:1.2rem">
-        <div style="color:#3b82f6;font-weight:600;margin-bottom:.3rem">🔗 原文链接直达</div>
-        <p style="color:#cbd5e1;font-size:.88rem">每条新闻附带原始 X 推文链接，一键跳转查看完整内容。<br><span style="color:#94a3b8">Each news item links directly to the original X post.</span></p>
+        <div style="color:#34a853;font-weight:600;margin-bottom:.3rem">🔐 Google Sign-In</div>
+        <p style="color:#cbd5e1;font-size:.88rem">Now supports Google OAuth alongside wallet and email login.</p>
       </div>
       <div>
-        <div style="color:#f59e0b;font-weight:600;margin-bottom:.3rem">📅 历史归档</div>
-        <p style="color:#cbd5e1;font-size:.88rem">可查阅最近 30 天的历史播报记录。<br><span style="color:#94a3b8">Browse up to 30 days of past digests.</span></p>
+        <div style="color:#f59e0b;font-weight:600;margin-bottom:.3rem">💎 Pro Subscriptions (Coming Soon)</div>
+        <p style="color:#cbd5e1;font-size:.88rem">Advanced features and higher API limits for power users.</p>
       </div>
     </div>
-    <a href="/digest" style="display:block;width:100%;padding:.8rem;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;text-align:center;text-decoration:none">立即体验 / Try it now 🎙️</a>
-    <button onclick="closeAnnouncement()" style="width:100%;padding:.6rem;background:transparent;color:#64748b;border:none;border-radius:8px;font-size:.9rem;cursor:pointer;margin-top:.5rem">稍后再说 / Maybe later</button>
-  </div>
-</div>
-
-<!-- Contract Modal -->
-<div id="contract-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center">
-  <div style="background:#1e293b;border-radius:16px;padding:2rem;max-width:560px;width:calc(100% - 2rem);box-shadow:0 25px 60px rgba(0,0,0,.6);position:relative;max-height:90vh;overflow-y:auto">
-    <button onclick="closeContractModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#64748b">✕</button>
-    <h2 style="color:#f1f5f9;font-size:1.3rem;margin-bottom:.3rem">📄 合同生成 / Contract Generator</h2>
-    <p style="color:#64748b;font-size:.82rem;margin-bottom:1.2rem">填写采购方信息，生成销售合同</p>
-
-    <div style="display:grid;gap:.8rem">
-      <div>
-        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">Logo（可选，每页页眉显示 / Optional, shown on every page）</label>
-        <div style="display:flex;align-items:center;gap:.8rem">
-          <input id="ct-logo-input" type="file" accept="image/*" onchange="handleLogoUpload(this)"
-            style="font-size:.78rem;color:#94a3b8;flex:1">
-          <img id="ct-logo-preview" style="display:none;height:36px;border-radius:4px;border:1px solid #334155">
-          <button id="ct-logo-clear" type="button" onclick="clearLogo()" style="display:none;padding:.3rem .5rem;background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;border-radius:5px;font-size:.75rem;cursor:pointer">✕</button>
-        </div>
-      </div>
-      <div>
-        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">采购方名称 / Buyer Name *</label>
-        <input id="ct-buyer-name" type="text" placeholder="e.g. Acme Corp Ltd."
-          style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
-      </div>
-      <div>
-        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">采购方地址 / Buyer Address *</label>
-        <input id="ct-buyer-address" type="text" placeholder="e.g. 123 Main St, City, Country"
-          style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
-      </div>
-      <div>
-        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">联系方式 / Contact *</label>
-        <input id="ct-buyer-contact" type="text" placeholder="e.g. contact@company.com"
-          style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
-      </div>
-
-      <div>
-        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">运费类型 / Shipping Type</label>
-        <select id="ct-shipping-type" onchange="onShippingTypeChange()"
-          style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none;margin-bottom:.5rem">
-          <option value="domestic">国内快递 / Domestic</option>
-          <option value="international" selected>国际快递 / International</option>
-          <option value="custom">自定义 / Custom</option>
-        </select>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
-          <div>
-            <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">运费/件 USD</label>
-            <input id="ct-shipping" type="number" value="50" min="0"
-              style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
-          </div>
-          <div>
-            <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">运输方式 / Method</label>
-            <input id="ct-shipping-method" type="text" value="DHL/FedEx"
-              style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">公司 Logo（可选，显示在合同每页）/ Company Logo (optional)</label>
-        <div style="display:flex;align-items:center;gap:.8rem">
-          <input type="file" id="ct-logo-input" accept="image/*" onchange="handleLogoUpload(this)"
-            style="font-size:.8rem;color:#94a3b8;flex:1">
-          <div id="ct-logo-preview" style="display:none">
-            <img id="ct-logo-img" style="height:40px;border-radius:4px;border:1px solid #334155;object-fit:contain;background:#fff;padding:2px">
-            <button type="button" onclick="removeLogo()" style="margin-left:.4rem;background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;cursor:pointer">✕</button>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.5rem">产品列表 / Products *</label>
-        <div id="ct-products" style="display:grid;gap:.6rem"></div>
-        <button type="button" onclick="addProductRow()"
-          style="margin-top:.5rem;padding:.4rem .8rem;background:#1e3a5f;color:#93c5fd;border:1px solid #334155;border-radius:6px;font-size:.82rem;cursor:pointer">
-          + 添加产品 / Add Product
-        </button>
-      </div>
-
-      <div>
-        <button type="button" onclick="toggleTerms(this)"
-          style="width:100%;padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;font-size:.85rem;cursor:pointer;text-align:left">
-          ⚙️ 合同条款 / Contract Terms ▼
-        </button>
-        <div id="ct-terms-area" style="display:none;padding:.8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;margin-top:.4rem;display:none">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.6rem">
-            <div>
-              <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">付款期限 / Payment Days</label>
-              <div style="display:flex;align-items:center;gap:.4rem">
-                <input id="ct-payment-days" type="number" value="7" min="1"
-                  style="flex:1;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.85rem;outline:none">
-                <span style="color:#64748b;font-size:.8rem;white-space:nowrap">工作日</span>
-              </div>
-            </div>
-            <div>
-              <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">发货时间 / Shipping Days</label>
-              <div style="display:flex;align-items:center;gap:.4rem">
-                <input id="ct-shipping-days" type="number" value="15" min="1"
-                  style="flex:1;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.85rem;outline:none">
-                <span style="color:#64748b;font-size:.8rem;white-space:nowrap">工作日</span>
-              </div>
-            </div>
-            <div>
-              <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">质保期 / Warranty</label>
-              <div style="display:flex;align-items:center;gap:.4rem">
-                <input id="ct-warranty-months" type="number" value="12" min="1"
-                  style="flex:1;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.85rem;outline:none">
-                <span style="color:#64748b;font-size:.8rem;white-space:nowrap">个月</span>
-              </div>
-            </div>
-            <div>
-              <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">违约金 / Penalty</label>
-              <div style="display:flex;align-items:center;gap:.4rem">
-                <input id="ct-penalty-pct" type="number" value="10" min="0" max="100" step="0.1"
-                  style="flex:1;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.85rem;outline:none">
-                <span style="color:#64748b;font-size:.8rem">%</span>
-              </div>
-            </div>
-          </div>
-          <div>
-            <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">争议解决条款 / Dispute Clause（留空使用默认）</label>
-            <textarea id="ct-dispute-clause" placeholder="留空使用默认条款..."
-              style="width:100%;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.82rem;outline:none;resize:vertical;min-height:60px"></textarea>
-          </div>
-        </div>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
-        <div>
-          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">语言 / Language</label>          <select id="ct-lang" style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
-            <option value="cn">中文简体 / Simplified CN</option>
-            <option value="tw">中文繁体 / Traditional CN</option>
-            <option value="en">英文 / English</option>
-          </select>
-        </div>
-        <div>
-          <label style="font-size:.8rem;color:#94a3b8;display:block;margin-bottom:.3rem">格式 / Format</label>
-          <select id="ct-format" style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
-            <option value="both">PDF + Word</option>
-            <option value="pdf">PDF only</option>
-            <option value="docx">Word only</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <div id="ct-status" style="display:none;margin-top:.8rem;padding:.6rem .8rem;background:#1e3a5f;border-radius:6px;color:#93c5fd;font-size:.85rem"></div>
-    <div id="ct-download" style="display:none;margin-top:.8rem"></div>
-
-    <button id="ct-gen-btn" onclick="generateContract()"
-      style="width:100%;margin-top:1.2rem;padding:.8rem;background:#22c55e;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">
-      🚀 生成合同 / Generate
-    </button>
+    <button onclick="closeAnnouncement()" style="width:100%;padding:.8rem;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">Got it!</button>
   </div>
 </div>
 
@@ -1792,12 +1564,8 @@ async function copyAIDraft(modalType) {{
 </main>
 <div class="toast" id="toast"></div>
 <footer>
-  <a href="#page-top" style="display:inline-flex;align-items:center;gap:.4rem;margin-bottom:.8rem;padding:.45rem 1.1rem;border-radius:20px;border:1.5px solid #334155;background:#1e293b;color:#94a3b8;font-size:.82rem;font-weight:600;cursor:pointer;transition:all .2s;text-decoration:none" onmouseover="this.style.borderColor='#3b82f6';this.style.color='#60a5fa'" onmouseout="this.style.borderColor='#334155';this.style.color='#94a3b8'">↑ Back to Top</a><br>
   Twitter Monitor &middot; {total}  tweets &middot; {len(data)}  projects &middot; Auto-fetch every 8 hours
   <br><a href="/admin/keywords" style="color:#8b5cf6;text-decoration:none;margin-top:.5rem;display:inline-block">✨ Contribution Hub - Contribute Keywords</a>
-  &nbsp;&middot;&nbsp;
-  <a href="/admin/keywords" style="color:#64748b;text-decoration:none;font-size:.72rem">🔐 Admin Login</a>
-<span id="page-bottom"></span>
 </footer>
 
 <script>
@@ -1961,17 +1729,9 @@ function toggleAll(checkbox) {{
   checkboxes.forEach(cb => cb.checked = checkbox.checked);
 }}
 
-// ── Delete with reason modal ──────────────────────────────────────────────────
-var _deleteCtx = {{ids: [], cardEl: null}};
-
-function deleteEventCard(btn, tweetId) {{
-  _deleteCtx = {{ids: [tweetId], cardEl: btn.closest('.event-card')}};
-  _showDeleteModal();
-}}
-
 function deleteSingle(tweetId) {{
-  _deleteCtx = {{ids: [tweetId], cardEl: null}};
-  _showDeleteModal();
+  if (!confirm('确定删除这 tweets？')) return;
+  deleteItems([tweetId]);
 }}
 
 function deleteSelected() {{
@@ -1983,336 +1743,45 @@ function deleteSelected() {{
     toast('请先选择要删除的Tweet', false);
     return;
   }}
-  _deleteCtx = {{ids: checked.map(cb => cb.value), cardEl: null}};
-  _showDeleteModal();
+  if (!confirm(`Delete selected ${{checked.length}}  tweets？`)) return;
+  var ids = checked.map(cb => cb.value);
+  deleteItems(ids);
 }}
 
-function _showDeleteModal() {{
-  document.querySelectorAll('.del-reason-opt').forEach(el => el.classList.remove('selected'));
-  document.getElementById('del-reason-text').value = '';
-  document.getElementById('delete-reason-modal').style.display = 'flex';
-}}
-document.addEventListener('click', function(e) {{
-  var opt = e.target.closest('.del-reason-opt');
-  if (!opt) return;
-  document.querySelectorAll('.del-reason-opt').forEach(el => el.classList.remove('selected'));
-  opt.classList.add('selected');
-}});
-
-function closeDeleteModal() {{
-  document.getElementById('delete-reason-modal').style.display = 'none';
-}}
-
-function confirmDelete() {{
-  var selected = document.querySelector('.del-reason-opt.selected');
-  var reason = selected ? selected.dataset.value : 'other';
-  var reasonText = document.getElementById('del-reason-text').value.trim();
-  closeDeleteModal();
-  deleteItems(_deleteCtx.ids, reason, reasonText, _deleteCtx.cardEl);
-}}
-
-function deleteItems(tweetIds, reason, reasonText, cardEl) {{
-  reason = reason || 'other';
-  reasonText = reasonText || '';
+function deleteItems(tweetIds) {{
   fetch('/api/delete', {{
     method: 'POST',
     headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{tweet_ids: tweetIds, reason: reason, reason_text: reasonText}})
+    body: JSON.stringify({{tweet_ids: tweetIds}})
   }})
-  .then(r => r.json().then(data => ({{status: r.status, ...data}})))
+  .then(r => r.json())
   .then(data => {{
     if (data.ok) {{
-      toast(`已删除 ${{data.deleted}} 条推文`, true);
+      toast(`已删除 ${{data.deleted}}  tweets`, true);
+      // Remove rows from DOM
       tweetIds.forEach(id => {{
         var row = document.querySelector(`tr[data-id="${{id}}"]`);
         if (row) row.remove();
       }});
-      if (cardEl) cardEl.remove();
-    }} else if (data.error === 'upgrade_required') {{
-      toast('需要付费订阅才能删除推文', false);
     }} else {{
       toast('删除失败', false);
     }}
   }})
-  .catch(() => toast('删除失败，请重试', false));
+  .catch(() => toast('删除失败，Please retry', false));
 }}
 
 setTimeout(() => location.reload(), 10 * 60 * 1000);
 
-// ── Debug mode (add ?debug=1 to URL to enable) ────────────────────────────
-(function() {{
-  if (new URLSearchParams(location.search).get('debug') !== '1') return;
-  var dbgBar = document.createElement('div');
-  dbgBar.id = 'debug-bar';
-  dbgBar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#0f172a;border-top:2px solid #f59e0b;color:#fbbf24;font-size:11px;font-family:monospace;padding:4px 12px;z-index:99999;max-height:120px;overflow-y:auto;';
-  dbgBar.innerHTML = '<b>🐛 DEBUG MODE</b> ';
-  document.body.appendChild(dbgBar);
-  function dbgLog(type, msg) {{
-    var line = document.createElement('div');
-    line.style.color = type === 'error' ? '#f87171' : type === 'warn' ? '#fbbf24' : '#86efac';
-    line.textContent = '[' + new Date().toISOString().substr(11,8) + '] ' + type.toUpperCase() + ': ' + msg;
-    dbgBar.appendChild(line);
-    dbgBar.scrollTop = dbgBar.scrollHeight;
-  }}
-  window.addEventListener('error', function(e) {{
-    dbgLog('error', (e.message||'') + ' @ ' + (e.filename||'').split('/').pop() + ':' + e.lineno);
-  }});
-  window.addEventListener('unhandledrejection', function(e) {{
-    dbgLog('error', 'Promise rejection: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)));
-  }});
-  var origFetch = window.fetch;
-  window.fetch = function(url, opts) {{
-    var method = (opts && opts.method) || 'GET';
-    return origFetch.apply(this, arguments).then(function(r) {{
-      dbgLog(r.ok ? 'ok' : 'warn', method + ' ' + url + ' → ' + r.status);
-      return r;
-    }}, function(err) {{
-      dbgLog('error', method + ' ' + url + ' FAILED: ' + err.message);
-      throw err;
-    }});
-  }};
-  dbgLog('ok', 'Debug mode active. Monitoring JS errors + fetch calls.');
-}})();
-
 // ── Announcement ──────────────────────────────────────────────────────────────
 function closeAnnouncement() {{
   document.getElementById('announcement-modal').style.display = 'none';
-  localStorage.setItem('announcement_seen_v3', 'true');
+  localStorage.setItem('announcement_seen_v2', 'true');
 }}
 // Show announcement once per user
-if ('{nickname}' !== 'visitor' && !localStorage.getItem('announcement_seen_v3')) {{
+if ('{nickname}' !== 'visitor' && !localStorage.getItem('announcement_seen_v2')) {{
   setTimeout(() => {{
     document.getElementById('announcement-modal').style.display = 'flex';
   }}, 800);
-}}
-
-// ── Contract Modal ─────────────────────────────────────────────────────────────
-let _ctRowIdx = 0;
-let _ctLogoB64 = null;
-
-function onShippingTypeChange() {{
-  const type = document.getElementById('ct-shipping-type').value;
-  if (type === 'domestic') {{
-    document.getElementById('ct-shipping').value = 30;
-    document.getElementById('ct-shipping-method').value = '顺丰/圆通';
-  }} else if (type === 'international') {{
-    document.getElementById('ct-shipping').value = 50;
-    document.getElementById('ct-shipping-method').value = 'DHL/FedEx';
-  }}
-}}
-
-function toggleTerms(btn) {{
-  const area = document.getElementById('ct-terms-area');
-  const open = area.style.display !== 'none';
-  area.style.display = open ? 'none' : 'block';
-  btn.textContent = (open ? '⚙️ 合同条款 / Contract Terms ▼' : '⚙️ 合同条款 / Contract Terms ▲');
-}}
-
-function handleLogoUpload(input) {{
-  const file = input.files[0];
-  if (!file) return;
-  if (file.size > 2 * 1024 * 1024) {{ toast('Logo 不能超过2MB', false); input.value=''; return; }}
-  const reader = new FileReader();
-  reader.onload = e => {{
-    _ctLogoB64 = e.target.result.split(',')[1];
-    document.getElementById('ct-logo-preview').src = e.target.result;
-    document.getElementById('ct-logo-preview').style.display = 'block';
-    document.getElementById('ct-logo-clear').style.display = 'inline-block';
-  }};
-  reader.readAsDataURL(file);
-}}
-
-function clearLogo() {{
-  _ctLogoB64 = null;
-  document.getElementById('ct-logo-input').value = '';
-  document.getElementById('ct-logo-preview').style.display = 'none';
-  document.getElementById('ct-logo-clear').style.display = 'none';
-}}
-
-function openContractModal() {{
-  document.getElementById('contract-modal').style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-  if (document.getElementById('ct-products').children.length === 0) addProductRow();
-}}
-function closeContractModal() {{
-  document.getElementById('contract-modal').style.display = 'none';
-  document.body.style.overflow = '';
-  document.getElementById('ct-status').style.display = 'none';
-  document.getElementById('ct-download').style.display = 'none';
-}}
-document.getElementById('contract-modal').addEventListener('click', function(e) {{
-  if (e.target === this) closeContractModal();
-}});
-
-let _ctLogob64 = '';
-function handleLogoUpload(input) {{
-  const file = input.files[0];
-  if (!file) return;
-  if (file.size > 2 * 1024 * 1024) {{ toast('Logo 不能超过 2MB', false); input.value=''; return; }}
-  const reader = new FileReader();
-  reader.onload = e => {{
-    _ctLogob64 = e.target.result.split(',')[1];
-    document.getElementById('ct-logo-img').src = e.target.result;
-    document.getElementById('ct-logo-preview').style.display = 'flex';
-    document.getElementById('ct-logo-preview').style.alignItems = 'center';
-  }};
-  reader.readAsDataURL(file);
-}}
-function removeLogo() {{
-  _ctLogob64 = '';
-  document.getElementById('ct-logo-input').value = '';
-  document.getElementById('ct-logo-preview').style.display = 'none';
-}}
-
-function addProductRow() {{
-  const idx = _ctRowIdx++;
-  const wrap = document.createElement('div');
-  wrap.dataset.idx = idx;
-  wrap.style.cssText = 'background:#0f172a;border:1px solid #334155;border-radius:8px;padding:.6rem .8rem';
-  wrap.innerHTML = `
-    <div style="display:grid;grid-template-columns:2fr 1.2fr .7fr 1fr auto;gap:.4rem;align-items:center">
-      <input data-field="name" type="text" placeholder="产品名称 / Name"
-        style="padding:.4rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.82rem;outline:none">
-      <input data-field="sku" type="text" placeholder="SKU"
-        style="padding:.4rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.82rem;outline:none">
-      <input data-field="qty" type="number" value="1" min="1"
-        style="padding:.4rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.82rem;outline:none">
-      <input data-field="unit_price" type="number" value="0" min="0" placeholder="单价 USD"
-        style="padding:.4rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.82rem;outline:none">
-      <div style="display:flex;gap:.3rem">
-        <button type="button" onclick="toggleSpec(this)" title="规格说明"
-          style="padding:.3rem .5rem;background:#1e3a5f;color:#93c5fd;border:1px solid #334155;border-radius:5px;font-size:.75rem;cursor:pointer">📋</button>
-        <button type="button" onclick="removeProductRow(this)" title="删除"
-          style="padding:.3rem .5rem;background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;border-radius:5px;font-size:.75rem;cursor:pointer">✕</button>
-      </div>
-    </div>
-    <div class="spec-area" style="display:none;margin-top:.5rem;padding-top:.5rem;border-top:1px solid #1e293b">
-      <textarea data-field="spec_text" placeholder="规格说明文字 / Spec text (>20字时自动生成规格章节)"
-        style="width:100%;padding:.4rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.8rem;outline:none;resize:vertical;min-height:60px"></textarea>
-      <div style="margin-top:.4rem">
-        <label style="font-size:.75rem;color:#64748b">图片 / Images (≤3张, ≤2MB each)</label>
-        <input type="file" accept="image/*" multiple onchange="handleSpecImages(this)"
-          style="display:block;margin-top:.3rem;font-size:.78rem;color:#94a3b8">
-        <div class="spec-img-preview" style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem"></div>
-      </div>
-    </div>
-  `;
-  document.getElementById('ct-products').appendChild(wrap);
-}}
-
-function removeProductRow(btn) {{
-  const row = btn.closest('[data-idx]');
-  if (document.getElementById('ct-products').children.length <= 1) {{
-    toast('至少保留一个产品行', false); return;
-  }}
-  row.remove();
-}}
-
-function toggleSpec(btn) {{
-  const area = btn.closest('[data-idx]').querySelector('.spec-area');
-  area.style.display = area.style.display === 'none' ? 'block' : 'none';
-}}
-
-function handleSpecImages(input) {{
-  const row = input.closest('[data-idx]');
-  const preview = row.querySelector('.spec-img-preview');
-  const existing = preview.querySelectorAll('img').length;
-  const files = Array.from(input.files);
-  let added = 0;
-  for (const file of files) {{
-    if (existing + added >= 3) {{ toast('最多3张图片', false); break; }}
-    if (file.size > 2 * 1024 * 1024) {{ toast('图片不能超过2MB: ' + file.name, false); continue; }}
-    const reader = new FileReader();
-    reader.onload = e => {{
-      const img = document.createElement('img');
-      img.src = e.target.result;
-      img.dataset.b64 = e.target.result.split(',')[1];
-      img.style.cssText = 'width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid #334155';
-      const wrap = document.createElement('div');
-      wrap.style.position = 'relative';
-      const del = document.createElement('button');
-      del.textContent = '✕';
-      del.style.cssText = 'position:absolute;top:-4px;right:-4px;background:#7f1d1d;color:#fff;border:none;border-radius:50%;width:16px;height:16px;font-size:9px;cursor:pointer;line-height:16px;padding:0';
-      del.onclick = () => wrap.remove();
-      wrap.appendChild(img);
-      wrap.appendChild(del);
-      preview.appendChild(wrap);
-    }};
-    reader.readAsDataURL(file);
-    added++;
-  }}
-  input.value = '';
-}}
-
-async function generateContract() {{
-  const name    = document.getElementById('ct-buyer-name').value.trim();
-  const address = document.getElementById('ct-buyer-address').value.trim();
-  const contact = document.getElementById('ct-buyer-contact').value.trim();
-  if (!name || !address || !contact) {{
-    toast('请填写采购方名称、地址和联系方式', false); return;
-  }}
-
-  const rows = document.getElementById('ct-products').querySelectorAll('[data-idx]');
-  const products = [];
-  for (const row of rows) {{
-    const pname = row.querySelector('[data-field="name"]').value.trim();
-    if (!pname) {{ toast('请填写所有产品名称', false); return; }}
-    const imgs = Array.from(row.querySelectorAll('.spec-img-preview img')).map(i => i.dataset.b64);
-    products.push({{
-      name:       pname,
-      sku:        row.querySelector('[data-field="sku"]').value.trim(),
-      qty:        parseInt(row.querySelector('[data-field="qty"]').value) || 1,
-      unit_price: parseFloat(row.querySelector('[data-field="unit_price"]').value) || 0,
-      spec_text:  row.querySelector('[data-field="spec_text"]').value.trim(),
-      spec_images: imgs,
-    }});
-  }}
-
-  const btn = document.getElementById('ct-gen-btn');
-  const status = document.getElementById('ct-status');
-  const dlArea = document.getElementById('ct-download');
-  btn.disabled = true;
-  btn.textContent = '⏳ Generating...';
-  status.style.display = 'block';
-  status.textContent = '正在生成合同文件，请稍候...';
-  dlArea.style.display = 'none';
-
-  try {{
-    const r = await fetch('/api/contract/generate', {{
-      method: 'POST',
-      headers: {{'Content-Type': 'application/json'}},
-      body: JSON.stringify({{
-        buyer_name:    name,
-        buyer_address: address,
-        buyer_contact: contact,
-        products:      products,
-        shipping_per_unit: parseFloat(document.getElementById('ct-shipping').value) || 50,
-        lang:   document.getElementById('ct-lang').value,
-        format: document.getElementById('ct-format').value,
-        logo_b64: _ctLogoB64,
-        shipping_method: document.getElementById('ct-shipping-method').value.trim(),
-        payment_days:    parseInt(document.getElementById('ct-payment-days').value) || 7,
-        shipping_days:   parseInt(document.getElementById('ct-shipping-days').value) || 15,
-        warranty_months: parseInt(document.getElementById('ct-warranty-months').value) || 12,
-        penalty_pct:     parseFloat(document.getElementById('ct-penalty-pct').value) || 10,
-        dispute_clause:  document.getElementById('ct-dispute-clause').value.trim(),
-      }}),
-    }});
-    const d = await r.json();
-    if (!r.ok || !d.ok) {{
-      status.textContent = '❌ ' + (d.detail || d.error || 'Generation failed');
-      return;
-    }}
-    status.style.display = 'none';
-    dlArea.style.display = 'block';
-    dlArea.innerHTML = '<p style="color:#22c55e;font-weight:600;margin-bottom:.8rem">✅ 合同生成成功！</p>' +
-      d.files.map(f => `<a href="${{f.url}}" download="${{f.name}}" style="display:block;padding:.5rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#60a5fa;text-decoration:none;font-size:.85rem;margin-bottom:.4rem">⬇️ ${{f.name}}</a>`).join('');
-  }} catch(e) {{
-    status.textContent = '❌ Network error: ' + e.message;
-  }} finally {{
-    btn.disabled = false;
-    btn.textContent = '🚀 生成合同 / Generate';
-  }}
 }}
 
 // ── User menu ─────────────────────────────────────────────────────────────────
@@ -2381,28 +1850,6 @@ async function createSharedList() {{
   }}
 }}
 </script>
-<!-- ── Delete Reason Modal ──────────────────────────────────────────── -->
-<div id="delete-reason-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;">
-  <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:1.75rem 2rem;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.5);">
-    <h3 style="margin:0 0 1rem;font-size:1rem;color:#f1f5f9;">&#128465; 删除原因（可选）</h3>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:1rem;" id="del-reason-grid">
-      <button class="del-reason-opt" data-value="not_relevant" style="background:#0f172a;border:1px solid #334155;border-radius:8px;color:#cbd5e1;padding:.6rem .8rem;cursor:pointer;font-size:.82rem;text-align:left">📵 内容不相关</button>
-      <button class="del-reason-opt" data-value="poor_quality" style="background:#0f172a;border:1px solid #334155;border-radius:8px;color:#cbd5e1;padding:.6rem .8rem;cursor:pointer;font-size:.82rem;text-align:left">📉 质量低/噪音</button>
-      <button class="del-reason-opt" data-value="poor_account" style="background:#0f172a;border:1px solid #334155;border-radius:8px;color:#cbd5e1;padding:.6rem .8rem;cursor:pointer;font-size:.82rem;text-align:left">👤 账号质量差</button>
-      <button class="del-reason-opt" data-value="spam" style="background:#0f172a;border:1px solid #334155;border-radius:8px;color:#cbd5e1;padding:.6rem .8rem;cursor:pointer;font-size:.82rem;text-align:left">🚫 垃圾/广告</button>
-      <button class="del-reason-opt" data-value="duplicate" style="background:#0f172a;border:1px solid #334155;border-radius:8px;color:#cbd5e1;padding:.6rem .8rem;cursor:pointer;font-size:.82rem;text-align:left">🔁 重复内容</button>
-      <button class="del-reason-opt" data-value="other" style="background:#0f172a;border:1px solid #334155;border-radius:8px;color:#cbd5e1;padding:.6rem .8rem;cursor:pointer;font-size:.82rem;text-align:left">💬 其他</button>
-    </div>
-    <textarea id="del-reason-text" placeholder="补充说明（可选）" style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:.7rem;font-size:.82rem;resize:vertical;min-height:60px;font-family:inherit;margin-bottom:1rem;"></textarea>
-    <div style="display:flex;gap:.75rem;justify-content:flex-end;">
-      <button onclick="closeDeleteModal()" style="background:#334155;border:none;border-radius:8px;color:#94a3b8;padding:.6rem 1.2rem;cursor:pointer;font-size:.85rem;">取消</button>
-      <button onclick="confirmDelete()" style="background:#ef4444;border:none;border-radius:8px;color:#fff;padding:.6rem 1.2rem;cursor:pointer;font-size:.85rem;font-weight:600;">确认删除</button>
-    </div>
-  </div>
-</div>
-<style>
-.del-reason-opt.selected{{border-color:#ef4444!important;background:rgba(239,68,68,.12)!important;color:#fca5a5!important}}
-</style>
 </body>
 </html>"""
 
@@ -2417,7 +1864,6 @@ async def dashboard(request: Request) -> str:
                 (user.get("wallet_addr") or "")[:8] or "visitor") if user else "visitor"
     current_user_id = user["id"] if user else None
     sub = (await _auth_module.get_subscription(current_user_id) or {}) if current_user_id else {}
-    logger.debug(f"[dashboard] user_id={current_user_id} sub={sub}")
     data: Dict[str, List[Dict]] = {}
     accs: Dict[str, List[Dict]] = {}
     for project in PROJECTS:
@@ -2436,8 +1882,6 @@ class VoteRequest(BaseModel):
 
 class DeleteRequest(BaseModel):
     tweet_ids: List[str]
-    reason: str = "other"
-    reason_text: str = ""
 
 
 class AIRetweetRequest(BaseModel):
@@ -2467,14 +1911,9 @@ async def api_vote(req: VoteRequest, user: Dict = Depends(_user_auth)) -> JSONRe
 
 
 @app.post("/api/delete")
-async def api_delete(req: DeleteRequest, user: Dict = Depends(_user_auth)) -> JSONResponse:
-    from db.database import record_and_delete_tweets
-    sub = await _auth_module.get_subscription(user["id"]) or {}
-    tier = sub.get("tier", "free")
-    status_val = sub.get("status", "active")
-    if tier not in ("basic", "pro") or status_val != "active":
-        return JSONResponse({"ok": False, "error": "upgrade_required"}, status_code=403)
-    count = await record_and_delete_tweets(req.tweet_ids, req.reason, req.reason_text)
+async def api_delete(req: DeleteRequest, _: None = Depends(_auth)) -> JSONResponse:
+    from db.database import delete_tweets
+    count = await delete_tweets(req.tweet_ids)
     return JSONResponse({"ok": True, "deleted": count})
 
 
@@ -2587,7 +2026,7 @@ async def api_cleanup_low_followers(_: None = Depends(_auth)) -> JSONResponse:
 
 
 @app.get("/admin/keywords", response_class=HTMLResponse)
-async def keywords_admin(admin_user: str = Depends(_auth)) -> str:
+async def keywords_admin(_: None = Depends(_auth)) -> str:
     """Keyword management page."""
     from config import PROJECTS
 
@@ -2608,27 +2047,6 @@ async def keywords_admin(admin_user: str = Depends(_auth)) -> str:
   </div>
 </div>
 """)
-
-    # Build ticker bar HTML
-    ticker_bar = ""
-    _ti = locals().get("ticker_items")
-    if _ti:
-        def _ticker_text(row):
-            username = row.get("username","")
-            text = (row.get("text") or "")[:80].replace('"', '&quot;').replace('<','&lt;').replace('>','&gt;')
-            if len(row.get("text","")) > 80:
-                text += "…"
-            url = row.get("url","#") or "#"
-            replies = row.get("reply_count") or 0
-            likes = row.get("like_count") or 0
-            hot = " 🔥" if replies >= 3 else ""
-            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
-        items_html = "".join(_ticker_text(r) for r in (_ti or []))
-        # Duplicate for seamless loop
-        ticker_bar = f'''<div class="ticker-wrap">
-  <span class="ticker-label">🔥 LIVE</span>
-  <span class="ticker-track">{items_html}{items_html}</span>
-</div>'''
 
     return f"""<!DOCTYPE html>
 <html lang="zh">
@@ -2789,7 +2207,7 @@ function addSuggestion(project, keyword, index) {{
     body: JSON.stringify({{
       project: project,
       keyword: keyword,
-      contributor: '{admin_user}'  // Current logged-in user
+      contributor: '{nickname}'  // Current logged-in user
     }})
   }})
   .then(r => r.json())
@@ -2843,7 +2261,7 @@ function addManualKeyword() {{
     body: JSON.stringify({{
       project: project,
       keyword: keyword,
-      contributor: '{admin_user}'
+      contributor: '{nickname}'
     }})
   }})
   .then(r => r.json())
@@ -4047,7 +3465,6 @@ a{{color:#38bdf8;text-decoration:none}}
 <th>Nickname</th><th>Email / ID</th><th>Blocked Keywords</th><th>Blocked Accounts</th>
 </tr></thead><tbody>{rows_html}</tbody></table>
 <p style="margin-top:1rem"><a href="/">← Back to dashboard</a></p>
-
 </body></html>""")
 
 
@@ -4165,27 +3582,6 @@ async def shared_list_page(list_id: str, request: Request):
 
     login_prompt = "" if current_user_id else '<p style="background:#1e3a2f;color:#4ade80;padding:.8rem;border-radius:8px;margin-bottom:1rem;font-size:.9rem">🔒 <a href="/login" style="color:#4ade80;font-weight:600">Sign in</a> to vote on tweets in this shared list.</p>'
 
-    # Build ticker bar HTML
-    ticker_bar = ""
-    _ti = locals().get("ticker_items")
-    if _ti:
-        def _ticker_text(row):
-            username = row.get("username","")
-            text = (row.get("text") or "")[:80].replace('"', '&quot;').replace('<','&lt;').replace('>','&gt;')
-            if len(row.get("text","")) > 80:
-                text += "…"
-            url = row.get("url","#") or "#"
-            replies = row.get("reply_count") or 0
-            likes = row.get("like_count") or 0
-            hot = " 🔥" if replies >= 3 else ""
-            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
-        items_html = "".join(_ticker_text(r) for r in (_ti or []))
-        # Duplicate for seamless loop
-        ticker_bar = f'''<div class="ticker-wrap">
-  <span class="ticker-label">🔥 LIVE</span>
-  <span class="ticker-track">{items_html}{items_html}</span>
-</div>'''
-
     return f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{_esc(shared_list['title'])} — Shared List</title>
@@ -4283,7 +3679,7 @@ class AkreSubscribeRequest(BaseModel):
 async def api_subscribe_akre(req: AkreSubscribeRequest, user: Dict = Depends(_user_auth)):
     """Verify AKRE on-chain payment and activate subscription."""
     import datetime as _dt
-    from db.database import is_tx_used, record_tx_hash, enqueue_pending_tx
+    from db.database import is_tx_used, record_tx_hash
 
     tier   = req.tier.lower()
     period = req.period.lower()
@@ -4298,73 +3694,17 @@ async def api_subscribe_akre(req: AkreSubscribeRequest, user: Dict = Depends(_us
     if await is_tx_used(tx):
         raise HTTPException(status_code=409, detail="This transaction has already been used")
 
-    from db.database import record_payment_submission, mark_payment_activated, mark_pending_tx_resolved
-
-    polygonscan = f"https://polygonscan.com/tx/{tx}"
-
-    # Always record submission first — durable audit trail regardless of outcome
-    await record_payment_submission(tx, user["id"], tier, period, polygonscan)
-
     result = await _auth_module.verify_akre_tx(tx, tier, period, _DONATE_EVM_ADDR)
     if not result["ok"]:
-        # Blockchain not yet confirmed — queue for async retry
-        await enqueue_pending_tx(tx, user["id"], tier, period)
-        return {"ok": False, "queued": True, "detail": result["error"]}
+        raise HTTPException(status_code=402, detail=result["error"])
 
     days = 365 if period == "annual" else 30
     expires_at = (_dt.datetime.utcnow() + _dt.timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
 
     await _auth_module.upsert_subscription(user["id"], tier, "", tx, "active", expires_at)
     await record_tx_hash(tx, user["id"])
-    await mark_payment_activated(tx)
 
     return {"ok": True, "tier": tier, "expires_at": expires_at, "amount": result["amount"]}
-
-
-@app.get("/api/subscribe/status")
-async def api_subscribe_status(tx_hash: str, user: Dict = Depends(_user_auth)):
-    """Poll status of a pending AKRE subscription TX. Re-verifies on each call."""
-    import datetime as _dt
-    from db.database import (get_pending_tx_status, is_tx_used, record_tx_hash,
-                              mark_pending_tx_resolved, mark_payment_activated)
-
-    tx = tx_hash.strip().lower()
-    if not tx.startswith("0x") or len(tx) != 66:
-        raise HTTPException(status_code=400, detail="Invalid TX hash format")
-
-    # Already confirmed and activated
-    if await is_tx_used(tx):
-        return {"status": "confirmed"}
-
-    row = await get_pending_tx_status(tx)
-    if row is None:
-        # Not in queue — attempt fresh verification (e.g. page reload case)
-        await enqueue_pending_tx(tx, user["id"], "pro", "annual")
-        row = await get_pending_tx_status(tx)
-
-    if row and row["status"] == "pending":
-        # Re-attempt blockchain verification on every poll
-        result = await _auth_module.verify_akre_tx(tx, row["tier"], row["period"], _DONATE_EVM_ADDR)
-        if result["ok"]:
-            days = 365 if row["period"] == "annual" else 30
-            expires_at = (_dt.datetime.utcnow() + _dt.timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
-            await _auth_module.upsert_subscription(user["id"], row["tier"], "", tx, "active", expires_at)
-            await record_tx_hash(tx, user["id"])
-            await mark_pending_tx_resolved(tx, "confirmed")
-            await mark_payment_activated(tx)
-            return {"status": "confirmed", "tier": row["tier"], "expires_at": expires_at}
-        elif "invalid" in (result.get("error") or "").lower() or "not found" in (result.get("error") or "").lower():
-            await mark_pending_tx_resolved(tx, "failed", result["error"])
-            return {"status": "failed", "error": result["error"]}
-
-    return {
-        "status":       row["status"] if row else "pending",
-        "tier":         row["tier"] if row else "",
-        "period":       row["period"] if row else "",
-        "error":        row["error"] if row else "",
-        "submitted_at": row["submitted_at"] if row else "",
-        "resolved_at":  row["resolved_at"] if row else "",
-    }
 
 
 @app.get("/api/me")
@@ -4490,27 +3830,6 @@ async def settings_page(user: Dict = Depends(_user_auth)):
     {lists_html}
   </div>"""
 
-    # Build ticker bar HTML
-    ticker_bar = ""
-    _ti = locals().get("ticker_items")
-    if _ti:
-        def _ticker_text(row):
-            username = row.get("username","")
-            text = (row.get("text") or "")[:80].replace('"', '&quot;').replace('<','&lt;').replace('>','&gt;')
-            if len(row.get("text","")) > 80:
-                text += "…"
-            url = row.get("url","#") or "#"
-            replies = row.get("reply_count") or 0
-            likes = row.get("like_count") or 0
-            hot = " 🔥" if replies >= 3 else ""
-            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
-        items_html = "".join(_ticker_text(r) for r in (_ti or []))
-        # Duplicate for seamless loop
-        ticker_bar = f'''<div class="ticker-wrap">
-  <span class="ticker-label">🔥 LIVE</span>
-  <span class="ticker-track">{items_html}{items_html}</span>
-</div>'''
-
     return f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Settings — Daily X Digest</title>
@@ -4618,33 +3937,14 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
 
     <!-- Payment form -->
     <div id="sub-form" style="display:none;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:1.2rem">
-      <h3 id="sub-form-title" style="font-size:1rem;margin-bottom:1rem;color:#f1f5f9"></h3>
-
-      <!-- Price block -->
-      <div style="background:#0a1628;border:1px solid #1e3a5f;border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem;text-align:center">
-        <div style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem">Amount to send</div>
-        <div style="font-size:2rem;font-weight:800;color:#3b82f6;line-height:1.1">
-          <span id="sub-amount"></span>
-          <span style="font-size:1rem;font-weight:600;color:#60a5fa;margin-left:.3rem">$AKRE</span>
-        </div>
-      </div>
-
-      <!-- Wallet address block -->
-      <div style="margin-bottom:1rem">
-        <div style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem">Send to</div>
-        <div style="display:flex;align-items:center;gap:.5rem">
-          <code id="donate-addr" style="flex:1;background:#1e293b;border:1px solid #334155;border-radius:6px;
-                padding:.5rem .7rem;font-size:.78rem;color:#3b82f6;word-break:break-all;line-height:1.4">{_DONATE_EVM}</code>
-          <button onclick="copyDonateAddr()" id="copy-addr-btn"
-            style="flex-shrink:0;padding:.5rem .75rem;background:#1e3a5f;border:1.5px solid #3b82f6;
-                   color:#60a5fa;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap">
-            📋 Copy
-          </button>
-        </div>
-        <p style="font-size:.74rem;color:#64748b;margin-top:.4rem">
-          Network: <strong style="color:#94a3b8">Polygon</strong> · Contract: <a href="https://polygonscan.com/token/0xE9c21De62C5C5d0cEAcCe2762bF655AfDcEB7ab3" target="_blank" style="color:#22c55e">AKRE ↗</a>
-        </p>
-      </div>
+      <h3 id="sub-form-title" style="font-size:1rem;margin-bottom:.8rem;color:#f1f5f9"></h3>
+      <p style="font-size:.83rem;color:#94a3b8;margin-bottom:.8rem">
+        Send <strong id="sub-amount"></strong> $AKRE to:<br>
+        <code style="background:#1e293b;padding:.3rem .5rem;border-radius:4px;font-size:.8rem;color:#3b82f6;word-break:break-all">{_DONATE_EVM}</code>
+      </p>
+      <p style="font-size:.78rem;color:#64748b;margin-bottom:1rem">
+        Network: <strong>Polygon</strong> · Contract: <a href="https://polygonscan.com/token/0xE9c21De62C5C5d0cEAcCe2762bF655AfDcEB7ab3" target="_blank" style="color:#22c55e">AKRE</a>
+      </p>
       <div style="margin-bottom:.8rem">
         <label style="font-size:.82rem;color:#94a3b8;display:block;margin-bottom:.3rem">Billing period</label>
         <div style="display:flex;gap:.6rem">
@@ -4663,61 +3963,6 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
   </div>
 </div>
 
-<!-- Payment verification modal -->
-<div id="pay-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center">
-  <div id="pay-modal" style="background:#0f172a;border:1px solid #334155;border-radius:12px;padding:1.5rem;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.5)">
-    <!-- Step 1: verifying -->
-    <div id="pms-verifying">
-      <div style="font-size:1.1rem;font-weight:700;color:#f1f5f9;margin-bottom:.4rem">🔍 Verifying your payment…</div>
-      <p style="font-size:.83rem;color:#94a3b8;margin-bottom:.8rem">Transaction submitted — checking Polygon blockchain automatically.</p>
-      <div style="background:#1e293b;border-radius:6px;padding:.6rem .8rem;margin-bottom:.8rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem">
-        <code id="pms-txhash" style="font-size:.75rem;color:#3b82f6;word-break:break-all"></code>
-        <a id="pms-txlink" href="#" target="_blank" style="font-size:.75rem;color:#22c55e;white-space:nowrap;flex-shrink:0">Polygonscan ↗</a>
-      </div>
-      <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.5rem">
-        <div class="pay-spinner"></div>
-        <span id="pms-progress" style="font-size:.82rem;color:#94a3b8">Auto-checking… (1/12)</span>
-      </div>
-      <p style="font-size:.75rem;color:#64748b;margin-bottom:1rem">Checks every 5 seconds · Usually confirms within 1–2 minutes</p>
-      <button onclick="checkStatusNow()" style="width:100%;padding:.45rem;border-radius:6px;border:1px solid #1e3a5f;background:transparent;color:#475569;font-size:.78rem;cursor:pointer">Force check now</button>
-    </div>
-    <!-- Step 2: success -->
-    <div id="pms-success" style="display:none;text-align:center">
-      <div style="font-size:2rem;margin-bottom:.5rem">🎉</div>
-      <div style="font-size:1.1rem;font-weight:700;color:#22c55e;margin-bottom:.4rem">Subscription activated!</div>
-      <p id="pms-success-msg" style="font-size:.85rem;color:#94a3b8;margin-bottom:1rem"></p>
-      <p style="font-size:.78rem;color:#64748b">Reloading page…</p>
-    </div>
-    <!-- Step 3: timeout / check later -->
-    <div id="pms-later" style="display:none">
-      <div style="font-size:1.1rem;font-weight:700;color:#f59e0b;margin-bottom:.6rem">⏳ Still verifying…</div>
-      <p style="font-size:.85rem;color:#94a3b8;margin-bottom:.8rem">We'll activate your account within 1 hour. You can close this page safely.</p>
-      <div style="background:#1e293b;border-radius:6px;padding:.6rem .8rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem">
-        <code id="pms-txhash2" style="font-size:.75rem;color:#3b82f6;word-break:break-all"></code>
-        <a id="pms-txlink2" href="#" target="_blank" style="font-size:.75rem;color:#22c55e;white-space:nowrap;flex-shrink:0">Polygonscan ↗</a>
-      </div>
-      <div style="display:flex;gap:.6rem">
-        <button onclick="checkStatusNow()" style="flex:1;padding:.5rem;border-radius:6px;border:1px solid #3b82f6;background:#1e293b;color:#3b82f6;font-size:.82rem;cursor:pointer">Check status</button>
-        <button onclick="closePayModal()" style="flex:1;padding:.5rem;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#64748b;font-size:.82rem;cursor:pointer">Close</button>
-      </div>
-    </div>
-    <!-- Step 4: failed -->
-    <div id="pms-failed" style="display:none">
-      <div style="font-size:1.1rem;font-weight:700;color:#f87171;margin-bottom:.6rem">✗ Verification failed</div>
-      <p id="pms-error-msg" style="font-size:.85rem;color:#94a3b8;margin-bottom:1rem"></p>
-      <button onclick="closePayModal()" style="width:100%;padding:.5rem;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#64748b;font-size:.82rem;cursor:pointer">Close</button>
-    </div>
-  </div>
-</div>
-<style>
-.pay-spinner {{
-  width:18px;height:18px;border-radius:50%;
-  border:2px solid #334155;border-top-color:#3b82f6;
-  animation:pay-spin .8s linear infinite;flex-shrink:0;
-}}
-@keyframes pay-spin {{ to {{ transform:rotate(360deg) }} }}
-</style>
-
 <script>
 async function createKey() {{
   const name = prompt('API Key name (optional):', 'My Agent');
@@ -4729,7 +3974,8 @@ async function createKey() {{
   }});
   const d = await r.json();
   if (d.ok) {{
-    showApiKeyModal(d.key);
+    alert('API Key created!\\n\\n' + d.key + '\\n\\nSave this key now - you won\\'t see it again.');
+    location.reload();
   }}
 }}
 
@@ -4765,29 +4011,6 @@ function openSubscribe(tier) {{
   updateSubForm();
 }}
 
-async function copyDonateAddr() {{
-  const addr = document.getElementById('donate-addr').textContent.trim();
-  const btn = document.getElementById('copy-addr-btn');
-  try {{
-    await navigator.clipboard.writeText(addr);
-    btn.textContent = '✓ Copied!';
-    btn.style.background = '#166534';
-    btn.style.borderColor = '#22c55e';
-    btn.style.color = '#4ade80';
-    setTimeout(() => {{
-      btn.textContent = '📋 Copy';
-      btn.style.background = '#1e3a5f';
-      btn.style.borderColor = '#3b82f6';
-      btn.style.color = '#60a5fa';
-    }}, 2000);
-  }} catch(e) {{
-    const range = document.createRange();
-    range.selectNode(document.getElementById('donate-addr'));
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
-  }}
-}}
-
 function closeSubscribe() {{
   document.getElementById('sub-form').style.display = 'none';
   document.getElementById('tx-hash-input').value = '';
@@ -4816,107 +4039,22 @@ async function submitSubscribe() {{
     msg.textContent = 'Invalid TX hash. Must be 66 characters starting with 0x.';
     return;
   }}
-
-  // Show immediate confirmation modal
-  _payTx = tx;
-  _payPollCount = 0;
-  _payPollTimer = null;
-  const short = tx.slice(0,10) + '…' + tx.slice(-6);
-  const psLink = 'https://polygonscan.com/tx/' + tx;
-  document.getElementById('pms-txhash').textContent = short;
-  document.getElementById('pms-txlink').href = psLink;
-  document.getElementById('pms-txhash2').textContent = short;
-  document.getElementById('pms-txlink2').href = psLink;
-  document.getElementById('pms-verifying').style.display = '';
-  document.getElementById('pms-success').style.display = 'none';
-  document.getElementById('pms-later').style.display = 'none';
-  document.getElementById('pms-failed').style.display = 'none';
-  const overlay = document.getElementById('pay-modal-overlay');
-  overlay.style.display = 'flex';
-
-  // Submit to backend
+  msg.style.display = 'block'; msg.style.color = '#fbbf24';
+  msg.textContent = 'Verifying on Polygon blockchain…';
   const r = await fetch('/api/subscribe/akre', {{
     method: 'POST',
     headers: {{'Content-Type': 'application/json'}},
     body: JSON.stringify({{ tier: _tier, period: _period, tx_hash: tx }}),
   }});
   const d = await r.json();
-
-  if (r.ok && d.ok) {{
-    // Instant success (blockchain already confirmed)
-    _showPaySuccess(d);
-    return;
+  if (r.ok) {{
+    msg.style.color = '#22c55e';
+    msg.textContent = '✓ Activated! ' + d.tier.toUpperCase() + ' plan until ' + d.expires_at.slice(0,10);
+    setTimeout(() => location.reload(), 2000);
+  }} else {{
+    msg.style.color = '#f87171';
+    msg.textContent = '✗ ' + (d.detail || 'Verification failed');
   }}
-
-  if (d.queued) {{
-    // Queued for async verification — start polling
-    _startPayPoll();
-    return;
-  }}
-
-  // Hard error (duplicate tx, bad format, etc.)
-  document.getElementById('pms-verifying').style.display = 'none';
-  document.getElementById('pms-failed').style.display = '';
-  document.getElementById('pms-error-msg').textContent = d.detail || 'Verification failed';
-}}
-
-let _payTx = '', _payPollCount = 0, _payPollTimer = null;
-const _PAY_POLL_MAX = 12; // 12 × 5s = 60s
-
-function _startPayPoll() {{
-  _payPollTimer = setInterval(_doPoll, 5000);
-}}
-
-async function _doPoll() {{
-  _payPollCount++;
-  document.getElementById('pms-progress').textContent =
-    'Auto-checking… (' + _payPollCount + '/' + _PAY_POLL_MAX + ')';
-
-  if (_payPollCount >= _PAY_POLL_MAX) {{
-    clearInterval(_payPollTimer);
-    document.getElementById('pms-verifying').style.display = 'none';
-    document.getElementById('pms-later').style.display = '';
-    return;
-  }}
-
-  try {{
-    const r = await fetch('/api/subscribe/status?tx_hash=' + encodeURIComponent(_payTx));
-    if (!r.ok) return;
-    const d = await r.json();
-    if (d.status === 'confirmed') {{
-      clearInterval(_payPollTimer);
-      _showPaySuccess(d);
-    }} else if (d.status === 'failed') {{
-      clearInterval(_payPollTimer);
-      document.getElementById('pms-verifying').style.display = 'none';
-      document.getElementById('pms-failed').style.display = '';
-      document.getElementById('pms-error-msg').textContent = d.error || 'Verification failed';
-    }}
-  }} catch(e) {{ /* network hiccup — keep polling */ }}
-}}
-
-async function checkStatusNow() {{
-  _payPollCount = 0;
-  document.getElementById('pms-later').style.display = 'none';
-  document.getElementById('pms-verifying').style.display = '';
-  document.getElementById('pms-progress').textContent = 'Auto-checking…';
-  clearInterval(_payPollTimer);
-  await _doPoll();
-  if (_payPollCount < _PAY_POLL_MAX) _startPayPoll();
-}}
-
-function _showPaySuccess(d) {{
-  document.getElementById('pms-verifying').style.display = 'none';
-  document.getElementById('pms-success').style.display = '';
-  const tier = (d.tier || _tier).toUpperCase();
-  const exp  = d.expires_at ? ' until ' + d.expires_at.slice(0,10) : '';
-  document.getElementById('pms-success-msg').textContent = tier + ' plan activated' + exp + '.';
-  setTimeout(() => location.reload(), 2500);
-}}
-
-function closePayModal() {{
-  clearInterval(_payPollTimer);
-  document.getElementById('pay-modal-overlay').style.display = 'none';
 }}
 
 async function addFilter(type) {{
@@ -4961,62 +4099,6 @@ async function deleteList(listId) {{
   else alert('Failed to delete list');
 }}
 </script>
-
-<!-- API Key Created Modal -->
-<div id="apikey-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:3000;align-items:center;justify-content:center">
-  <div style="background:#1e293b;border-radius:16px;padding:2rem;max-width:480px;width:calc(100% - 2rem);box-shadow:0 25px 60px rgba(0,0,0,.6)">
-    <div style="text-align:center;margin-bottom:1.5rem">
-      <div style="font-size:2.5rem;margin-bottom:.5rem">🔑</div>
-      <h3 style="color:#f1f5f9;font-size:1.2rem;margin-bottom:.3rem">API Key Created</h3>
-      <p style="color:#94a3b8;font-size:.85rem">Save this key now — you won't see it again.</p>
-    </div>
-    <div style="background:#0f172a;border-radius:10px;padding:1rem;margin-bottom:1.2rem">
-      <p style="color:#64748b;font-size:.72rem;margin-bottom:.4rem;letter-spacing:.05em;text-transform:uppercase">Your API Key</p>
-      <div style="display:flex;gap:.6rem;align-items:center">
-        <input id="apikey-value" type="text" readonly
-          style="flex:1;background:#1e293b;border:1.5px solid #334155;border-radius:8px;
-                 padding:.55rem .8rem;color:#4ade80;font-family:monospace;font-size:.85rem;
-                 outline:none;cursor:text;user-select:all;-webkit-user-select:all"
-          onclick="this.select()">
-        <button onclick="copyApiKey()" id="apikey-copy-btn"
-          style="padding:.55rem 1rem;background:#22c55e;color:#fff;border:none;border-radius:8px;
-                 font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
-          Copy
-        </button>
-      </div>
-    </div>
-    <button onclick="closeApiKeyModal()"
-      style="width:100%;padding:.7rem;background:#3b82f6;color:#fff;border:none;
-             border-radius:8px;font-size:.95rem;font-weight:600;cursor:pointer">
-      Done
-    </button>
-  </div>
-</div>
-
-<script>
-function showApiKeyModal(key) {{
-  document.getElementById('apikey-value').value = key;
-  document.getElementById('apikey-modal').style.display = 'flex';
-  setTimeout(() => document.getElementById('apikey-value').select(), 100);
-}}
-function closeApiKeyModal() {{
-  document.getElementById('apikey-modal').style.display = 'none';
-  location.reload();
-}}
-async function copyApiKey() {{
-  const inp = document.getElementById('apikey-value');
-  inp.select();
-  try {{
-    await navigator.clipboard.writeText(inp.value);
-    const btn = document.getElementById('apikey-copy-btn');
-    btn.textContent = '✓ Copied!';
-    btn.style.background = '#16a34a';
-    setTimeout(() => {{ btn.textContent = 'Copy'; btn.style.background = '#22c55e'; }}, 2000);
-  }} catch(e) {{
-    document.execCommand('copy');
-  }}
-}}
-</script>
 </body></html>"""
 
 
@@ -5027,333 +4109,6 @@ async def api_set_nickname(req: NicknameRequest, user: Dict = Depends(_user_auth
         raise HTTPException(status_code=400, detail="Nickname cannot be empty")
     await _auth_module.update_nickname(user["id"], name)
     return {"ok": True, "nickname": name}
-
-
-# ── Contract generation ───────────────────────────────────────────────────────
-
-class ProductItem(BaseModel):
-    name: str
-    sku: str = ""
-    qty: int = 1
-    unit_price: float = 0.0
-    spec_text: str = ""
-    spec_images: List[str] = []  # base64 strings, max 3
-
-
-class ContractRequest(BaseModel):
-    buyer_name: str
-    buyer_address: str
-    buyer_contact: str
-    products: List[ProductItem]
-    shipping_per_unit: float = 50.0
-    lang: str = "both"    # "cn" | "en" | "both"
-    format: str = "both"  # "pdf" | "docx" | "both"
-    logo_b64: str = ""    # base64 logo image (optional)
-    shipping_method: str = "DHL/FedEx"
-    payment_days: int = 7
-    shipping_days: int = 15
-    warranty_months: int = 12
-    penalty_pct: float = 10.0
-    dispute_clause: str = ""
-
-
-@app.post("/api/contract/generate")
-async def api_contract_generate(req: ContractRequest, user: Dict = Depends(_user_auth)):
-    """Generate eCandle sales contract. Pro users only."""
-    import datetime as _dt
-    import zipfile
-    from fastapi.responses import FileResponse
-
-    sub = await _auth_module.get_subscription(user["id"]) or {}
-    tier   = sub.get("tier", "free")
-    status = sub.get("status", "")
-    expires = sub.get("expires_at", "")
-    is_pro = (
-        tier == "pro" and status == "active" and
-        (not expires or _dt.datetime.fromisoformat(expires) > _dt.datetime.now(_dt.timezone.utc))
-    )
-    if not is_pro:
-        raise HTTPException(status_code=403, detail="pro_required")
-
-    if not req.products:
-        raise HTTPException(status_code=400, detail="At least one product is required")
-    if any(p.qty < 0 for p in req.products):
-        raise HTTPException(status_code=400, detail="Quantities must be non-negative")
-    if sum(p.qty for p in req.products) == 0:
-        raise HTTPException(status_code=400, detail="Total quantity must be at least 1")
-
-    try:
-        from contract_gen import generate_contract
-        files = generate_contract({
-            "buyer_name":    req.buyer_name,
-            "buyer_address": req.buyer_address,
-            "buyer_contact": req.buyer_contact,
-            "products":      [p.model_dump() for p in req.products],
-            "shipping_per_unit": req.shipping_per_unit,
-            "lang":   req.lang,
-            "format": req.format,
-            "logo_b64": req.logo_b64,
-            "shipping_method": req.shipping_method,
-            "payment_days":    req.payment_days,
-            "shipping_days":   req.shipping_days,
-            "warranty_months": req.warranty_months,
-            "penalty_pct":     req.penalty_pct,
-            "dispute_clause":  req.dispute_clause,
-        })
-    except Exception as e:
-        logger.error(f"Contract generation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-    # Store files in a temp dir accessible via /api/contract/download/<token>/<filename>
-    import uuid, shutil
-    token = uuid.uuid4().hex
-    serve_dir = f"/tmp/contract_{token}"
-    os.makedirs(serve_dir, exist_ok=True)
-    file_list = []
-    for key, src_path in files.items():
-        fname = os.path.basename(src_path)
-        dst = os.path.join(serve_dir, fname)
-        shutil.copy2(src_path, dst)
-        file_list.append({"name": fname, "url": f"/api/contract/download/{token}/{fname}"})
-
-    return JSONResponse({"ok": True, "files": file_list})
-
-
-@app.get("/api/contract/download/{token}/{filename}")
-async def api_contract_download(token: str, filename: str, user: Dict = Depends(_user_auth)):
-    """Serve a generated contract file."""
-    import re
-    # Sanitize inputs
-    if not re.match(r'^[0-9a-f]{32}$', token):
-        raise HTTPException(status_code=400, detail="Invalid token")
-    if not re.match(r'^[\w\-. ]+\.(pdf|docx)$', filename):
-        raise HTTPException(status_code=400, detail="Invalid filename")
-    path = f"/tmp/contract_{token}/{filename}"
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="File not found or expired")
-    from fastapi.responses import FileResponse
-    media = "application/pdf" if filename.endswith(".pdf") else \
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    return FileResponse(path, media_type=media, filename=filename)
-
-
-# ── Daily Digest ──────────────────────────────────────────────────────────────
-
-import re as _re
-
-_AUDIO_DIR = os.getenv("AUDIO_DIR", "data/audio")
-
-
-async def _fetch_digest(date: str) -> Optional[Dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM digests WHERE date=?", (date,)
-        ) as cur:
-            row = await cur.fetchone()
-    return dict(row) if row else None
-
-
-async def _fetch_digest_dates(limit: int = 30) -> List[str]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT date FROM digests ORDER BY date DESC LIMIT ?", (limit,)
-        ) as cur:
-            rows = await cur.fetchall()
-    return [r[0] for r in rows]
-
-
-
-async def _fetch_ticker_items(limit: int = 15) -> list:
-    """Fetch top engaged tweets from last 48h for the digest ticker."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """SELECT username, text, like_count, retweet_count, reply_count, url, project
-               FROM tweets
-               WHERE (like_count + retweet_count + reply_count) > 0
-               ORDER BY (like_count * 1 + retweet_count * 20 + reply_count * 13.5) DESC
-               LIMIT ?""",
-            (limit,)
-        ) as cur:
-            rows = [dict(r) for r in await cur.fetchall()]
-    return rows
-
-def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: str, ticker_items: list = None) -> str:
-    date_options = "".join(
-        f'<option value="{d}" {"selected" if d == selected_date else ""}>{d}</option>'
-        for d in dates
-    )
-
-    if not digest:
-        content_block = '<div style="text-align:center;padding:3rem;color:#64748b">该日期暂无播报内容</div>'
-    else:
-        content_zh = _esc(digest.get("content_zh") or "").replace("\n", "<br>")
-        content_en = _esc(digest.get("content_en") or "").replace("\n", "<br>")
-        audio_zh = digest.get("audio_zh") or ""
-        audio_en = digest.get("audio_en") or ""
-        tweet_id = digest.get("tweet_id") or ""
-
-        audio_zh_block = (
-            f'<audio controls style="width:100%;margin:.5rem 0"><source src="/audio/{_esc(audio_zh)}" type="audio/mpeg">Your browser does not support audio.</audio>'
-            if audio_zh else '<p style="color:#94a3b8;font-size:.85rem">音频生成中...</p>'
-        )
-        audio_en_block = (
-            f'<audio controls style="width:100%;margin:.5rem 0"><source src="/audio/{_esc(audio_en)}" type="audio/mpeg">Your browser does not support audio.</audio>'
-            if audio_en else '<p style="color:#94a3b8;font-size:.85rem">Audio generating...</p>'
-        )
-        tweet_link = (
-            f'<a href="https://x.com/i/web/status/{_esc(tweet_id)}" target="_blank" '
-            f'style="display:inline-block;margin-top:.5rem;padding:.4rem 1rem;background:#1d9bf0;color:#fff;'
-            f'border-radius:6px;text-decoration:none;font-size:.85rem;font-weight:600">🐦 View on X</a>'
-            if tweet_id else ""
-        )
-
-        content_block = f"""
-<div style="background:#1e293b;border-radius:12px;padding:1.5rem;margin-bottom:1.5rem">
-  <div style="display:flex;gap:.5rem;margin-bottom:1.2rem">
-    <button onclick="showDigestTab('zh')" id="tab-zh"
-      style="padding:.5rem 1.2rem;border-radius:6px;border:none;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer;font-size:.9rem">
-      🇨🇳 中文版
-    </button>
-    <button onclick="showDigestTab('en')" id="tab-en"
-      style="padding:.5rem 1.2rem;border-radius:6px;border:none;background:#334155;color:#94a3b8;font-weight:600;cursor:pointer;font-size:.9rem">
-      🇺🇸 English
-    </button>
-  </div>
-
-  <div id="digest-zh">
-    <div style="margin-bottom:1rem">
-      <div style="color:#94a3b8;font-size:.8rem;margin-bottom:.3rem">🎙️ 中文语音</div>
-      {audio_zh_block}
-    </div>
-    <div style="background:#0f172a;border-radius:8px;padding:1.2rem;color:#e2e8f0;font-size:.9rem;line-height:1.8;max-height:500px;overflow-y:auto">
-      {content_zh}
-    </div>
-  </div>
-
-  <div id="digest-en" style="display:none">
-    <div style="margin-bottom:1rem">
-      <div style="color:#94a3b8;font-size:.8rem;margin-bottom:.3rem">🎙️ English Audio</div>
-      {audio_en_block}
-    </div>
-    <div style="background:#0f172a;border-radius:8px;padding:1.2rem;color:#e2e8f0;font-size:.9rem;line-height:1.8;max-height:500px;overflow-y:auto">
-      {content_en}
-    </div>
-  </div>
-
-  {tweet_link}
-</div>
-<script>
-function showDigestTab(lang) {{
-  document.getElementById('digest-zh').style.display = lang === 'zh' ? 'block' : 'none';
-  document.getElementById('digest-en').style.display = lang === 'en' ? 'block' : 'none';
-  document.getElementById('tab-zh').style.background = lang === 'zh' ? '#3b82f6' : '#334155';
-  document.getElementById('tab-zh').style.color = lang === 'zh' ? '#fff' : '#94a3b8';
-  document.getElementById('tab-en').style.background = lang === 'en' ? '#3b82f6' : '#334155';
-  document.getElementById('tab-en').style.color = lang === 'en' ? '#fff' : '#94a3b8';
-}}
-</script>
-"""
-
-    # Build ticker bar HTML
-    ticker_bar = ""
-    _ti = locals().get("ticker_items")
-    if _ti:
-        def _ticker_text(row):
-            username = row.get("username","")
-            text = (row.get("text") or "")[:80].replace('"', '&quot;').replace('<','&lt;').replace('>','&gt;')
-            if len(row.get("text","")) > 80:
-                text += "…"
-            url = row.get("url","#") or "#"
-            replies = row.get("reply_count") or 0
-            likes = row.get("like_count") or 0
-            hot = " 🔥" if replies >= 3 else ""
-            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
-        items_html = "".join(_ticker_text(r) for r in (_ti or []))
-        # Duplicate for seamless loop
-        ticker_bar = f'''<div class="ticker-wrap">
-  <span class="ticker-label">🔥 LIVE</span>
-  <span class="ticker-track">{items_html}{items_html}</span>
-</div>'''
-
-    return f"""<!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Daily X Digest — {selected_date}</title>
-<style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#f1f5f9;min-height:100vh}}
-header{{background:#020617;padding:1rem 2rem;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1e293b}}
-header h1{{font-size:1.1rem;font-weight:700;color:#f1f5f9}}
-.back-link{{color:#60a5fa;text-decoration:none;font-size:.85rem}}
-.back-link:hover{{text-decoration:underline}}
-main{{max-width:900px;margin:0 auto;padding:1.5rem 1.5rem}}
-.ticker-wrap{{background:#020617;border-bottom:1px solid #1e293b;overflow:hidden;white-space:nowrap;padding:.45rem 0;position:sticky;top:0;z-index:100}}
-.ticker-label{{display:inline-block;background:#3b82f6;color:#fff;font-size:.7rem;font-weight:700;padding:.2rem .7rem;border-radius:3px;margin-right:.8rem;vertical-align:middle;letter-spacing:.05em}}
-.ticker-track{{display:inline-block;animation:ticker-scroll 60s linear infinite;will-change:transform}}
-.ticker-track:hover{{animation-play-state:paused}}
-.ticker-item{{display:inline-block;margin-right:3.5rem;font-size:.78rem;vertical-align:middle;color:#cbd5e1}}
-.ticker-item a{{color:#60a5fa;text-decoration:none;font-weight:500}}
-.ticker-item a:hover{{text-decoration:underline}}
-.ticker-sep{{color:#334155;margin-right:3.5rem;font-size:.9rem}}
-@keyframes ticker-scroll{{0%{{transform:translateX(0)}}100%{{transform:translateX(-50%)}}}}
-select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:6px;padding:.5rem .8rem;font-size:.9rem;cursor:pointer}}
-</style>
-</head>
-<body>
-<span id="page-top"></span>
-<header>
-  <h1>📰 Daily X Digest</h1>
-  <a href="/" class="back-link">← Back to Monitor</a>
-</header>
-{ticker_bar}
-<main>
-  <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap">
-    <h2 style="font-size:1.2rem;color:#f1f5f9">每日新闻播报</h2>
-    <select onchange="location.href='/digest/'+this.value">
-      {date_options if date_options else '<option>No digests yet</option>'}
-    </select>
-    <span style="color:#64748b;font-size:.8rem">最近30天 · 北京时间每天8:00发布</span>
-  </div>
-  {content_block}
-</main>
-</body>
-</html>"""
-
-
-@app.get("/digest", response_class=HTMLResponse)
-async def digest_latest():
-    dates = await _fetch_digest_dates(30)
-    ticker_items = await _fetch_ticker_items()
-    if not dates:
-        return HTMLResponse(_build_digest_page(None, [], "", ticker_items))
-    latest = dates[0]
-    digest = await _fetch_digest(latest)
-    return HTMLResponse(_build_digest_page(digest, dates, latest, ticker_items))
-
-
-@app.get("/digest/{date}", response_class=HTMLResponse)
-async def digest_by_date(date: str):
-    if not _re.match(r"^\d{4}-\d{2}-\d{2}$", date):
-        raise HTTPException(status_code=400, detail="Invalid date format")
-    dates = await _fetch_digest_dates(30)
-    digest = await _fetch_digest(date)
-    ticker_items = await _fetch_ticker_items()
-    return HTMLResponse(_build_digest_page(digest, dates, date, ticker_items))
-
-
-@app.get("/audio/{filename}")
-async def serve_audio(filename: str):
-    from fastapi.responses import FileResponse
-    if not _re.match(r"^[\w\-]+\.mp3$", filename):
-        raise HTTPException(status_code=400, detail="Invalid filename")
-    path = os.path.join(_AUDIO_DIR, filename)
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="Audio not found")
-    return FileResponse(path, media_type="audio/mpeg")
 
 
 if __name__ == "__main__":

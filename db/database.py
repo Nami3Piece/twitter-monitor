@@ -189,6 +189,35 @@ async def init_db() -> None:
                 audio_en    TEXT,
                 tweet_id    TEXT,
                 created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+        # Deleted tweets audit — track why tweets were removed
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS deleted_tweets (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                tweet_id    TEXT NOT NULL,
+                project     TEXT,
+                keyword     TEXT,
+                username    TEXT,
+                text        TEXT,
+                like_count  INTEGER DEFAULT 0,
+                reason      TEXT DEFAULT 'other',
+                reason_text TEXT,
+                deleted_at  TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_deleted_tweets_project ON deleted_tweets(project)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_deleted_tweets_reason ON deleted_tweets(reason)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_deleted_tweets_username ON deleted_tweets(username)")
+        # Payment submissions — durable record of every payment attempt
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS payment_submissions (
+                tx_hash      TEXT PRIMARY KEY,
+                user_id      TEXT NOT NULL,
+                tier         TEXT NOT NULL,
+                period       TEXT NOT NULL,
+                status       TEXT DEFAULT 'pending',
+                polygonscan  TEXT,
+                submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                activated_at TEXT
             )
         """)
         await db.commit()
@@ -335,6 +364,12 @@ async def insert_tweet(project: str, keyword: str, tweet: Dict, ai_reply: Option
         media_url = first.get("media_url_https") or first.get("media_url")
 
     async with aiosqlite.connect(DB_PATH) as db:
+        # Skip tweets that have been manually deleted
+        async with db.execute(
+            "SELECT 1 FROM deleted_tweets WHERE tweet_id=? LIMIT 1", (tweet_id,)
+        ) as chk:
+            if await chk.fetchone():
+                return False
         cur = await db.execute(
             "INSERT OR IGNORE INTO tweets "
             "(tweet_id, project, keyword, username, text, created_at, created_at_iso, url, "
@@ -555,18 +590,63 @@ async def get_daily_tweet_count(date: Optional[str] = None) -> int:
 
 
 async def delete_tweets(tweet_ids: List[str]) -> int:
-    """Delete tweets by IDs. Only deletes unvoted tweets to preserve voting history. Returns count of deleted tweets."""
+    """Backward-compat wrapper (no reason recorded).""",
+    return await record_and_delete_tweets(tweet_ids)
+
+
+async def record_and_delete_tweets(tweet_ids: List[str], reason: str = "other", reason_text: str = "") -> int:
+    """Record deletion reason then delete tweets (including voted)."""
     if not tweet_ids:
         return 0
     async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
         placeholders = ",".join("?" * len(tweet_ids))
-        # Only delete tweets that have NOT been voted on (voted = 0 or NULL)
-        cur = await db.execute(
-            f"DELETE FROM tweets WHERE tweet_id IN ({placeholders}) AND (voted = 0 OR voted IS NULL)",
+        # Fetch tweet data before deletion for audit record
+        async with db.execute(
+            f"SELECT tweet_id, project, keyword, username, text, like_count FROM tweets WHERE tweet_id IN ({placeholders})",
+            tweet_ids
+        ) as cur:
+            rows = await cur.fetchall()
+        # Record to deleted_tweets audit table
+        for t in rows:
+            await db.execute(
+                "INSERT INTO deleted_tweets (tweet_id, project, keyword, username, text, like_count, reason, reason_text) VALUES (?,?,?,?,?,?,?,?)",
+                (t["tweet_id"], t["project"], t["keyword"], t["username"], t["text"], t["like_count"] or 0, reason, reason_text)
+            )
+        # Only delete unvoted tweets
+        cur2 = await db.execute(
+            f"DELETE FROM tweets WHERE tweet_id IN ({placeholders})",
             tweet_ids
         )
         await db.commit()
-        return cur.rowcount
+        return cur2.rowcount
+
+
+async def get_deletion_stats() -> dict:
+    """Aggregated deletion stats for recommendation optimization.""",
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT reason, COUNT(*) as cnt FROM deleted_tweets GROUP BY reason ORDER BY cnt DESC") as cur:
+            by_reason = [dict(r) for r in await cur.fetchall()]
+        async with db.execute(
+            "SELECT username, project, COUNT(*) as cnt, GROUP_CONCAT(DISTINCT reason) as reasons FROM deleted_tweets WHERE username IS NOT NULL GROUP BY username, project ORDER BY cnt DESC LIMIT 30"
+        ) as cur:
+            by_account = [dict(r) for r in await cur.fetchall()]
+        async with db.execute(
+            "SELECT project, keyword, reason, COUNT(*) as cnt FROM deleted_tweets GROUP BY project, keyword, reason ORDER BY cnt DESC LIMIT 30"
+        ) as cur:
+            by_keyword = [dict(r) for r in await cur.fetchall()]
+        return {"by_reason": by_reason, "by_account": by_account, "by_keyword": by_keyword}
+
+
+async def get_suppressed_accounts() -> set:
+    """Accounts deleted >=3 times with poor_account reason — suppress from recommendations.""",
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT username FROM deleted_tweets WHERE reason='poor_account' GROUP BY username HAVING COUNT(*) >= 3"
+        ) as cur:
+            rows = await cur.fetchall()
+    return {r[0] for r in rows}
 
 
 # ── Per-user filters (Pro feature) ────────────────────────────────────────────
@@ -734,3 +814,69 @@ async def delete_shared_list(list_id: str, owner_id: str) -> bool:
         )
         await db.commit()
         return cur.rowcount > 0
+
+
+async def record_payment_submission(tx_hash: str, user_id: str, tier: str, period: str, polygonscan: str = "") -> None:
+    """Record payment attempt immediately at submission time."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT OR IGNORE INTO payment_submissions (tx_hash, user_id, tier, period, polygonscan)
+            VALUES (?, ?, ?, ?, ?)
+        """, (tx_hash.lower(), user_id, tier, period, polygonscan))
+        await db.commit()
+
+
+async def mark_payment_activated(tx_hash: str) -> None:
+    """Mark a payment submission as activated."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE payment_submissions
+            SET status='confirmed', activated_at=CURRENT_TIMESTAMP
+            WHERE tx_hash=?
+        """, (tx_hash.lower(),))
+        await db.commit()
+
+
+async def enqueue_pending_tx(tx_hash: str, user_id: str, tier: str, period: str) -> None:
+    """Add TX to pending retry queue."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT OR IGNORE INTO pending_tx_queue (tx_hash, user_id, tier, period)
+            VALUES (?, ?, ?, ?)
+        """, (tx_hash.lower(), user_id, tier, period))
+        await db.commit()
+
+
+async def get_pending_tx_status(tx_hash: str):
+    """Get pending TX queue row."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM pending_tx_queue WHERE tx_hash=?", (tx_hash.lower(),)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def mark_pending_tx_resolved(tx_hash: str, status: str, error: str = "") -> None:
+    """Update pending TX queue entry to confirmed/failed."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE pending_tx_queue
+            SET status=?, error=?, resolved_at=CURRENT_TIMESTAMP
+            WHERE tx_hash=?
+        """, (status, error, tx_hash.lower()))
+        await db.commit()
+
+
+async def get_all_payment_submissions() -> list:
+    """Admin: get all payment submissions for ops dashboard."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT ps.*, u.email, u.nickname
+            FROM payment_submissions ps
+            LEFT JOIN users u ON u.id = ps.user_id
+            ORDER BY ps.submitted_at DESC
+        """) as cur:
+            return [dict(r) for r in await cur.fetchall()]
