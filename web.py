@@ -33,6 +33,7 @@ _security = HTTPBasic()
 
 # ── Security headers middleware ───────────────────────────────────────────────
 from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -43,9 +44,21 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"]          = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"]       = "geolocation=(), camera=(), microphone=()"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # Allow local admin dashboard (file://) to call /api/admin/* endpoints
+        if request.url.path.startswith("/api/admin"):
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8100", "http://127.0.0.1:8100", "null"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _WEB_USER = os.getenv("WEB_USER", "monitor")
 _WEB_PASSWORD = os.getenv("WEB_PASSWORD", "arkreen2024")
@@ -173,7 +186,8 @@ async def _fetch_tweets(project: Optional[str] = None, voted_only: bool = False,
 
 async def _fetch_top_events(current_user: Optional[str] = None) -> List[Dict]:
     """Return top 4 most-engaged tweets in last 24h, one per project.
-    Score = likes + retweets*2 + replies*1.5 (×10 if mentions official account)
+    Score mirrors X algorithm weights: replies*13.5 + retweets*20 + likes*1
+    Tweets with reply_count >= 3 are flagged as having genuine discussion.
     """
     from db.database import get_tweet_votes
 
@@ -200,14 +214,20 @@ async def _fetch_top_events(current_user: Optional[str] = None) -> List[Dict]:
             # Calculate score with official account boost
             official = OFFICIAL_ACCOUNTS.get(project, "")
             for row in rows:
-                likes = row.get("like_count") or 0
+                likes    = row.get("like_count") or 0
                 retweets = row.get("retweet_count") or 0
-                replies = row.get("reply_count") or 0
-                score = likes + retweets * 2 + replies * 1.5
+                replies  = row.get("reply_count") or 0
 
+                # X-algorithm-inspired weights: retweets > replies > likes
+                score = likes * 1 + retweets * 20 + replies * 13.5
+
+                # Official account mention boost
                 text = (row.get("text") or "").lower()
                 if official and f"@{official.lower()}" in text:
                     score *= 10
+
+                # Flag genuine discussion (reply_count >= 3)
+                row["has_discussion"] = replies >= 3
 
                 row["score"] = score
 
@@ -343,6 +363,18 @@ def _esc(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+
+async def _fetch_latest_digest() -> dict:
+    """Return the latest digest row as a dict, or empty dict."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT date, content_zh, content_insight_zh, content_insight_en, audio_zh, audio_en, audio_insight_zh, audio_insight_en, created_at FROM digests ORDER BY date DESC LIMIT 1"
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else {}
+
+
 def _build_top_events_html(events: List[Dict]) -> str:
     if not events:
         return ""
@@ -394,14 +426,202 @@ def _build_top_events_html(events: List[Dict]) -> str:
   <div class="event-footer">
     <span class="event-likes">❤️ {likes:,}</span>
     <span class="event-likes">🔁 {retweets:,}</span>
-    <span class="event-likes">💬 {replies:,}</span>
+    <span class="event-likes {'discussion-badge' if ev.get('has_discussion') else ''}">💬 {replies:,}{' 🔥' if ev.get('has_discussion') else ''}</span>
     <span class="event-likes">👁 {ev.get("view_count") or 0:,}</span>
     {vote_btn}
     <a class="event-link" href="{url}" target="_blank">View Tweet ↗</a>
+    <button class="event-delete-btn" onclick="deleteEventCard(this, \'{tweet_id}\')" title="删除">🗑️</button>
   </div>
 </div>""")
     return f'<section class="top-events"><h2 class="section-title">🔥 Top Events <span class="section-sub">Last 24 hours · Sorted by engagement</span></h2><div class="event-grid">{"".join(cards)}</div></section>'
 
+
+
+def _render_digest_html(text: str) -> str:
+    """Convert plain-text digest to styled HTML bullet list."""
+    if not text:
+        return '<p style="color:#64748b;font-size:.9rem">暂无今日要闻，将于北京时间每日 08:00 自动生成。</p>'
+    import re
+    lines = text.splitlines()
+    out = []
+    i = 0
+    # Skip title line (first non-empty line)
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i < len(lines):
+        i += 1  # skip "📰 每日 X 摘要 | date" header
+    while i < len(lines):
+        line = lines[i].strip()
+        if not line:
+            i += 1
+            continue
+        if line.startswith('🔗'):
+            url = line[1:].strip()
+            if url:
+                out.append(f'<a class="digest-link" href="{_esc(url)}" target="_blank">🔗 原文链接</a>')
+        elif re.match(r'^[^\-\s].{0,3}[一-鿿 A-Z]', line) and not line.startswith('-'):
+            # Section header (e.g. "🌱 ARKREEN" or "💚 绿色比特币")
+            out.append(f'<div class="digest-proj-header">{_esc(line)}</div>')
+        elif line.startswith('- ') or line.startswith('• '):
+            body = line[2:].strip()
+            # Bold **text** markers
+            body = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', _esc(body))
+            out.append(f'<div class="digest-bullet"><span class="digest-dot"></span><span>{body}</span></div>')
+        else:
+            body = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', _esc(line))
+            out.append(f'<div class="digest-misc">{body}</div>')
+        i += 1
+    return '\n'.join(out)
+
+
+def _build_homepage_section(digest: dict, top_events: List[Dict]) -> str:
+    """Build the new home section: 今日核心判断 + Top 10 必看推文."""
+    # ── 今日核心判断 ────────────────────────────────────────────────────────
+    digest_date = (digest.get('date') or '')
+    insight_zh_html = _render_digest_html(digest.get('content_insight_zh') or '')
+    insight_en_html = _render_digest_html(digest.get('content_insight_en') or '')
+    news_html    = _render_digest_html(digest.get('content_zh') or '')
+    # 核心洞察用专属音频，今日要闻用 news 音频
+    audio_insight_zh_fn = (digest.get('audio_insight_zh') or '')
+    audio_insight_en_fn = (digest.get('audio_insight_en') or '')
+    audio_zh_fn = (digest.get('audio_zh') or '')
+    audio_en_fn = (digest.get('audio_en') or '')
+    audio_insight_zh_src = f"/audio/{audio_insight_zh_fn}" if audio_insight_zh_fn else ""
+    audio_insight_en_src = f"/audio/{audio_insight_en_fn}" if audio_insight_en_fn else ""
+    audio_zh_src = f"/audio/{audio_zh_fn}" if audio_zh_fn else ""
+    audio_en_src = f"/audio/{audio_en_fn}" if audio_en_fn else ""
+    # 收听播报按钮：有洞察音频用洞察，否则用要闻
+    insight_audio_src = audio_insight_zh_src or audio_zh_src
+    has_insight_audio = bool(insight_audio_src)
+    has_audio = bool(audio_zh_src or audio_en_src)
+    listen_btn = (
+        '<button id="cj-listen-btn" class="cj-listen-btn" onclick="cjListen()">🎙️ Audio Brief</button>'
+        if has_insight_audio else
+        '<span style="color:#64748b;font-size:.75rem">音频生成中...</span>'
+    )
+    # 语言切换 tab
+    lang_toggle = (
+        '<span style="display:inline-flex;align-items:center;gap:.2rem;margin-left:.5rem">'
+        '<button id="ins-zh-btn" onclick="insightSetLang(\'zh\')" '
+        'style="padding:.18rem .55rem;border-radius:12px;border:1.5px solid #6d28d9;background:#6d28d9;color:#fff;font-size:.72rem;font-weight:700;cursor:pointer;line-height:1.4">中文</button>'
+        '<button id="ins-en-btn" onclick="insightSetLang(\'en\')" '
+        'style="padding:.18rem .55rem;border-radius:12px;border:1.5px solid #475569;background:transparent;color:#94a3b8;font-size:.72rem;font-weight:700;cursor:pointer;line-height:1.4">EN</button>'
+        '</span>'
+    )
+    dpb_init_js = (
+        f'<script>window.addEventListener("load",function(){{dpbInit("{audio_insight_zh_src}","{audio_insight_en_src}",false);}});'
+        'function insightSetLang(l){'
+        'document.getElementById("ins-zh-body").style.display=l==="zh"?"":"none";'
+        'document.getElementById("ins-en-body").style.display=l==="en"?"":"none";'
+        'var zb=document.getElementById("ins-zh-btn"),eb=document.getElementById("ins-en-btn");'
+        'zb.style.background=l==="zh"?"#6d28d9":"transparent";zb.style.color=l==="zh"?"#fff":"#94a3b8";zb.style.borderColor=l==="zh"?"#6d28d9":"#475569";'
+        'eb.style.background=l==="en"?"#6d28d9":"transparent";eb.style.color=l==="en"?"#fff":"#94a3b8";eb.style.borderColor=l==="en"?"#6d28d9":"#475569";'
+        'dpbSetLang(l);}'
+        '</script>'
+        if has_insight_audio else ""
+    )
+    # Show insight block if we have it, otherwise fall back to news only
+    if insight_zh_html:
+        core_block = f"""
+<div class="core-judgment">
+  <div class="cj-header">
+    <span class="cj-badge">🧠 核心洞察</span>
+    <span class="cj-date">{_esc(digest_date)}</span>
+    {lang_toggle}
+    {listen_btn}
+  </div>
+  <div id="ins-zh-body" class="cj-body insight-body">{insight_zh_html}</div>
+  <div id="ins-en-body" class="cj-body insight-body" style="display:none">{insight_en_html}</div>
+</div>
+<div class="core-judgment news-block">
+  <div class="cj-header">
+    <span class="cj-badge news-badge">📰 今日要闻</span>
+    <a href="/digest" style="margin-left:.6rem;padding:.25rem .75rem;border-radius:20px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:.78rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem;white-space:nowrap;box-shadow:0 2px 8px rgba(168,85,247,.4)"><span>🎙️</span>Daily Digest</a>
+  </div>
+  <div class="cj-body">{news_html}</div>
+  <div class="cj-disclaimer">⚠️ 以上内容仅供参考，不构成任何投资建议。投资有风险，决策需谨慎。</div>
+</div>{dpb_init_js}"""
+    else:
+        core_block = f"""
+<div class="core-judgment">
+  <div class="cj-header">
+    <span class="cj-badge">🧠 AI 每日摘要</span>
+    <span class="cj-date">{_esc(digest_date)}</span>
+    {listen_btn}
+  </div>
+  <div class="cj-title" style="display:flex;align-items:center;gap:.8rem">今日要闻<a href="/digest" style="padding:.25rem .75rem;border-radius:20px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:.78rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem;white-space:nowrap;box-shadow:0 2px 8px rgba(168,85,247,.4)"><span>🎙️</span>Daily Digest</a></div>
+  <div class="cj-body">{news_html}</div>
+  <div class="cj-disclaimer">⚠️ 以上内容仅供参考，不构成任何投资建议。投资有风险，决策需谨慎。</div>
+</div>{dpb_init_js}"""
+
+    # ── 四项目置顶卡片 2×2 并排 ─────────────────────────────────────────────
+    from config import PROJECTS as _PROJ_KEYS
+    proj_order = list(_PROJ_KEYS.keys())
+
+    def _pick_featured(proj_name):
+        """Return best tweet for project: prefer has media_url, then highest engagement."""
+        candidates = [e for e in top_events if e.get('project') == proj_name]
+        with_img = [e for e in candidates if e.get('media_url')]
+        pool = with_img if with_img else candidates
+        if not pool:
+            return {}
+        return max(pool, key=lambda e: (e.get('like_count') or 0) + (e.get('retweet_count') or 0) * 2)
+
+    proj_cards = []
+    for proj in proj_order:
+        ev = _pick_featured(proj)
+        if not ev:
+            continue
+        c = _PROJECT_COLOR.get(proj, '#3b82f6')
+        uname = _esc(ev.get('username', ''))
+        raw_text = ev.get('text') or ''
+        text = _esc(raw_text[:220] + ('…' if len(raw_text) > 220 else ''))
+        likes = ev.get('like_count') or 0
+        retweets = ev.get('retweet_count') or 0
+        replies = ev.get('reply_count') or 0
+        views = ev.get('view_count') or 0
+        url = _esc(ev.get('url', '#'))
+        tweet_time = (ev.get('created_at') or ev.get('fetched_at', ''))[:16]
+        tweet_id = ev.get('tweet_id', '')
+        vote_count = ev.get('vote_count', 0)
+        user_voted = ev.get('user_voted', False)
+        media_url = ev.get('media_url') or ''
+        media_block = f'<img class="proj-card-img" src="{_esc(media_url)}" alt="media" loading="lazy">' if media_url else ''
+        if user_voted:
+            vote_btn = f'<button class="vote-btn voted" disabled>✓ Voted ({vote_count})</button>'
+        else:
+            vote_btn = f'<button class="vote-btn" onclick="vote(this,\'{tweet_id}\')">✓ Vote ({vote_count})</button>'
+
+        proj_cards.append(f"""<div class="proj-card" style="border-top:3px solid {c}">
+  <div class="proj-card-header">
+    <span class="proj-card-name" style="color:{c}">{_esc(proj)}</span>
+    <a class="proj-card-user" href="https://twitter.com/{uname}" target="_blank">@{uname}</a>
+    <span class="proj-card-time">{tweet_time}</span>
+  </div>
+  <div class="proj-card-text">{text}</div>
+  {media_block}
+  <div class="proj-card-footer">
+    <span class="top10-stat">❤️ {likes:,}</span>
+    <span class="top10-stat">🔁 {retweets:,}</span>
+    <span class="top10-stat">💬 {replies:,}</span>
+    <span class="top10-stat">👁 {views:,}</span>
+    {vote_btn}
+    <a class="top10-link" href="{url}" target="_blank">查看原文 ↗</a>
+  </div>
+</div>""")
+
+    proj_grid_html = '\n'.join(proj_cards) if proj_cards else '<p style="color:#64748b;padding:2rem;text-align:center">暂无推文数据</p>'
+
+    top10_block = f"""
+<div class="top10-section">
+  <div class="top10-header">
+    <span class="top10-icon">📰</span>
+    <span class="top10-title">新闻每日必看</span>
+    <span class="top10-sub">各赛道置顶 · 最新动态</span>
+  </div>
+  <div class="proj-card-grid">{proj_grid_html}</div>
+</div>"""
+    return f'<div id="sec-home" class="section active">{core_block}{top10_block}</div>'
 
 def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
     if not rows:
@@ -811,7 +1031,7 @@ async function addSuggestedKeyword(project, keyword, index) {{
 """
 
 
-def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], stats: Dict, top_events: List[Dict], keyword_stats: List[Dict], voted_tweets: List[Dict], nickname: str = "monitor", sub: Dict = {}) -> str:
+def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], stats: Dict, top_events: List[Dict], keyword_stats: List[Dict], voted_tweets: List[Dict], nickname: str = "monitor", sub: Dict = {}, digest: Dict = {}) -> str:
     updated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     all_rows = sorted(
         [r for rows in data.values() for r in rows],
@@ -1013,6 +1233,27 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
             'text-decoration:none;white-space:nowrap">Sign In</a>'
         )
 
+    # Build ticker bar HTML
+    ticker_bar = ""
+    _ti = locals().get("ticker_items")
+    if _ti:
+        def _ticker_text(row):
+            username = row.get("username","")
+            text = (row.get("text") or "")[:80].replace('"', '&quot;').replace('<','&lt;').replace('>','&gt;')
+            if len(row.get("text","")) > 80:
+                text += "…"
+            url = row.get("url","#") or "#"
+            replies = row.get("reply_count") or 0
+            likes = row.get("like_count") or 0
+            hot = " 🔥" if replies >= 3 else ""
+            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
+        items_html = "".join(_ticker_text(r) for r in (_ti or []))
+        # Duplicate for seamless loop
+        ticker_bar = f'''<div class="ticker-wrap">
+  <span class="ticker-label">🔥 LIVE</span>
+  <span class="ticker-track">{items_html}{items_html}</span>
+</div>'''
+
     return f"""<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -1107,6 +1348,105 @@ a.go:hover{{background:#0f172a;color:#fff}}
 .toast.show{{opacity:1;transform:translateY(0)}}
 footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .top-events{{padding:1rem 2rem;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border-bottom:1px solid #334155}}
+/* ── 新闻卡片 2x2 网格 ──────────────────────────────────────────────────── */
+.proj-card-grid{{display:grid;grid-template-columns:repeat(2,1fr);gap:1rem;padding:.5rem 0}}
+@media(max-width:768px){{.proj-card-grid{{grid-template-columns:1fr}}}}
+.proj-card{{background:#0f172a;border-radius:10px;padding:1rem;display:flex;flex-direction:column;gap:.6rem;min-height:280px}}
+.proj-card-header{{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}}
+.proj-card-name{{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em}}
+.proj-card-user{{font-size:.78rem;color:#94a3b8;text-decoration:none}}
+.proj-card-user:hover{{color:#e2e8f0}}
+.proj-card-time{{font-size:.72rem;color:#64748b;margin-left:auto}}
+.proj-card-text{{font-size:.85rem;color:#cbd5e1;line-height:1.5;flex:1}}
+.proj-card-img{{width:100%;max-height:200px;object-fit:cover;border-radius:8px}}
+.proj-card-footer{{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:.2rem}}
+
+/* ── 今日核心判断 ─────────────────────────────────────────────────────── */
+.core-judgment{{background:linear-gradient(135deg,#0d1b2a 0%,#1a1f35 100%);border:1px solid #2d3a5a;border-radius:14px;padding:1.5rem 1.8rem;margin:1.2rem 0 1rem}}
+.cj-header{{display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem}}
+.cj-badge{{background:linear-gradient(135deg,#6d28d9,#4338ca);color:#e9d5ff;font-size:.75rem;font-weight:700;padding:.25rem .7rem;border-radius:20px;white-space:nowrap}}
+.cj-date{{font-size:.8rem;color:#64748b}}
+.cj-title{{font-size:1.25rem;font-weight:700;color:#e2e8f0;margin-bottom:1rem}}
+.cj-body{{display:flex;flex-direction:column;gap:.5rem;margin-bottom:1rem}}
+.digest-proj-header{{font-size:.9rem;font-weight:700;color:#94a3b8;margin-top:.8rem;margin-bottom:.2rem;padding-left:.2rem}}
+.digest-bullet{{display:flex;align-items:flex-start;gap:.6rem;font-size:.9rem;color:#cbd5e1;line-height:1.6}}
+.digest-dot{{width:5px;height:5px;border-radius:50%;background:#6d28d9;flex-shrink:0;margin-top:.55rem}}
+.digest-link{{font-size:.78rem;color:#6d28d9;text-decoration:none;margin-left:1.1rem}}
+.digest-link:hover{{text-decoration:underline}}
+.digest-misc{{font-size:.85rem;color:#94a3b8;padding-left:.2rem}}
+.cj-disclaimer{{font-size:.75rem;color:#64748b;padding-top:.8rem;border-top:1px solid #1e2d45}}
+.news-block{{margin-top:.4rem;border-color:#1e2d45}}
+.news-badge{{background:linear-gradient(135deg,#0f4c75,#1b6ca8)}}
+.insight-body{{font-size:.92rem;line-height:1.85;color:#cbd5e1}}
+
+/* ── Floating Audio Player ──────────────────────────────────────────────── */
+#digest-player-bar{{
+  position:fixed;bottom:0;left:0;right:0;z-index:9999;
+  background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);
+  border-top:1px solid #4338ca;
+  padding:.6rem 1.2rem;
+  display:none;
+  align-items:center;gap:1rem;
+  box-shadow:0 -4px 24px rgba(99,102,241,.35);
+  font-size:.85rem;
+}}
+#digest-player-bar.visible{{display:flex}}
+.dpb-info{{display:flex;flex-direction:column;min-width:0;flex:1}}
+.dpb-title{{color:#e0e7ff;font-weight:700;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.dpb-sub{{color:#a5b4fc;font-size:.72rem}}
+.dpb-controls{{display:flex;align-items:center;gap:.5rem}}
+.dpb-btn{{background:none;border:none;cursor:pointer;color:#e0e7ff;font-size:1.3rem;padding:.2rem;line-height:1;transition:color .15s}}
+.dpb-btn:hover{{color:#a5b4fc}}
+.dpb-play{{background:#4f46e5;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:1rem;border:none;cursor:pointer;color:#fff;transition:background .15s}}
+.dpb-play:hover{{background:#6366f1}}
+.dpb-progress{{flex:1;min-width:80px;max-width:200px;display:flex;flex-direction:column;gap:.2rem}}
+.dpb-range{{-webkit-appearance:none;width:100%;height:3px;border-radius:2px;background:#4338ca;outline:none;cursor:pointer}}
+.dpb-range::-webkit-slider-thumb{{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#818cf8;cursor:pointer}}
+.dpb-time{{color:#94a3b8;font-size:.68rem;text-align:right}}
+.dpb-speed{{background:#312e81;border:1px solid #4338ca;color:#a5b4fc;font-size:.72rem;border-radius:4px;padding:.1rem .3rem;cursor:pointer}}
+.dpb-lang{{display:flex;gap:.3rem}}
+.dpb-lang button{{background:#1e1b4b;border:1px solid #4338ca;color:#a5b4fc;font-size:.7rem;border-radius:4px;padding:.15rem .45rem;cursor:pointer;transition:all .15s}}
+.dpb-lang button.active{{background:#4338ca;color:#e0e7ff}}
+.dpb-close{{background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;padding:.2rem;margin-left:.5rem}}
+.dpb-close:hover{{color:#94a3b8}}
+
+/* ── Listen button in 今日要闻 ───────────────────────────────────────────── */
+.cj-listen-btn{{
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.35rem .85rem;border-radius:20px;
+  background:linear-gradient(135deg,#4f46e5,#7c3aed);
+  color:#fff;font-size:.78rem;font-weight:700;
+  border:none;cursor:pointer;
+  box-shadow:0 2px 10px rgba(99,102,241,.4);
+  transition:opacity .15s;white-space:nowrap;
+}}
+.cj-listen-btn:hover{{opacity:.85}}
+.cj-listen-btn.playing{{background:linear-gradient(135deg,#7c3aed,#db2777)}}
+
+
+/* ── Top 10 必看 ─────────────────────────────────────────────────────── */
+.top10-section{{margin:1rem 0}}
+.top10-header{{display:flex;align-items:center;gap:.7rem;margin-bottom:1rem;padding:0 .2rem}}
+.top10-icon{{font-size:1.3rem}}
+.top10-title{{font-size:1.1rem;font-weight:700;color:#e2e8f0}}
+.top10-sub{{font-size:.78rem;color:#64748b}}
+.top10-list{{display:flex;flex-direction:column;gap:.7rem}}
+.top10-card{{display:flex;gap:1rem;background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:1rem 1.2rem;transition:border-color .15s}}
+.top10-card:hover{{border-color:#334155}}
+.top10-rank{{font-size:1.4rem;flex-shrink:0;line-height:1;margin-top:.1rem}}
+.top10-body{{flex:1;min-width:0}}
+.top10-meta{{display:flex;align-items:center;gap:.6rem;margin-bottom:.4rem;flex-wrap:wrap}}
+.top10-proj{{font-size:.75rem;font-weight:700;background:rgba(99,102,241,.15);padding:.15rem .5rem;border-radius:4px}}
+.top10-user{{font-size:.82rem;font-weight:600;text-decoration:none}}
+.top10-user:hover{{text-decoration:underline}}
+.top10-time{{font-size:.75rem;color:#64748b;margin-left:auto}}
+.top10-text{{font-size:.88rem;color:#cbd5e1;line-height:1.55;margin-bottom:.5rem}}
+.top10-img{{max-width:100%;max-height:180px;border-radius:6px;margin-bottom:.5rem;object-fit:cover}}
+.top10-footer{{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}}
+.top10-stat{{font-size:.78rem;color:#64748b}}
+.top10-link{{font-size:.78rem;color:#6d28d9;text-decoration:none;margin-left:auto}}
+.top10-link:hover{{text-decoration:underline}}
+}}
 .section-title{{color:#f1f5f9;font-size:1rem;font-weight:700;margin-bottom:.8rem;display:flex;align-items:center;gap:.5rem}}
 .section-sub{{font-size:.72rem;font-weight:400;color:#94a3b8}}
 .event-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem}}
@@ -1128,7 +1468,10 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .event-footer{{display:flex;justify-content:space-between;align-items:center;padding-top:.4rem;border-top:1px solid #334155}}
 .event-likes{{color:#fb7185;font-size:.82rem;font-weight:600}}
 .event-link{{font-size:.75rem;color:#60a5fa;text-decoration:none}}
+.discussion-badge{{color:#f59e0b;font-weight:600}}
 .event-link:hover{{text-decoration:underline}}
+.event-delete-btn{{background:none;border:none;cursor:pointer;font-size:.8rem;opacity:.55;padding:.2rem .4rem;border-radius:4px;transition:opacity .15s,background .15s}}
+.event-delete-btn:hover{{opacity:1;background:rgba(239,68,68,.12)}}
 .acct-insight{{padding:.6rem 1rem;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:.8rem;color:#92400e;margin-bottom:.8rem}}
 .ai-draft-btn{{background:#8b5cf6;color:#fff;border:none;padding:.3rem .7rem;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;transition:.2s}}
 .ai-draft-btn:hover{{background:#7c3aed}}
@@ -1337,10 +1680,13 @@ async function copyAIDraft(modalType) {{
 
 </head>
 <body>
+<span id="page-top"></span>
 <header>
   <h1>🐦 Twitter Monitor Dashboard</h1>
   <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
     <div class="meta">Updated: {updated} &nbsp;|&nbsp; Showing last 24h tweets</div>
+    <a href="#page-bottom" style="padding:.35rem .75rem;border-radius:6px;border:1px solid #334155;background:transparent;color:#64748b;font-size:.78rem;cursor:pointer;white-space:nowrap;flex-shrink:0;text-decoration:none;display:inline-block" title="Jump to bottom">↓ Bottom</a>
+    <a href="/digest" style="padding:.4rem .9rem;border-radius:20px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:.82rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;box-shadow:0 2px 12px rgba(168,85,247,.45);letter-spacing:.01em"><span style="font-size:1rem">🎙️</span> Daily Digest</a>
     <a href="/logo/" target="_blank" style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #8b5cf6;background:transparent;color:#8b5cf6;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block">🎨 Logo Agent</a>
     <button onclick="openDonate()" style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #f59e0b;background:transparent;color:#f59e0b;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap">💛 Donate</button>
     {_contract_btn}
@@ -1740,25 +2086,28 @@ async function copyAIDraft(modalType) {{
   </div>
 </div>
 {stats_html}
-{_build_top_events_html(top_events)}
 {search_html}
 <div class="tabs">
-  <div class="tab active" data-target="sec-all" style="background:#0f172a;color:#fff;border-color:#0f172a"
-       onclick="showTab(this,'sec-all')">All ({total})</div>
+  <div class="tab active" data-target="sec-home" style="background:#0f172a;color:#fff;border-color:#0f172a"
+       onclick="showTab(this,'sec-home')">🏠 Home</div>
   {''.join(proj_tabs)}
   {voted_tab}
   {room_tab}
 </div>
 <main>
-  {all_section}
+  {_build_homepage_section(digest, top_events)}
   {voted_section}
   {''.join(proj_sections)}
   {_build_room_section(keyword_stats, nickname)}
 </main>
 <div class="toast" id="toast"></div>
 <footer>
+  <a href="#page-top" style="display:inline-flex;align-items:center;gap:.4rem;margin-bottom:.8rem;padding:.45rem 1.1rem;border-radius:20px;border:1.5px solid #334155;background:#1e293b;color:#94a3b8;font-size:.82rem;font-weight:600;cursor:pointer;transition:all .2s;text-decoration:none" onmouseover="this.style.borderColor='#3b82f6';this.style.color='#60a5fa'" onmouseout="this.style.borderColor='#334155';this.style.color='#94a3b8'">↑ Back to Top</a><br>
   Twitter Monitor &middot; {total}  tweets &middot; {len(data)}  projects &middot; Auto-fetch every 8 hours
   <br><a href="/admin/keywords" style="color:#8b5cf6;text-decoration:none;margin-top:.5rem;display:inline-block">✨ Contribution Hub - Contribute Keywords</a>
+  &nbsp;&middot;&nbsp;
+  <a href="/admin/keywords" style="color:#64748b;text-decoration:none;font-size:.72rem">🔐 Admin Login</a>
+<span id="page-bottom"></span>
 </footer>
 
 <script>
@@ -1922,9 +2271,17 @@ function toggleAll(checkbox) {{
   checkboxes.forEach(cb => cb.checked = checkbox.checked);
 }}
 
+// ── Delete with reason modal ──────────────────────────────────────────────────
+var _deleteCtx = {{ids: [], cardEl: null}};
+
+function deleteEventCard(btn, tweetId) {{
+  _deleteCtx = {{ids: [tweetId], cardEl: btn.closest('.event-card')}};
+  _showDeleteModal();
+}}
+
 function deleteSingle(tweetId) {{
-  if (!confirm('确定删除这 tweets？')) return;
-  deleteItems([tweetId]);
+  _deleteCtx = {{ids: [tweetId], cardEl: null}};
+  _showDeleteModal();
 }}
 
 function deleteSelected() {{
@@ -1936,34 +2293,96 @@ function deleteSelected() {{
     toast('请先选择要删除的Tweet', false);
     return;
   }}
-  if (!confirm(`Delete selected ${{checked.length}}  tweets？`)) return;
-  var ids = checked.map(cb => cb.value);
-  deleteItems(ids);
+  _deleteCtx = {{ids: checked.map(cb => cb.value), cardEl: null}};
+  _showDeleteModal();
 }}
 
-function deleteItems(tweetIds) {{
+function _showDeleteModal() {{
+  document.querySelectorAll('.del-reason-opt').forEach(el => el.classList.remove('selected'));
+  document.getElementById('del-reason-text').value = '';
+  document.getElementById('delete-reason-modal').style.display = 'flex';
+}}
+document.addEventListener('click', function(e) {{
+  var opt = e.target.closest('.del-reason-opt');
+  if (!opt) return;
+  document.querySelectorAll('.del-reason-opt').forEach(el => el.classList.remove('selected'));
+  opt.classList.add('selected');
+}});
+
+function closeDeleteModal() {{
+  document.getElementById('delete-reason-modal').style.display = 'none';
+}}
+
+function confirmDelete() {{
+  var selected = document.querySelector('.del-reason-opt.selected');
+  var reason = selected ? selected.dataset.value : 'other';
+  var reasonText = document.getElementById('del-reason-text').value.trim();
+  closeDeleteModal();
+  deleteItems(_deleteCtx.ids, reason, reasonText, _deleteCtx.cardEl);
+}}
+
+function deleteItems(tweetIds, reason, reasonText, cardEl) {{
+  reason = reason || 'other';
+  reasonText = reasonText || '';
   fetch('/api/delete', {{
     method: 'POST',
     headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{tweet_ids: tweetIds}})
+    body: JSON.stringify({{tweet_ids: tweetIds, reason: reason, reason_text: reasonText}})
   }})
-  .then(r => r.json())
+  .then(r => r.json().then(data => ({{status: r.status, ...data}})))
   .then(data => {{
     if (data.ok) {{
-      toast(`已删除 ${{data.deleted}}  tweets`, true);
-      // Remove rows from DOM
+      toast(`已删除 ${{data.deleted}} 条推文`, true);
       tweetIds.forEach(id => {{
         var row = document.querySelector(`tr[data-id="${{id}}"]`);
         if (row) row.remove();
       }});
+      if (cardEl) cardEl.remove();
+    }} else if (data.error === 'upgrade_required') {{
+      toast('需要付费订阅才能删除推文', false);
     }} else {{
       toast('删除失败', false);
     }}
   }})
-  .catch(() => toast('删除失败，Please retry', false));
+  .catch(() => toast('删除失败，请重试', false));
 }}
 
 setTimeout(() => location.reload(), 10 * 60 * 1000);
+
+// ── Debug mode (add ?debug=1 to URL to enable) ────────────────────────────
+(function() {{
+  if (new URLSearchParams(location.search).get('debug') !== '1') return;
+  var dbgBar = document.createElement('div');
+  dbgBar.id = 'debug-bar';
+  dbgBar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#0f172a;border-top:2px solid #f59e0b;color:#fbbf24;font-size:11px;font-family:monospace;padding:4px 12px;z-index:99999;max-height:120px;overflow-y:auto;';
+  dbgBar.innerHTML = '<b>🐛 DEBUG MODE</b> ';
+  document.body.appendChild(dbgBar);
+  function dbgLog(type, msg) {{
+    var line = document.createElement('div');
+    line.style.color = type === 'error' ? '#f87171' : type === 'warn' ? '#fbbf24' : '#86efac';
+    line.textContent = '[' + new Date().toISOString().substr(11,8) + '] ' + type.toUpperCase() + ': ' + msg;
+    dbgBar.appendChild(line);
+    dbgBar.scrollTop = dbgBar.scrollHeight;
+  }}
+  window.addEventListener('error', function(e) {{
+    dbgLog('error', (e.message||'') + ' @ ' + (e.filename||'').split('/').pop() + ':' + e.lineno);
+  }});
+  window.addEventListener('unhandledrejection', function(e) {{
+    dbgLog('error', 'Promise rejection: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)));
+  }});
+  var origFetch = window.fetch;
+  window.fetch = function(url, opts) {{
+    var method = (opts && opts.method) || 'GET';
+    return origFetch.apply(this, arguments).then(function(r) {{
+      dbgLog(r.ok ? 'ok' : 'warn', method + ' ' + url + ' → ' + r.status);
+      return r;
+    }}, function(err) {{
+      dbgLog('error', method + ' ' + url + ' FAILED: ' + err.message);
+      throw err;
+    }});
+  }};
+  dbgLog('ok', 'Debug mode active. Monitoring JS errors + fetch calls.');
+}})();
 
 // ── Announcement ──────────────────────────────────────────────────────────────
 function closeAnnouncement() {{
@@ -2272,6 +2691,160 @@ async function createSharedList() {{
   }}
 }}
 </script>
+<!-- ── Delete Reason Modal ──────────────────────────────────────────── -->
+<div id="delete-reason-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:1.75rem 2rem;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <h3 style="margin:0 0 1rem;font-size:1rem;color:#f1f5f9;">&#128465; 删除原因（可选）</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:1rem;" id="del-reason-grid">
+      <button class="del-reason-opt" data-value="not_relevant" style="background:#0f172a;border:1px solid #334155;border-radius:8px;color:#cbd5e1;padding:.6rem .8rem;cursor:pointer;font-size:.82rem;text-align:left">📵 内容不相关</button>
+      <button class="del-reason-opt" data-value="poor_quality" style="background:#0f172a;border:1px solid #334155;border-radius:8px;color:#cbd5e1;padding:.6rem .8rem;cursor:pointer;font-size:.82rem;text-align:left">📉 质量低/噪音</button>
+      <button class="del-reason-opt" data-value="poor_account" style="background:#0f172a;border:1px solid #334155;border-radius:8px;color:#cbd5e1;padding:.6rem .8rem;cursor:pointer;font-size:.82rem;text-align:left">👤 账号质量差</button>
+      <button class="del-reason-opt" data-value="spam" style="background:#0f172a;border:1px solid #334155;border-radius:8px;color:#cbd5e1;padding:.6rem .8rem;cursor:pointer;font-size:.82rem;text-align:left">🚫 垃圾/广告</button>
+      <button class="del-reason-opt" data-value="duplicate" style="background:#0f172a;border:1px solid #334155;border-radius:8px;color:#cbd5e1;padding:.6rem .8rem;cursor:pointer;font-size:.82rem;text-align:left">🔁 重复内容</button>
+      <button class="del-reason-opt" data-value="other" style="background:#0f172a;border:1px solid #334155;border-radius:8px;color:#cbd5e1;padding:.6rem .8rem;cursor:pointer;font-size:.82rem;text-align:left">💬 其他</button>
+    </div>
+    <textarea id="del-reason-text" placeholder="补充说明（可选）" style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:.7rem;font-size:.82rem;resize:vertical;min-height:60px;font-family:inherit;margin-bottom:1rem;"></textarea>
+    <div style="display:flex;gap:.75rem;justify-content:flex-end;">
+      <button onclick="closeDeleteModal()" style="background:#334155;border:none;border-radius:8px;color:#94a3b8;padding:.6rem 1.2rem;cursor:pointer;font-size:.85rem;">取消</button>
+      <button onclick="confirmDelete()" style="background:#ef4444;border:none;border-radius:8px;color:#fff;padding:.6rem 1.2rem;cursor:pointer;font-size:.85rem;font-weight:600;">确认删除</button>
+    </div>
+  </div>
+</div>
+<style>
+.del-reason-opt.selected{{border-color:#ef4444!important;background:rgba(239,68,68,.12)!important;color:#fca5a5!important}}
+</style>
+
+<!-- ── Floating Daily Digest Player ─────────────────────────────────────── -->
+<div id="digest-player-bar">
+  <div class="dpb-controls">
+    <button class="dpb-btn" id="dpb-prev-btn" onclick="dpbSkip(-15)" title="后退15秒">⏮</button>
+    <button class="dpb-play" id="dpb-play-btn" onclick="dpbToggle()">▶</button>
+    <button class="dpb-btn" id="dpb-next-btn" onclick="dpbSkip(15)" title="前进15秒">⏭</button>
+  </div>
+  <div class="dpb-info">
+    <div class="dpb-title">🎙️ 今日要闻播报</div>
+    <div class="dpb-sub" id="dpb-sub">点击播放收听今日摘要</div>
+  </div>
+  <div class="dpb-progress">
+    <input type="range" class="dpb-range" id="dpb-seek" value="0" min="0" step="0.1">
+    <div class="dpb-time" id="dpb-time">0:00 / 0:00</div>
+  </div>
+  <div class="dpb-lang">
+    <button id="dpb-zh" class="active" onclick="dpbSetLang('zh')">🇨🇳 中</button>
+    <button id="dpb-en" onclick="dpbSetLang('en')">🇺🇸 EN</button>
+  </div>
+  <select class="dpb-speed" id="dpb-speed" onchange="dpbSetSpeed(this.value)">
+    <option value="0.8">0.8x</option>
+    <option value="1" selected>1x</option>
+    <option value="1.25">1.25x</option>
+    <option value="1.5">1.5x</option>
+    <option value="2">2x</option>
+  </select>
+  <button class="dpb-close" onclick="dpbClose()" title="关闭">✕</button>
+</div>
+
+<audio id="dpb-audio" preload="none"></audio>
+
+<script>
+// ── Digest Player ────────────────────────────────────────────────────────────
+const _dpb = {{
+  audio: document.getElementById('dpb-audio'),
+  bar: document.getElementById('digest-player-bar'),
+  playBtn: document.getElementById('dpb-play-btn'),
+  seek: document.getElementById('dpb-seek'),
+  timeEl: document.getElementById('dpb-time'),
+  subEl: document.getElementById('dpb-sub'),
+  lang: 'zh',
+  srcs: {{zh: '', en: ''}},
+  loaded: false,
+}};
+
+function dpbInit(zhSrc, enSrc, autoplay) {{
+  _dpb.srcs.zh = zhSrc;
+  _dpb.srcs.en = enSrc;
+  if (!zhSrc && !enSrc) return;
+  _dpb.bar.classList.add('visible');
+  dpbSetLang(_dpb.lang);
+  if (autoplay) dpbPlay();
+}}
+
+function dpbSetLang(lang) {{
+  _dpb.lang = lang;
+  document.getElementById('dpb-zh').className = lang === 'zh' ? 'active' : '';
+  document.getElementById('dpb-en').className = lang === 'en' ? 'active' : '';
+  const src = _dpb.srcs[lang];
+  if (!src) {{ _dpb.subEl.textContent = '该语言音频暂未生成'; return; }}
+  const t = _dpb.audio.currentTime;
+  _dpb.audio.src = src;
+  _dpb.audio.currentTime = 0;
+  _dpb.loaded = false;
+  if (!_dpb.audio.paused) _dpb.audio.play();
+}}
+
+function dpbPlay() {{
+  if (!_dpb.audio.src) dpbSetLang(_dpb.lang);
+  _dpb.audio.play();
+}}
+
+function dpbToggle() {{
+  if (_dpb.audio.paused) {{ dpbPlay(); }}
+  else {{ _dpb.audio.pause(); }}
+}}
+
+function dpbSkip(sec) {{
+  _dpb.audio.currentTime = Math.max(0, _dpb.audio.currentTime + sec);
+}}
+
+function dpbSetSpeed(v) {{
+  _dpb.audio.playbackRate = parseFloat(v);
+}}
+
+function dpbClose() {{
+  _dpb.audio.pause();
+  _dpb.bar.classList.remove('visible');
+}}
+
+function _dpbFmt(s) {{
+  s = Math.floor(s || 0);
+  return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+}}
+
+_dpb.audio.addEventListener('play', () => {{
+  _dpb.playBtn.textContent = '⏸';
+  const btn = document.getElementById('cj-listen-btn');
+  if (btn) {{ btn.textContent = '⏸ Pause'; btn.classList.add('playing'); }}
+}});
+_dpb.audio.addEventListener('pause', () => {{
+  _dpb.playBtn.textContent = '▶';
+  const btn = document.getElementById('cj-listen-btn');
+  if (btn) {{ btn.textContent = '🎙️ Audio Brief'; btn.classList.remove('playing'); }}
+}});
+_dpb.audio.addEventListener('ended', () => {{
+  _dpb.playBtn.textContent = '▶';
+  _dpb.seek.value = 0;
+}});
+_dpb.audio.addEventListener('timeupdate', () => {{
+  const d = _dpb.audio.duration || 0;
+  const c = _dpb.audio.currentTime || 0;
+  _dpb.seek.value = d ? (c / d * 100) : 0;
+  _dpb.seek.max = 100;
+  _dpb.timeEl.textContent = _dpbFmt(c) + ' / ' + _dpbFmt(d);
+  _dpb.subEl.textContent = '今日要闻 · ' + new Date().toLocaleDateString('zh-CN');
+}});
+_dpb.seek.addEventListener('input', () => {{
+  const d = _dpb.audio.duration || 0;
+  _dpb.audio.currentTime = d * (_dpb.seek.value / 100);
+}});
+
+// Listen button
+function cjListen() {{
+  if (!_dpb.bar.classList.contains('visible')) {{
+    _dpb.bar.classList.add('visible');
+  }}
+  dpbToggle();
+}}
+</script>
+
 </body>
 </html>"""
 
@@ -2296,7 +2869,8 @@ async def dashboard(request: Request) -> str:
     top_events = await _fetch_top_events(current_user=current_user_id)
     keyword_stats = await _fetch_keyword_stats()
     voted_tweets = await _fetch_tweets(voted_only=True, current_user=current_user_id)
-    return _build_page(data, accs, stats, top_events, keyword_stats, voted_tweets, nickname, sub)
+    digest = await _fetch_latest_digest()
+    return _build_page(data, accs, stats, top_events, keyword_stats, voted_tweets, nickname, sub, digest)
 
 
 class VoteRequest(BaseModel):
@@ -2305,6 +2879,8 @@ class VoteRequest(BaseModel):
 
 class DeleteRequest(BaseModel):
     tweet_ids: List[str]
+    reason: str = "other"
+    reason_text: str = ""
 
 
 class AIRetweetRequest(BaseModel):
@@ -2334,9 +2910,14 @@ async def api_vote(req: VoteRequest, user: Dict = Depends(_user_auth)) -> JSONRe
 
 
 @app.post("/api/delete")
-async def api_delete(req: DeleteRequest, _: None = Depends(_auth)) -> JSONResponse:
-    from db.database import delete_tweets
-    count = await delete_tweets(req.tweet_ids)
+async def api_delete(req: DeleteRequest, user: Dict = Depends(_user_auth)) -> JSONResponse:
+    from db.database import record_and_delete_tweets
+    sub = await _auth_module.get_subscription(user["id"]) or {}
+    tier = sub.get("tier", "free")
+    status_val = sub.get("status", "active")
+    if tier not in ("basic", "pro") or status_val != "active":
+        return JSONResponse({"ok": False, "error": "upgrade_required"}, status_code=403)
+    count = await record_and_delete_tweets(req.tweet_ids, req.reason, req.reason_text)
     return JSONResponse({"ok": True, "deleted": count})
 
 
@@ -2441,6 +3022,143 @@ async def api_accounts(
     return result
 
 
+
+
+@app.get("/api/admin/dashboard")
+async def api_admin_dashboard(_: str = Depends(_auth)) -> JSONResponse:
+    """Real-time dashboard data for admin console."""
+    import subprocess, shutil, os, time
+    from pathlib import Path
+
+    result = {}
+
+    # ── Users & subscriptions ─────────────────────────────────────────────
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        async with db.execute("""
+            SELECT u.id, u.nickname, u.email, u.x_username, u.auth_type,
+                   u.created_at, u.last_login,
+                   s.tier, s.status AS sub_status, s.expires_at
+            FROM users u
+            LEFT JOIN subscriptions s ON u.id = s.user_id
+            ORDER BY u.created_at
+        """) as cur:
+            users = [dict(r) for r in await cur.fetchall()]
+
+        async with db.execute("""
+            SELECT tier, count(*) as cnt FROM subscriptions
+            WHERE status='active' GROUP BY tier
+        """) as cur:
+            tier_counts = {r[0]: r[1] for r in await cur.fetchall()}
+
+        async with db.execute("""
+            SELECT project, count(*) as cnt FROM tweets GROUP BY project
+        """) as cur:
+            tweet_by_project = {r[0]: r[1] for r in await cur.fetchall()}
+
+        total_tweets = sum(tweet_by_project.values())
+
+        async with db.execute("""
+            SELECT date, created_at FROM digests ORDER BY date DESC LIMIT 1
+        """) as cur:
+            row = await cur.fetchone()
+            last_digest = dict(row) if row else {}
+
+    result["users"] = {
+        "total": len(users),
+        "pro": tier_counts.get("pro", 0),
+        "basic": tier_counts.get("basic", 0),
+        "free": len(users) - sum(tier_counts.values()),
+        "list": users,
+    }
+
+    result["tweets"] = {
+        "total": total_tweets,
+        "by_project": tweet_by_project,
+    }
+
+    result["digest"] = last_digest
+
+    # ── System stats ──────────────────────────────────────────────────────
+    try:
+        with open("/proc/meminfo") as f:
+            mem = {}
+            for line in f:
+                k, v = line.split(":")
+                mem[k.strip()] = int(v.strip().split()[0])
+        mem_total_mb = mem["MemTotal"] // 1024
+        mem_avail_mb = mem.get("MemAvailable", mem.get("MemFree", 0)) // 1024
+        mem_used_mb = mem_total_mb - mem_avail_mb
+        swap_total_mb = mem.get("SwapTotal", 0) // 1024
+        swap_free_mb = mem.get("SwapFree", 0) // 1024
+        swap_used_mb = swap_total_mb - swap_free_mb
+    except Exception:
+        mem_total_mb = mem_used_mb = swap_total_mb = swap_used_mb = 0
+
+    try:
+        disk = shutil.disk_usage("/var/www/twitter-monitor/data")
+        disk_total_gb = round(disk.total / 1e9, 1)
+        disk_used_gb = round(disk.used / 1e9, 1)
+    except Exception:
+        disk_total_gb = disk_used_gb = 0
+
+    try:
+        load1, load5, load15 = os.getloadavg()
+    except Exception:
+        load1 = 0.0
+
+    try:
+        with open("/proc/uptime") as f:
+            uptime_s = int(float(f.read().split()[0]))
+        days, rem = divmod(uptime_s, 86400)
+        hours = rem // 3600
+        uptime_str = f"{days}d {hours}h"
+    except Exception:
+        uptime_str = "unknown"
+
+    result["system"] = {
+        "mem_used_mb": mem_used_mb,
+        "mem_total_mb": mem_total_mb,
+        "mem_pct": round(mem_used_mb / mem_total_mb * 100) if mem_total_mb else 0,
+        "swap_used_mb": swap_used_mb,
+        "swap_total_mb": swap_total_mb,
+        "disk_used_gb": disk_used_gb,
+        "disk_total_gb": disk_total_gb,
+        "disk_pct": round(disk_used_gb / disk_total_gb * 100) if disk_total_gb else 0,
+        "load1": round(load1, 2),
+        "uptime": uptime_str,
+    }
+
+    # ── Service status ────────────────────────────────────────────────────
+    try:
+        out = subprocess.check_output(
+            ["sudo", "supervisorctl", "status"], text=True, timeout=5
+        )
+        services = []
+        for line in out.strip().splitlines():
+            parts = line.split()
+            if len(parts) >= 2:
+                services.append({"name": parts[0], "status": parts[1]})
+    except Exception:
+        services = []
+    result["services"] = services
+
+    # ── Backups ───────────────────────────────────────────────────────────
+    backup_dir = Path("/var/www/twitter-monitor/backups")
+    backups = []
+    if backup_dir.exists():
+        for f in sorted(backup_dir.glob("*.db"), key=lambda x: x.stat().st_mtime, reverse=True)[:7]:
+            stat = f.stat()
+            backups.append({
+                "name": f.name,
+                "size_kb": round(stat.st_size / 1024),
+                "mtime": time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)),
+            })
+    result["backups"] = backups
+
+    return JSONResponse(result)
+
 @app.post("/api/admin/cleanup-low-followers")
 async def api_cleanup_low_followers(_: None = Depends(_auth)) -> JSONResponse:
     from monitor.keyword_monitor import cleanup_low_follower_accounts
@@ -2449,7 +3167,7 @@ async def api_cleanup_low_followers(_: None = Depends(_auth)) -> JSONResponse:
 
 
 @app.get("/admin/keywords", response_class=HTMLResponse)
-async def keywords_admin(_: None = Depends(_auth)) -> str:
+async def keywords_admin(admin_user: str = Depends(_auth)) -> str:
     """Keyword management page."""
     from config import PROJECTS
 
@@ -2470,6 +3188,27 @@ async def keywords_admin(_: None = Depends(_auth)) -> str:
   </div>
 </div>
 """)
+
+    # Build ticker bar HTML
+    ticker_bar = ""
+    _ti = locals().get("ticker_items")
+    if _ti:
+        def _ticker_text(row):
+            username = row.get("username","")
+            text = (row.get("text") or "")[:80].replace('"', '&quot;').replace('<','&lt;').replace('>','&gt;')
+            if len(row.get("text","")) > 80:
+                text += "…"
+            url = row.get("url","#") or "#"
+            replies = row.get("reply_count") or 0
+            likes = row.get("like_count") or 0
+            hot = " 🔥" if replies >= 3 else ""
+            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
+        items_html = "".join(_ticker_text(r) for r in (_ti or []))
+        # Duplicate for seamless loop
+        ticker_bar = f'''<div class="ticker-wrap">
+  <span class="ticker-label">🔥 LIVE</span>
+  <span class="ticker-track">{items_html}{items_html}</span>
+</div>'''
 
     return f"""<!DOCTYPE html>
 <html lang="zh">
@@ -2630,7 +3369,7 @@ function addSuggestion(project, keyword, index) {{
     body: JSON.stringify({{
       project: project,
       keyword: keyword,
-      contributor: '{nickname}'  // Current logged-in user
+      contributor: '{admin_user}'  // Current logged-in user
     }})
   }})
   .then(r => r.json())
@@ -2684,7 +3423,7 @@ function addManualKeyword() {{
     body: JSON.stringify({{
       project: project,
       keyword: keyword,
-      contributor: '{nickname}'
+      contributor: '{admin_user}'
     }})
   }})
   .then(r => r.json())
@@ -3888,6 +4627,7 @@ a{{color:#38bdf8;text-decoration:none}}
 <th>Nickname</th><th>Email / ID</th><th>Blocked Keywords</th><th>Blocked Accounts</th>
 </tr></thead><tbody>{rows_html}</tbody></table>
 <p style="margin-top:1rem"><a href="/">← Back to dashboard</a></p>
+
 </body></html>""")
 
 
@@ -4005,6 +4745,27 @@ async def shared_list_page(list_id: str, request: Request):
 
     login_prompt = "" if current_user_id else '<p style="background:#1e3a2f;color:#4ade80;padding:.8rem;border-radius:8px;margin-bottom:1rem;font-size:.9rem">🔒 <a href="/login" style="color:#4ade80;font-weight:600">Sign in</a> to vote on tweets in this shared list.</p>'
 
+    # Build ticker bar HTML
+    ticker_bar = ""
+    _ti = locals().get("ticker_items")
+    if _ti:
+        def _ticker_text(row):
+            username = row.get("username","")
+            text = (row.get("text") or "")[:80].replace('"', '&quot;').replace('<','&lt;').replace('>','&gt;')
+            if len(row.get("text","")) > 80:
+                text += "…"
+            url = row.get("url","#") or "#"
+            replies = row.get("reply_count") or 0
+            likes = row.get("like_count") or 0
+            hot = " 🔥" if replies >= 3 else ""
+            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
+        items_html = "".join(_ticker_text(r) for r in (_ti or []))
+        # Duplicate for seamless loop
+        ticker_bar = f'''<div class="ticker-wrap">
+  <span class="ticker-label">🔥 LIVE</span>
+  <span class="ticker-track">{items_html}{items_html}</span>
+</div>'''
+
     return f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{_esc(shared_list['title'])} — Shared List</title>
@@ -4117,6 +4878,13 @@ async def api_subscribe_akre(req: AkreSubscribeRequest, user: Dict = Depends(_us
     if await is_tx_used(tx):
         raise HTTPException(status_code=409, detail="This transaction has already been used")
 
+    from db.database import record_payment_submission, mark_payment_activated, mark_pending_tx_resolved
+
+    polygonscan = f"https://polygonscan.com/tx/{tx}"
+
+    # Always record submission first — durable audit trail regardless of outcome
+    await record_payment_submission(tx, user["id"], tier, period, polygonscan)
+
     result = await _auth_module.verify_akre_tx(tx, tier, period, _DONATE_EVM_ADDR)
     if not result["ok"]:
         # Blockchain not yet confirmed — queue for async retry
@@ -4128,14 +4896,17 @@ async def api_subscribe_akre(req: AkreSubscribeRequest, user: Dict = Depends(_us
 
     await _auth_module.upsert_subscription(user["id"], tier, "", tx, "active", expires_at)
     await record_tx_hash(tx, user["id"])
+    await mark_payment_activated(tx)
 
     return {"ok": True, "tier": tier, "expires_at": expires_at, "amount": result["amount"]}
 
 
 @app.get("/api/subscribe/status")
 async def api_subscribe_status(tx_hash: str, user: Dict = Depends(_user_auth)):
-    """Poll status of a pending AKRE subscription TX."""
-    from db.database import get_pending_tx_status, is_tx_used
+    """Poll status of a pending AKRE subscription TX. Re-verifies on each call."""
+    import datetime as _dt
+    from db.database import (get_pending_tx_status, is_tx_used, record_tx_hash,
+                              mark_pending_tx_resolved, mark_payment_activated)
 
     tx = tx_hash.strip().lower()
     if not tx.startswith("0x") or len(tx) != 66:
@@ -4147,15 +4918,32 @@ async def api_subscribe_status(tx_hash: str, user: Dict = Depends(_user_auth)):
 
     row = await get_pending_tx_status(tx)
     if row is None:
-        raise HTTPException(status_code=404, detail="TX not found in queue")
+        # Not in queue — attempt fresh verification (e.g. page reload case)
+        await enqueue_pending_tx(tx, user["id"], "pro", "annual")
+        row = await get_pending_tx_status(tx)
+
+    if row and row["status"] == "pending":
+        # Re-attempt blockchain verification on every poll
+        result = await _auth_module.verify_akre_tx(tx, row["tier"], row["period"], _DONATE_EVM_ADDR)
+        if result["ok"]:
+            days = 365 if row["period"] == "annual" else 30
+            expires_at = (_dt.datetime.utcnow() + _dt.timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+            await _auth_module.upsert_subscription(user["id"], row["tier"], "", tx, "active", expires_at)
+            await record_tx_hash(tx, user["id"])
+            await mark_pending_tx_resolved(tx, "confirmed")
+            await mark_payment_activated(tx)
+            return {"status": "confirmed", "tier": row["tier"], "expires_at": expires_at}
+        elif "invalid" in (result.get("error") or "").lower() or "not found" in (result.get("error") or "").lower():
+            await mark_pending_tx_resolved(tx, "failed", result["error"])
+            return {"status": "failed", "error": result["error"]}
 
     return {
-        "status":       row["status"],   # pending | confirmed | failed
-        "tier":         row["tier"],
-        "period":       row["period"],
-        "error":        row["error"],
-        "submitted_at": row["submitted_at"],
-        "resolved_at":  row["resolved_at"],
+        "status":       row["status"] if row else "pending",
+        "tier":         row["tier"] if row else "",
+        "period":       row["period"] if row else "",
+        "error":        row["error"] if row else "",
+        "submitted_at": row["submitted_at"] if row else "",
+        "resolved_at":  row["resolved_at"] if row else "",
     }
 
 
@@ -4282,6 +5070,27 @@ async def settings_page(user: Dict = Depends(_user_auth)):
     {lists_html}
   </div>"""
 
+    # Build ticker bar HTML
+    ticker_bar = ""
+    _ti = locals().get("ticker_items")
+    if _ti:
+        def _ticker_text(row):
+            username = row.get("username","")
+            text = (row.get("text") or "")[:80].replace('"', '&quot;').replace('<','&lt;').replace('>','&gt;')
+            if len(row.get("text","")) > 80:
+                text += "…"
+            url = row.get("url","#") or "#"
+            replies = row.get("reply_count") or 0
+            likes = row.get("like_count") or 0
+            hot = " 🔥" if replies >= 3 else ""
+            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
+        items_html = "".join(_ticker_text(r) for r in (_ti or []))
+        # Duplicate for seamless loop
+        ticker_bar = f'''<div class="ticker-wrap">
+  <span class="ticker-label">🔥 LIVE</span>
+  <span class="ticker-track">{items_html}{items_html}</span>
+</div>'''
+
     return f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Settings — Daily X Digest</title>
@@ -4389,14 +5198,33 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
 
     <!-- Payment form -->
     <div id="sub-form" style="display:none;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:1.2rem">
-      <h3 id="sub-form-title" style="font-size:1rem;margin-bottom:.8rem;color:#f1f5f9"></h3>
-      <p style="font-size:.83rem;color:#94a3b8;margin-bottom:.8rem">
-        Send <strong id="sub-amount"></strong> $AKRE to:<br>
-        <code style="background:#1e293b;padding:.3rem .5rem;border-radius:4px;font-size:.8rem;color:#3b82f6;word-break:break-all">{_DONATE_EVM}</code>
-      </p>
-      <p style="font-size:.78rem;color:#64748b;margin-bottom:1rem">
-        Network: <strong>Polygon</strong> · Contract: <a href="https://polygonscan.com/token/0xE9c21De62C5C5d0cEAcCe2762bF655AfDcEB7ab3" target="_blank" style="color:#22c55e">AKRE</a>
-      </p>
+      <h3 id="sub-form-title" style="font-size:1rem;margin-bottom:1rem;color:#f1f5f9"></h3>
+
+      <!-- Price block -->
+      <div style="background:#0a1628;border:1px solid #1e3a5f;border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem;text-align:center">
+        <div style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem">Amount to send</div>
+        <div style="font-size:2rem;font-weight:800;color:#3b82f6;line-height:1.1">
+          <span id="sub-amount"></span>
+          <span style="font-size:1rem;font-weight:600;color:#60a5fa;margin-left:.3rem">$AKRE</span>
+        </div>
+      </div>
+
+      <!-- Wallet address block -->
+      <div style="margin-bottom:1rem">
+        <div style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem">Send to</div>
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <code id="donate-addr" style="flex:1;background:#1e293b;border:1px solid #334155;border-radius:6px;
+                padding:.5rem .7rem;font-size:.78rem;color:#3b82f6;word-break:break-all;line-height:1.4">{_DONATE_EVM}</code>
+          <button onclick="copyDonateAddr()" id="copy-addr-btn"
+            style="flex-shrink:0;padding:.5rem .75rem;background:#1e3a5f;border:1.5px solid #3b82f6;
+                   color:#60a5fa;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap">
+            📋 Copy
+          </button>
+        </div>
+        <p style="font-size:.74rem;color:#64748b;margin-top:.4rem">
+          Network: <strong style="color:#94a3b8">Polygon</strong> · Contract: <a href="https://polygonscan.com/token/0xE9c21De62C5C5d0cEAcCe2762bF655AfDcEB7ab3" target="_blank" style="color:#22c55e">AKRE ↗</a>
+        </p>
+      </div>
       <div style="margin-bottom:.8rem">
         <label style="font-size:.82rem;color:#94a3b8;display:block;margin-bottom:.3rem">Billing period</label>
         <div style="display:flex;gap:.6rem">
@@ -4420,18 +5248,18 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
   <div id="pay-modal" style="background:#0f172a;border:1px solid #334155;border-radius:12px;padding:1.5rem;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.5)">
     <!-- Step 1: verifying -->
     <div id="pms-verifying">
-      <div style="font-size:1.1rem;font-weight:700;color:#f1f5f9;margin-bottom:.6rem">✅ Payment received!</div>
-      <p style="font-size:.85rem;color:#94a3b8;margin-bottom:.8rem">We're verifying your transaction on Polygon.</p>
+      <div style="font-size:1.1rem;font-weight:700;color:#f1f5f9;margin-bottom:.4rem">🔍 Verifying your payment…</div>
+      <p style="font-size:.83rem;color:#94a3b8;margin-bottom:.8rem">Transaction submitted — checking Polygon blockchain automatically.</p>
       <div style="background:#1e293b;border-radius:6px;padding:.6rem .8rem;margin-bottom:.8rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem">
         <code id="pms-txhash" style="font-size:.75rem;color:#3b82f6;word-break:break-all"></code>
         <a id="pms-txlink" href="#" target="_blank" style="font-size:.75rem;color:#22c55e;white-space:nowrap;flex-shrink:0">Polygonscan ↗</a>
       </div>
-      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem">
+      <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.5rem">
         <div class="pay-spinner"></div>
-        <span id="pms-progress" style="font-size:.82rem;color:#94a3b8">Checking… (0/12)</span>
+        <span id="pms-progress" style="font-size:.82rem;color:#94a3b8">Auto-checking… (1/12)</span>
       </div>
-      <p style="font-size:.78rem;color:#64748b;margin-bottom:1rem">Usually takes 1–2 minutes.</p>
-      <button onclick="checkStatusNow()" style="width:100%;padding:.5rem;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#94a3b8;font-size:.82rem;cursor:pointer">Check status now</button>
+      <p style="font-size:.75rem;color:#64748b;margin-bottom:1rem">Checks every 5 seconds · Usually confirms within 1–2 minutes</p>
+      <button onclick="checkStatusNow()" style="width:100%;padding:.45rem;border-radius:6px;border:1px solid #1e3a5f;background:transparent;color:#475569;font-size:.78rem;cursor:pointer">Force check now</button>
     </div>
     <!-- Step 2: success -->
     <div id="pms-success" style="display:none;text-align:center">
@@ -4481,8 +5309,7 @@ async function createKey() {{
   }});
   const d = await r.json();
   if (d.ok) {{
-    alert('API Key created!\\n\\n' + d.key + '\\n\\nSave this key now - you won\\'t see it again.');
-    location.reload();
+    showApiKeyModal(d.key);
   }}
 }}
 
@@ -4516,6 +5343,29 @@ function openSubscribe(tier) {{
     annualBtn.style.display = '';
   }}
   updateSubForm();
+}}
+
+async function copyDonateAddr() {{
+  const addr = document.getElementById('donate-addr').textContent.trim();
+  const btn = document.getElementById('copy-addr-btn');
+  try {{
+    await navigator.clipboard.writeText(addr);
+    btn.textContent = '✓ Copied!';
+    btn.style.background = '#166534';
+    btn.style.borderColor = '#22c55e';
+    btn.style.color = '#4ade80';
+    setTimeout(() => {{
+      btn.textContent = '📋 Copy';
+      btn.style.background = '#1e3a5f';
+      btn.style.borderColor = '#3b82f6';
+      btn.style.color = '#60a5fa';
+    }}, 2000);
+  }} catch(e) {{
+    const range = document.createRange();
+    range.selectNode(document.getElementById('donate-addr'));
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  }}
 }}
 
 function closeSubscribe() {{
@@ -4600,7 +5450,7 @@ function _startPayPoll() {{
 async function _doPoll() {{
   _payPollCount++;
   document.getElementById('pms-progress').textContent =
-    'Checking… (' + _payPollCount + '/' + _PAY_POLL_MAX + ')';
+    'Auto-checking… (' + _payPollCount + '/' + _PAY_POLL_MAX + ')';
 
   if (_payPollCount >= _PAY_POLL_MAX) {{
     clearInterval(_payPollTimer);
@@ -4629,7 +5479,7 @@ async function checkStatusNow() {{
   _payPollCount = 0;
   document.getElementById('pms-later').style.display = 'none';
   document.getElementById('pms-verifying').style.display = '';
-  document.getElementById('pms-progress').textContent = 'Checking…';
+  document.getElementById('pms-progress').textContent = 'Auto-checking…';
   clearInterval(_payPollTimer);
   await _doPoll();
   if (_payPollCount < _PAY_POLL_MAX) _startPayPoll();
@@ -4689,6 +5539,62 @@ async function deleteList(listId) {{
   }});
   if (r.ok) location.reload();
   else alert('Failed to delete list');
+}}
+</script>
+
+<!-- API Key Created Modal -->
+<div id="apikey-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:3000;align-items:center;justify-content:center">
+  <div style="background:#1e293b;border-radius:16px;padding:2rem;max-width:480px;width:calc(100% - 2rem);box-shadow:0 25px 60px rgba(0,0,0,.6)">
+    <div style="text-align:center;margin-bottom:1.5rem">
+      <div style="font-size:2.5rem;margin-bottom:.5rem">🔑</div>
+      <h3 style="color:#f1f5f9;font-size:1.2rem;margin-bottom:.3rem">API Key Created</h3>
+      <p style="color:#94a3b8;font-size:.85rem">Save this key now — you won't see it again.</p>
+    </div>
+    <div style="background:#0f172a;border-radius:10px;padding:1rem;margin-bottom:1.2rem">
+      <p style="color:#64748b;font-size:.72rem;margin-bottom:.4rem;letter-spacing:.05em;text-transform:uppercase">Your API Key</p>
+      <div style="display:flex;gap:.6rem;align-items:center">
+        <input id="apikey-value" type="text" readonly
+          style="flex:1;background:#1e293b;border:1.5px solid #334155;border-radius:8px;
+                 padding:.55rem .8rem;color:#4ade80;font-family:monospace;font-size:.85rem;
+                 outline:none;cursor:text;user-select:all;-webkit-user-select:all"
+          onclick="this.select()">
+        <button onclick="copyApiKey()" id="apikey-copy-btn"
+          style="padding:.55rem 1rem;background:#22c55e;color:#fff;border:none;border-radius:8px;
+                 font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
+          Copy
+        </button>
+      </div>
+    </div>
+    <button onclick="closeApiKeyModal()"
+      style="width:100%;padding:.7rem;background:#3b82f6;color:#fff;border:none;
+             border-radius:8px;font-size:.95rem;font-weight:600;cursor:pointer">
+      Done
+    </button>
+  </div>
+</div>
+
+<script>
+function showApiKeyModal(key) {{
+  document.getElementById('apikey-value').value = key;
+  document.getElementById('apikey-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('apikey-value').select(), 100);
+}}
+function closeApiKeyModal() {{
+  document.getElementById('apikey-modal').style.display = 'none';
+  location.reload();
+}}
+async function copyApiKey() {{
+  const inp = document.getElementById('apikey-value');
+  inp.select();
+  try {{
+    await navigator.clipboard.writeText(inp.value);
+    const btn = document.getElementById('apikey-copy-btn');
+    btn.textContent = '✓ Copied!';
+    btn.style.background = '#16a34a';
+    setTimeout(() => {{ btn.textContent = 'Copy'; btn.style.background = '#22c55e'; }}, 2000);
+  }} catch(e) {{
+    document.execCommand('copy');
+  }}
 }}
 </script>
 </body></html>"""
@@ -4837,7 +5743,23 @@ async def _fetch_digest_dates(limit: int = 30) -> List[str]:
     return [r[0] for r in rows]
 
 
-def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: str) -> str:
+
+async def _fetch_ticker_items(limit: int = 15) -> list:
+    """Fetch top engaged tweets from last 48h for the digest ticker."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT username, text, like_count, retweet_count, reply_count, url, project
+               FROM tweets
+               WHERE (like_count + retweet_count + reply_count) > 0
+               ORDER BY (like_count * 1 + retweet_count * 20 + reply_count * 13.5) DESC
+               LIMIT ?""",
+            (limit,)
+        ) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+    return rows
+
+def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: str, ticker_items: list = None) -> str:
     date_options = "".join(
         f'<option value="{d}" {"selected" if d == selected_date else ""}>{d}</option>'
         for d in dates
@@ -4869,15 +5791,18 @@ def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: 
 
         content_block = f"""
 <div style="background:#1e293b;border-radius:12px;padding:1.5rem;margin-bottom:1.5rem">
-  <div style="display:flex;gap:.5rem;margin-bottom:1.2rem">
-    <button onclick="showDigestTab('zh')" id="tab-zh"
-      style="padding:.5rem 1.2rem;border-radius:6px;border:none;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer;font-size:.9rem">
-      🇨🇳 中文版
-    </button>
-    <button onclick="showDigestTab('en')" id="tab-en"
-      style="padding:.5rem 1.2rem;border-radius:6px;border:none;background:#334155;color:#94a3b8;font-weight:600;cursor:pointer;font-size:.9rem">
-      🇺🇸 English
-    </button>
+  <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.2rem">
+    <span style="background:linear-gradient(135deg,#0f4c75,#1b6ca8);color:#bae6fd;font-size:.75rem;font-weight:700;padding:.25rem .7rem;border-radius:20px">📰 今日要闻</span>
+    <div style="display:flex;gap:.5rem;margin-left:auto">
+      <button onclick="showDigestTab('zh')" id="tab-zh"
+        style="padding:.4rem 1rem;border-radius:6px;border:none;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer;font-size:.85rem">
+        🇨🇳 中文
+      </button>
+      <button onclick="showDigestTab('en')" id="tab-en"
+        style="padding:.4rem 1rem;border-radius:6px;border:none;background:#334155;color:#94a3b8;font-weight:600;cursor:pointer;font-size:.85rem">
+        🇺🇸 EN
+      </button>
+    </div>
   </div>
 
   <div id="digest-zh">
@@ -4902,6 +5827,7 @@ def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: 
 
   {tweet_link}
 </div>
+<div style="font-size:.75rem;color:#64748b;padding:.5rem .2rem">⚠️ 以上内容仅供参考，不构成任何投资建议。投资有风险，决策需谨慎。</div>
 <script>
 function showDigestTab(lang) {{
   document.getElementById('digest-zh').style.display = lang === 'zh' ? 'block' : 'none';
@@ -4913,6 +5839,27 @@ function showDigestTab(lang) {{
 }}
 </script>
 """
+
+    # Build ticker bar HTML
+    ticker_bar = ""
+    _ti = locals().get("ticker_items")
+    if _ti:
+        def _ticker_text(row):
+            username = row.get("username","")
+            text = (row.get("text") or "")[:80].replace('"', '&quot;').replace('<','&lt;').replace('>','&gt;')
+            if len(row.get("text","")) > 80:
+                text += "…"
+            url = row.get("url","#") or "#"
+            replies = row.get("reply_count") or 0
+            likes = row.get("like_count") or 0
+            hot = " 🔥" if replies >= 3 else ""
+            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
+        items_html = "".join(_ticker_text(r) for r in (_ti or []))
+        # Duplicate for seamless loop
+        ticker_bar = f'''<div class="ticker-wrap">
+  <span class="ticker-label">🔥 LIVE</span>
+  <span class="ticker-track">{items_html}{items_html}</span>
+</div>'''
 
     return f"""<!DOCTYPE html>
 <html lang="zh">
@@ -4928,14 +5875,25 @@ header h1{{font-size:1.1rem;font-weight:700;color:#f1f5f9}}
 .back-link{{color:#60a5fa;text-decoration:none;font-size:.85rem}}
 .back-link:hover{{text-decoration:underline}}
 main{{max-width:900px;margin:0 auto;padding:1.5rem 1.5rem}}
+.ticker-wrap{{background:#020617;border-bottom:1px solid #1e293b;overflow:hidden;white-space:nowrap;padding:.45rem 0;position:sticky;top:0;z-index:100}}
+.ticker-label{{display:inline-block;background:#3b82f6;color:#fff;font-size:.7rem;font-weight:700;padding:.2rem .7rem;border-radius:3px;margin-right:.8rem;vertical-align:middle;letter-spacing:.05em}}
+.ticker-track{{display:inline-block;animation:ticker-scroll 60s linear infinite;will-change:transform}}
+.ticker-track:hover{{animation-play-state:paused}}
+.ticker-item{{display:inline-block;margin-right:3.5rem;font-size:.78rem;vertical-align:middle;color:#cbd5e1}}
+.ticker-item a{{color:#60a5fa;text-decoration:none;font-weight:500}}
+.ticker-item a:hover{{text-decoration:underline}}
+.ticker-sep{{color:#334155;margin-right:3.5rem;font-size:.9rem}}
+@keyframes ticker-scroll{{0%{{transform:translateX(0)}}100%{{transform:translateX(-50%)}}}}
 select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:6px;padding:.5rem .8rem;font-size:.9rem;cursor:pointer}}
 </style>
 </head>
 <body>
+<span id="page-top"></span>
 <header>
   <h1>📰 Daily X Digest</h1>
   <a href="/" class="back-link">← Back to Monitor</a>
 </header>
+{ticker_bar}
 <main>
   <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap">
     <h2 style="font-size:1.2rem;color:#f1f5f9">每日新闻播报</h2>
@@ -4953,11 +5911,12 @@ select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:
 @app.get("/digest", response_class=HTMLResponse)
 async def digest_latest():
     dates = await _fetch_digest_dates(30)
+    ticker_items = await _fetch_ticker_items()
     if not dates:
-        return HTMLResponse(_build_digest_page(None, [], ""))
+        return HTMLResponse(_build_digest_page(None, [], "", ticker_items))
     latest = dates[0]
     digest = await _fetch_digest(latest)
-    return HTMLResponse(_build_digest_page(digest, dates, latest))
+    return HTMLResponse(_build_digest_page(digest, dates, latest, ticker_items))
 
 
 @app.get("/digest/{date}", response_class=HTMLResponse)
@@ -4966,7 +5925,58 @@ async def digest_by_date(date: str):
         raise HTTPException(status_code=400, detail="Invalid date format")
     dates = await _fetch_digest_dates(30)
     digest = await _fetch_digest(date)
-    return HTMLResponse(_build_digest_page(digest, dates, date))
+    ticker_items = await _fetch_ticker_items()
+    return HTMLResponse(_build_digest_page(digest, dates, date, ticker_items))
+
+
+
+@app.post("/api/digest/regen-audio")
+async def regen_digest_audio(request: Request, _: str = Depends(_auth)) -> JSONResponse:
+    """Regenerate TTS audio for today's digest from the current top-8 tweets."""
+    import datetime, os
+    from digest_runner import _generate_audio, _clean_for_tts
+
+    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+
+    # Fetch today's digest content
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM digests WHERE date=?", (today,)) as cur:
+            row = await cur.fetchone()
+
+    if not row:
+        return JSONResponse({"ok": False, "error": "No digest for today"}, status_code=404)
+
+    digest = dict(row)
+    content_zh = digest.get("content_zh") or ""
+    content_en = digest.get("content_en") or ""
+
+    if not content_zh and not content_en:
+        return JSONResponse({"ok": False, "error": "Digest content empty"}, status_code=400)
+
+    audio_dir = os.getenv("AUDIO_DIR", "data/audio")
+    os.makedirs(audio_dir, exist_ok=True)
+
+    results = {}
+    if content_zh:
+        path_zh = os.path.join(audio_dir, f"digest_{today}_zh.mp3")
+        ok = await _generate_audio(content_zh, "zh-CN-YunyangNeural", path_zh, lang="zh")
+        results["zh"] = f"digest_{today}_zh.mp3" if ok else None
+
+    if content_en:
+        path_en = os.path.join(audio_dir, f"digest_{today}_en.mp3")
+        ok = await _generate_audio(content_en, "en-US-AriaNeural", path_en, lang="en")
+        results["en"] = f"digest_{today}_en.mp3" if ok else None
+
+    # Update DB
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE digests SET audio_zh=?, audio_en=? WHERE date=?",
+            (results.get("zh"), results.get("en"), today)
+        )
+        await db.commit()
+
+    return JSONResponse({"ok": True, "date": today, "audio": results})
 
 
 @app.get("/audio/{filename}")

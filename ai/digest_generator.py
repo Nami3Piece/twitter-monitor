@@ -1,5 +1,5 @@
 """
-ai/digest_generator.py — Claude AI 生成每日新闻摘要（中英文）。
+ai/digest_generator.py — Claude AI 生成每日「核心洞察」+「今日要闻」（中英文）。
 """
 
 import os
@@ -25,20 +25,28 @@ def _get_client() -> AsyncAnthropic:
 
 
 _PROJECT_EMOJI = {
-    "ARKREEN": "🌱",
-    "GREENBTC": "₿",
-    "TLAY": "⚡",
+    "ARKREEN":        "🌱",
+    "GREENBTC":       "💚",
+    "TLAY":           "👜",
     "AI_RENAISSANCE": "🤖",
 }
 
 
-async def generate_digest(tweets_by_project: Dict[str, List[dict]], date: str = "") -> Dict[str, str]:
+async def generate_digest(
+    tweets_by_project: Dict[str, List[dict]],
+    search_by_project: Dict[str, List[dict]],
+    date: str = "",
+) -> Dict[str, str]:
     """
-    输入：{project: [tweet...]} 过去24小时各项目推文
+    输入：
+      tweets_by_project  — 监控账号的过去24h推文 {project: [tweet...]}
+      search_by_project  — X 搜索到的过去24h行业讨论 {project: [tweet...]}
     返回：{
-        "zh": "中文摘要（含 X 链接）",
-        "en": "英文摘要（含 X 链接）",
-        "tweet_text": "X 发帖文字（英文，<280字）"
+        "insight_zh": "中文核心洞察",
+        "insight_en": "英文核心洞察",
+        "zh":         "中文今日要闻",
+        "en":         "英文今日要闻",
+        "tweet_text": "X 发帖文字（<280字）",
     }
     """
     client = _get_client()
@@ -47,83 +55,111 @@ async def generate_digest(tweets_by_project: Dict[str, List[dict]], date: str = 
         import datetime
         date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
 
-    # 构建推文摘要供 Claude 分析
-    project_blocks = []
+    # ── 构建监控推文块 ─────────────────────────────
+    monitored_blocks = []
     for project, tweets in tweets_by_project.items():
         if not tweets:
             continue
         emoji = _PROJECT_EMOJI.get(project, "📌")
-        lines = [f"## {emoji} {project}"]
-        for t in tweets[:5]:  # 每个项目最多5条
+        lines = ["## " + emoji + " " + project + " (monitored accounts)"]
+        for t in tweets[:12]:
             tid = t.get("tweet_id", "")
             username = t.get("username", "")
-            text = (t.get("text") or "").replace("\n", " ")[:150]
+            text = (t.get("text") or "").replace("\n", " ")[:180]
             likes = t.get("like_count", 0) or 0
             rts = t.get("retweet_count", 0) or 0
-            url = f"https://x.com/i/web/status/{tid}" if tid else ""
-            lines.append(f"- @{username} [{likes}❤️ {rts}🔁]: {text}")
+            url = "https://x.com/i/web/status/" + tid if tid else ""
+            lines.append("- @" + username + " [" + str(likes) + "❤ " + str(rts) + "🔁]: " + text)
             if url:
-                lines.append(f"  Link: {url}")
-        project_blocks.append("\n".join(lines))
+                lines.append("  url: " + url)
+        monitored_blocks.append("\n".join(lines))
 
-    tweets_summary = "\n\n".join(project_blocks) if project_blocks else "No tweets available."
+    # ── 构建 X 搜索结果块 ─────────────────────────
+    search_blocks = []
+    for project, tweets in search_by_project.items():
+        if not tweets:
+            continue
+        emoji = _PROJECT_EMOJI.get(project, "📌")
+        lines = ["## " + emoji + " " + project + " (X broad search, past 24h)"]
+        for t in tweets[:8]:
+            author = t.get("author") or {}
+            username = author.get("userName") or t.get("username", "")
+            text = (t.get("text") or "").replace("\n", " ")[:180]
+            likes = t.get("likeCount") or t.get("like_count", 0) or 0
+            rts = t.get("retweetCount") or t.get("retweet_count", 0) or 0
+            tid = t.get("id") or t.get("tweet_id", "")
+            url = "https://x.com/i/web/status/" + str(tid) if tid else ""
+            lines.append("- @" + username + " [" + str(likes) + "❤ " + str(rts) + "🔁]: " + text)
+            if url:
+                lines.append("  url: " + url)
+        search_blocks.append("\n".join(lines))
 
-    prompt = f"""You are a professional crypto/Web3 news editor. Based on the following tweets from the past 24 hours, create a daily digest.
+    monitored_text = "\n\n".join(monitored_blocks) if monitored_blocks else "No monitored tweets."
+    search_text = "\n\n".join(search_blocks) if search_blocks else "No search results."
 
-TWEETS DATA:
-{tweets_summary}
-
-INSTRUCTIONS:
-1. For each project, select the 1-2 most important/newsworthy tweets
-2. Write a Chinese digest (中文版) and an English digest (英文版)
-3. Each digest should be 300-400 Chinese characters / English words (suitable for ~2 min audio)
-4. Include the original X link for each selected tweet
-5. Also write a short tweet_text (English, under 260 chars) for posting to X
-
-FORMAT YOUR RESPONSE EXACTLY AS:
-===ZH_START===
-[中文摘要内容，包含各项目新闻要点和原文链接]
-===ZH_END===
-===EN_START===
-[English digest content, with key news points and original links]
-===EN_END===
-===TWEET_START===
-[Short English tweet text under 260 chars]
-===TWEET_END===
-
-For the Chinese digest format:
-- Start with: 📰 每日 X 摘要 | {date}
-- Use EXACTLY these section headers (no parentheses, no pronunciation hints):
-  🌱 ARKREEN
-  💚 绿色比特币
-  👜 TLAY
-  🤖 AI Renaissance
-- 1-3 bullet points per project with key info
-- Include X link after each item
-
-For the English digest format:
-- Start with: 📰 Daily X Digest | {date}
-- Use EXACTLY these section headers:
-  🌱 ARKREEN
-  💚 GreenBTC
-  👜 TLAY
-  🤖 AI Renaissance
-- Same structure as Chinese but in English
-
-For tweet_text:
-- Format:
-📰 Daily X Digest | {date}
-🌱 ARKREEN: [1 sentence]
-💚 GreenBTC: [1 sentence]
-👜 TLAY: [1 sentence]
-🤖 AI Renaissance: [1 sentence]
-Full digest + audio 🔊
-👉 https://monitor.dailyxdigest.uk/digest"""
+    prompt = (
+        "You are a professional Web3/crypto intelligence analyst. "
+        "Produce a daily briefing with TWO distinct sections:\n\n"
+        "1. Core Insight (核心洞察) — Deep analytical judgment. NOT a news summary. "
+        "Identify the most important signal, trend, or pattern across these 4 projects today. "
+        "What is the market narrative? Be specific: cite real engagement numbers, "
+        "sentiment shifts, or cross-project patterns from the data.\n\n"
+        "2. Today's News (今日要闻) — Specific notable tweets with links. Bullet-point format.\n\n"
+        "=== MONITORED ACCOUNTS DATA (past 24h) ===\n"
+        + monitored_text + "\n\n"
+        "=== BROADER X DISCUSSION (search, past 24h) ===\n"
+        + search_text + "\n\n"
+        "=== OUTPUT FORMAT (follow EXACTLY) ===\n\n"
+        "===INSIGHT_ZH_START===\n"
+        "📰 " + date + " · 今日核心判断\n\n"
+        "[2-3 analytical paragraphs in Chinese. Structure:\n"
+        "- Para 1: Cross-cutting theme or macro signal across projects\n"
+        "- Para 2: Most important signal for 1-2 specific projects with evidence from the data\n"
+        "- Para 3: What to watch next / key risk or opportunity\n"
+        "Rules: No bullet points. No links. Pure analysis. Min 200 Chinese characters.\n"
+        "IMPORTANT: In Chinese text, always write '绿色比特币' instead of 'GreenBTC'. Keep ARKREEN, TLAY, AI Renaissance as-is.]\n"
+        "===INSIGHT_ZH_END===\n\n"
+        "===INSIGHT_EN_START===\n"
+        "📰 " + date + " · Core Intelligence\n\n"
+        "[Same analytical content in English. 2-3 paragraphs. No bullet points. No links. Min 150 words.]\n"
+        "===INSIGHT_EN_END===\n\n"
+        "===ZH_START===\n"
+        "📰 今日要闻 | " + date + "\n\n"
+        "🌱 ARKREEN\n"
+        "• [news item with x.com link]\n\n"
+        "💚 绿色比特币\n"
+        "• [news item with x.com link]\n\n"
+        "👜 TLAY\n"
+        "• [news item with x.com link]\n\n"
+        "🤖 AI Renaissance\n"
+        "• [news item with x.com link]\n"
+        "===ZH_END===\n\n"
+        "===EN_START===\n"
+        "📰 Today's News | " + date + "\n\n"
+        "🌱 ARKREEN\n"
+        "• [news item with x.com link]\n\n"
+        "💚 GreenBTC\n"
+        "• [news item with x.com link]\n\n"
+        "👜 TLAY\n"
+        "• [news item with x.com link]\n\n"
+        "🤖 AI Renaissance\n"
+        "• [news item with x.com link]\n"
+        "===EN_END===\n\n"
+        "===TWEET_START===\n"
+        "[Under 260 chars. Format:\n"
+        "📰 Daily X Digest | " + date + "\n"
+        "🌱 [1-sentence ARKREEN]\n"
+        "💚 [1-sentence GreenBTC]\n"
+        "👜 [1-sentence TLAY]\n"
+        "🤖 [1-sentence AI Renaissance]\n"
+        "👉 https://monitor.dailyxdigest.uk/digest]\n"
+        "===TWEET_END==="
+    )
 
     try:
         response = await client.messages.create(
             model="claude-opus-4-6",
-            max_tokens=2048,
+            max_tokens=3000,
             messages=[{"role": "user", "content": prompt}],
         )
         content = response.content[0].text
@@ -135,17 +171,26 @@ Full digest + audio 🔊
                 return ""
             return content[s + len(start_tag):e].strip()
 
-        zh = _extract("===ZH_START===", "===ZH_END===")
-        en = _extract("===EN_START===", "===EN_END===")
-        tweet_text = _extract("===TWEET_START===", "===TWEET_END===")
+        insight_zh = _extract("===INSIGHT_ZH_START===", "===INSIGHT_ZH_END===")
+        insight_en = _extract("===INSIGHT_EN_START===", "===INSIGHT_EN_END===")
+        zh         = _extract("===ZH_START===",         "===ZH_END===")
+        en         = _extract("===EN_START===",         "===EN_END===")
+        tweet_text = _extract("===TWEET_START===",      "===TWEET_END===")
 
-        if not zh or not en:
+        if not insight_zh or not zh:
             logger.error("Claude returned incomplete digest")
+            logger.debug("Raw response: " + content[:500])
             return {}
 
-        logger.info(f"Digest generated: zh={len(zh)} chars, en={len(en)} chars")
-        return {"zh": zh, "en": en, "tweet_text": tweet_text}
+        logger.info("Digest generated: insight_zh=" + str(len(insight_zh)) + ", zh=" + str(len(zh)))
+        return {
+            "insight_zh": insight_zh,
+            "insight_en": insight_en,
+            "zh": zh,
+            "en": en,
+            "tweet_text": tweet_text,
+        }
 
     except Exception as e:
-        logger.error(f"Digest generation error: {e}")
+        logger.error("Digest generation error: " + str(e))
         return {}

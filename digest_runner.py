@@ -18,6 +18,7 @@ from loguru import logger
 
 from config import DB_PATH, PROJECTS
 from ai.digest_generator import generate_digest
+from api.twitterapi import fetch_latest_tweets
 from notifiers.twitter_post import post_tweet
 
 AUDIO_DIR = os.getenv("AUDIO_DIR", "data/audio")
@@ -44,6 +45,32 @@ async def _get_recent_tweets(hours: int = 24) -> Dict[str, List[dict]]:
     return result
 
 
+
+_SEARCH_QUERIES = {
+    "ARKREEN":        "#Arkreen OR Arkreen DePIN",
+    "GREENBTC":       "#GreenBTC OR GreenBTC",
+    "TLAY":           "#TLAY OR TLAY blockchain",
+    "AI_RENAISSANCE": "#AIRenaissance OR AI_RENAISSANCE",
+}
+
+async def _search_x_discussion() -> dict:
+    """搜索 X 上过去24小时关于各项目的广泛讨论。"""
+    result = {}
+    for project, query in _SEARCH_QUERIES.items():
+        try:
+            tweets = await fetch_latest_tweets(query, max_pages=1, since_hours=24)
+            # 按互动量排序，取前 8
+            tweets.sort(
+                key=lambda t: (t.get("likeCount") or 0) + (t.get("retweetCount") or 0) * 2,
+                reverse=True,
+            )
+            result[project] = tweets[:8]
+            logger.info(f"X search '{project}': {len(result[project])} tweets")
+        except Exception as e:
+            logger.warning(f"X search failed for {project}: {e}")
+            result[project] = []
+    return result
+
 import re as _re_url
 
 def _clean_for_tts(text: str, lang: str = "en") -> str:
@@ -66,23 +93,25 @@ def _clean_for_tts(text: str, lang: str = "en") -> str:
     )
     # 去掉多余空行
     text = _re_url.sub(r'\n{3,}', '\n\n', text)
+    # 去掉 Markdown 标记符号（**粗体**、*斜体*、__、~~、# 标题）
+    text = _re_url.sub(r'\*{1,3}|_{1,2}|~~|#{1,6}\s*', '', text)
 
     if lang == "zh":
-        # 中文版品牌名保持英文发音（与英文版一致）
-        text = _re_url.sub(r'\bARKREEN\b|\bArkreen\b', 'ark-reen', text)
-        text = _re_url.sub(r'\bGREENBTC\b|\bGreenBTC\b|\bGreenbtc\b', '绿色比特币', text)
-        text = _re_url.sub(r'\bTLAY\b|\bTlay\b', 'T-lay', text)
-        text = _re_url.sub(r'\bAI_RENAISSANCE\b|\bAI Renaissance\b', 'AI Renaissance', text)
-        text = _re_url.sub(r'\bBTC\b', 'B T C', text)
-        text = _re_url.sub(r'\bNFT\b', 'N F T', text)
-        text = _re_url.sub(r'\bDAO\b', '道', text)
-        text = _re_url.sub(r'\bDeFi\b|\bDEFI\b', 'dee-fye', text)
-        text = _re_url.sub(r'\bdApp\b|\bDApp\b', 'dee-app', text)
-        text = _re_url.sub(r'\bWeb3\b|\bWEB3\b', 'Web three', text)
+        # 中文版品牌名：用 (?<![a-zA-Z])...(?![a-zA-Z]) 代替 \b，防止中文字符被 Unicode \b 误判
+        text = _re_url.sub(r'(?<![a-zA-Z])(ARKREEN|Arkreen)(?![a-zA-Z])', '阿克林', text)
+        text = _re_url.sub(r'(?<![a-zA-Z])(GREENBTC|GreenBTC|Greenbtc)(?![a-zA-Z])', '绿色比特币', text)
+        text = _re_url.sub(r'(?<![a-zA-Z])(TLAY|Tlay)(?![a-zA-Z])', 'T Lay', text)
+        text = _re_url.sub(r'(?<![a-zA-Z])AI_RENAISSANCE(?![a-zA-Z])', 'AI Renaissance', text)
+        text = _re_url.sub(r'(?<![a-zA-Z])BTC(?![a-zA-Z])', 'B T C', text)
+        text = _re_url.sub(r'(?<![a-zA-Z])NFT(?![a-zA-Z])', 'N F T', text)
+        text = _re_url.sub(r'(?<![a-zA-Z])DAO(?![a-zA-Z])', '道', text)
+        text = _re_url.sub(r'(?<![a-zA-Z])(DeFi|DEFI)(?![a-zA-Z])', 'dee-fye', text)
+        text = _re_url.sub(r'(?<![a-zA-Z])(dApp|DApp)(?![a-zA-Z])', 'dee-app', text)
+        text = _re_url.sub(r'(?<![a-zA-Z])(Web3|WEB3)(?![a-zA-Z])', 'Web three', text)
     else:
-        # 英文发音替换
+        # 英文发音替换（英文文本 \b 正常生效）
         text = _re_url.sub(r'\bARKREEN\b|\bArkreen\b', 'ark-reen', text)
-        text = _re_url.sub(r'\bGREENBTC\b|\bGreenBTC\b|\bGreenbtc\b', 'GreenBTC', text)
+        text = _re_url.sub(r'\bGREENBTC\b|\bGreenBTC\b|\bGreenbtc\b', 'Green B T C', text)
         text = _re_url.sub(r'\bTLAY\b|\bTlay\b', 'T-lay', text)
         text = _re_url.sub(r'\bAI_RENAISSANCE\b|\bAI Renaissance\b', 'AI Renaissance', text)
         text = _re_url.sub(r'\bBTC\b', 'B T C', text)
@@ -111,16 +140,20 @@ async def _save_digest(
     date: str,
     content_zh: str,
     content_en: str,
+    content_insight_zh: str,
+    content_insight_en: str,
     audio_zh: Optional[str],
     audio_en: Optional[str],
+    audio_insight_zh: Optional[str],
+    audio_insight_en: Optional[str],
     tweet_id: Optional[str],
 ) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """INSERT OR REPLACE INTO digests
-               (date, content_zh, content_en, audio_zh, audio_en, tweet_id)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (date, content_zh, content_en, audio_zh, audio_en, tweet_id),
+               (date, content_zh, content_en, content_insight_zh, content_insight_en, audio_zh, audio_en, audio_insight_zh, audio_insight_en, tweet_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (date, content_zh, content_en, content_insight_zh, content_insight_en, audio_zh, audio_en, audio_insight_zh, audio_insight_en, tweet_id),
         )
         await db.commit()
     logger.info(f"Digest saved for {date}")
@@ -140,8 +173,11 @@ async def run_daily_digest() -> None:
         logger.warning("No tweets found, skipping digest")
         return
 
-    # 2. 生成摘要
-    digest = await generate_digest(tweets_by_project, date)
+    # 2. 搜索 X 广泛讨论
+    search_by_project = await _search_x_discussion()
+
+    # 3. 生成摘要（核心洞察 + 今日要闻）
+    digest = await generate_digest(tweets_by_project, search_by_project, date)
     if not digest:
         logger.error("Digest generation failed, aborting")
         return
@@ -150,7 +186,7 @@ async def run_daily_digest() -> None:
     content_en = digest.get("en", "")
     tweet_text = digest.get("tweet_text", "")
 
-    # 3. 生成音频
+    # 4. 生成音频
     os.makedirs(AUDIO_DIR, exist_ok=True)
     audio_zh_path = os.path.join(AUDIO_DIR, f"digest_{date}_zh.mp3")
     audio_en_path = os.path.join(AUDIO_DIR, f"digest_{date}_en.mp3")
@@ -161,10 +197,20 @@ async def run_daily_digest() -> None:
     audio_zh = f"digest_{date}_zh.mp3" if zh_ok else None
     audio_en = f"digest_{date}_en.mp3" if en_ok else None
 
-    # 4. 存入 DB（先存，再发帖）
-    await _save_digest(date, content_zh, content_en, audio_zh, audio_en, None)
+    # 4b. 生成核心洞察音频
+    content_insight_zh = digest.get("insight_zh", "")
+    content_insight_en = digest.get("insight_en", "")
+    audio_insight_zh_path = os.path.join(AUDIO_DIR, f"digest_{date}_insight_zh.mp3")
+    audio_insight_en_path = os.path.join(AUDIO_DIR, f"digest_{date}_insight_en.mp3")
+    insight_zh_ok = await _generate_audio(content_insight_zh, "zh-CN-YunyangNeural", audio_insight_zh_path, lang="zh") if content_insight_zh else False
+    insight_en_ok = await _generate_audio(content_insight_en, "en-US-AriaNeural", audio_insight_en_path, lang="en") if content_insight_en else False
+    audio_insight_zh = f"digest_{date}_insight_zh.mp3" if insight_zh_ok else None
+    audio_insight_en = f"digest_{date}_insight_en.mp3" if insight_en_ok else None
 
-    # 5. 发帖到 X
+    # 5. 存入 DB（先存，再发帖）
+    await _save_digest(date, content_zh, content_en, content_insight_zh, content_insight_en, audio_zh, audio_en, audio_insight_zh, audio_insight_en, None)
+
+    # 6. 发帖到 X
     tweet_id: Optional[str] = None
     if tweet_text:
         tweet_id = await post_tweet(tweet_text)
