@@ -1,0 +1,36 @@
+name: Deploy to Aliyun Server
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Deploy to server
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        script: |
+          # 进入项目目录
+          cd /var/www/twitter-monitor
+
+          # 拉取最新代码
+          git pull origin main
+
+          # 激活虚拟环境并更新依赖
+          source venv/bin/activate
+          pip install -r requirements.txt
+
+          # 重启服务
+          supervisorctl restart all
+
+          echo "✅ Twitter Monitor 部署完成"

@@ -65,12 +65,18 @@ def _decode_images(products: List[Dict], tmpdir: str) -> List[Dict]:
 # ── contract data builder ─────────────────────────────────────────────────────
 
 def _build_data(params: Dict) -> Dict:
-    buyer_name    = params.get("buyer_name", "")
-    buyer_address = params.get("buyer_address", "")
-    buyer_contact = params.get("buyer_contact", "")
-    shipping_per  = float(params.get("shipping_per_unit", 50))
-    products      = params.get("products", [])
-    logo_b64      = params.get("logo_b64", "")
+    buyer_name      = params.get("buyer_name", "")
+    buyer_address   = params.get("buyer_address", "")
+    buyer_contact   = params.get("buyer_contact", "")
+    shipping_per    = float(params.get("shipping_per_unit", 50))
+    products        = params.get("products", [])
+    logo_b64        = params.get("logo_b64", "")
+    payment_days    = int(params.get("payment_days", 7))
+    shipping_days   = int(params.get("shipping_days", 15))
+    shipping_method = params.get("shipping_method", "DHL/FedEx")
+    warranty_months = int(params.get("warranty_months", 12))
+    penalty_pct     = float(params.get("penalty_pct", 10))
+    dispute_clause  = params.get("dispute_clause", "")
     if not products:
         raise ValueError("At least one product is required")
 
@@ -100,21 +106,27 @@ def _build_data(params: Dict) -> Dict:
     )
 
     return {
-        "buyer_name":     buyer_name,
-        "buyer_address":  buyer_address,
-        "buyer_contact":  buyer_contact,
-        "products":       norm,
-        "qty_total":      qty_total,
-        "shipping_per":   shipping_per,
-        "goods_total":    goods_total,
-        "shipping_total": shipping_total,
-        "grand_total":    grand_total,
-        "needs_spec":     needs_spec,
-        "date":           _today(),
-        "seller_name":    "Arkreen Network Ltd.",
-        "seller_address": "Suite 1, 2nd Floor, The Sotheby Building, Rodney Bay, Gros-Islet, Saint Lucia",
-        "seller_contact": "nami3piece@gmail.com",
-        "logo_b64":       logo_b64,
+        "buyer_name":      buyer_name,
+        "buyer_address":   buyer_address,
+        "buyer_contact":   buyer_contact,
+        "products":        norm,
+        "qty_total":       qty_total,
+        "shipping_per":    shipping_per,
+        "goods_total":     goods_total,
+        "shipping_total":  shipping_total,
+        "grand_total":     grand_total,
+        "needs_spec":      needs_spec,
+        "date":            _today(),
+        "seller_name":     "Arkreen Network Ltd.",
+        "seller_address":  "Suite 1, 2nd Floor, The Sotheby Building, Rodney Bay, Gros-Islet, Saint Lucia",
+        "seller_contact":  "nami3piece@gmail.com",
+        "logo_b64":        logo_b64,
+        "payment_days":    payment_days,
+        "shipping_days":   shipping_days,
+        "shipping_method": shipping_method,
+        "warranty_months": warranty_months,
+        "penalty_pct":     penalty_pct,
+        "dispute_clause":  dispute_clause,
     }
 
 
@@ -216,19 +228,19 @@ def _gen_pdf_cn(d: Dict, path: str, tmpdir: str) -> None:
     story.append(t)
 
     story.append(Paragraph("三、付款方式", h2_style))
-    story.append(Paragraph("乙方应在合同签订后 <b>7 个工作日内</b>完成付款，支持 USDT（Polygon 网络）或银行电汇。", body_style))
+    story.append(Paragraph(f"乙方应在合同签订后 <b>{d['payment_days']} 个工作日内</b>完成付款，支持 USDT（Polygon 网络）或银行电汇。", body_style))
 
     story.append(Paragraph("四、交货条款", h2_style))
-    story.append(Paragraph("甲方在收到全额货款后 <b>15 个工作日内</b>安排发货，运输方式为国际快递（DHL/FedEx）。", body_style))
+    story.append(Paragraph(f"甲方在收到全额货款后 <b>{d['shipping_days']} 个工作日内</b>安排发货，运输方式为{d['shipping_method']}。", body_style))
 
     story.append(Paragraph("五、质量保证", h2_style))
-    story.append(Paragraph("产品自交货之日起享有 <b>12 个月</b>质量保修，因产品质量问题导致的损失由甲方承担。", body_style))
+    story.append(Paragraph(f"产品自交货之日起享有 <b>{d['warranty_months']} 个月</b>质量保修，因产品质量问题导致的损失由甲方承担。", body_style))
 
     story.append(Paragraph("六、违约责任", h2_style))
-    story.append(Paragraph("任何一方违约，应向守约方支付合同总金额 <b>10%</b> 的违约金，并赔偿实际损失。", body_style))
+    story.append(Paragraph(f"任何一方违约，应向守约方支付合同总金额 <b>{d['penalty_pct']}%</b> 的违约金，并赔偿实际损失。", body_style))
 
     story.append(Paragraph("七、争议解决", h2_style))
-    story.append(Paragraph("本合同适用中华人民共和国法律，争议提交合同签订地仲裁委员会仲裁解决。", body_style))
+    story.append(Paragraph(d['dispute_clause'] or "本合同适用中华人民共和国法律，争议提交合同签订地仲裁委员会仲裁解决。", body_style))
 
     story.append(Spacer(1, 1*cm))
     story.append(Paragraph("八、签署", h2_style))
@@ -343,19 +355,19 @@ def _gen_pdf_en(d: Dict, path: str, tmpdir: str) -> None:
     story.append(t)
 
     story.append(Paragraph("3. Payment", h2_style))
-    story.append(Paragraph("Buyer shall complete payment within <b>7 business days</b> of contract signing. Accepted methods: USDT (Polygon network) or bank wire transfer.", body_style))
+    story.append(Paragraph(f"Buyer shall complete payment within <b>{d['payment_days']} business days</b> of contract signing. Accepted methods: USDT (Polygon network) or bank wire transfer.", body_style))
 
     story.append(Paragraph("4. Delivery", h2_style))
-    story.append(Paragraph("Seller shall arrange shipment within <b>15 business days</b> after receipt of full payment via international courier (DHL/FedEx).", body_style))
+    story.append(Paragraph(f"Seller shall arrange shipment within <b>{d['shipping_days']} business days</b> after receipt of full payment via {d['shipping_method']}.", body_style))
 
     story.append(Paragraph("5. Warranty", h2_style))
-    story.append(Paragraph("Products carry a <b>12-month</b> quality warranty from the date of delivery. Defects attributable to the Seller will be remedied at Seller's expense.", body_style))
+    story.append(Paragraph(f"Products carry a <b>{d['warranty_months']}-month</b> quality warranty from the date of delivery. Defects attributable to the Seller will be remedied at Seller's expense.", body_style))
 
     story.append(Paragraph("6. Liability", h2_style))
-    story.append(Paragraph("The breaching party shall pay the non-breaching party a penalty equal to <b>10%</b> of the total contract value, plus actual damages.", body_style))
+    story.append(Paragraph(f"The breaching party shall pay the non-breaching party a penalty equal to <b>{d['penalty_pct']}%</b> of the total contract value, plus actual damages.", body_style))
 
     story.append(Paragraph("7. Dispute Resolution", h2_style))
-    story.append(Paragraph("This contract is governed by the laws of Saint Lucia. Disputes shall be submitted to arbitration at the agreed arbitration body.", body_style))
+    story.append(Paragraph(d['dispute_clause'] or "This contract is governed by the laws of Saint Lucia. Disputes shall be submitted to arbitration at the agreed arbitration body.", body_style))
 
     story.append(Spacer(1, 1*cm))
     story.append(Paragraph("8. Signatures", h2_style))
@@ -466,19 +478,19 @@ def _gen_docx_cn(d: Dict, path: str, tmpdir: str) -> None:
     total_row[4].text = _fmt_num(d["grand_total"])
 
     doc.add_heading("三、付款方式", 1)
-    doc.add_paragraph("乙方应在合同签订后 7 个工作日内完成付款，支持 USDT（Polygon 网络）或银行电汇。")
+    doc.add_paragraph(f"乙方应在合同签订后 {d['payment_days']} 个工作日内完成付款，支持 USDT（Polygon 网络）或银行电汇。")
 
     doc.add_heading("四、交货条款", 1)
-    doc.add_paragraph("甲方在收到全额货款后 15 个工作日内安排发货，运输方式为国际快递（DHL/FedEx）。")
+    doc.add_paragraph(f"甲方在收到全额货款后 {d['shipping_days']} 个工作日内安排发货，运输方式为{d['shipping_method']}。")
 
     doc.add_heading("五、质量保证", 1)
-    doc.add_paragraph("产品自交货之日起享有 12 个月质量保修，因产品质量问题导致的损失由甲方承担。")
+    doc.add_paragraph(f"产品自交货之日起享有 {d['warranty_months']} 个月质量保修，因产品质量问题导致的损失由甲方承担。")
 
     doc.add_heading("六、违约责任", 1)
-    doc.add_paragraph("任何一方违约，应向守约方支付合同总金额 10% 的违约金，并赔偿实际损失。")
+    doc.add_paragraph(f"任何一方违约，应向守约方支付合同总金额 {d['penalty_pct']}% 的违约金，并赔偿实际损失。")
 
     doc.add_heading("七、争议解决", 1)
-    doc.add_paragraph("本合同适用中华人民共和国法律，争议提交合同签订地仲裁委员会仲裁解决。")
+    doc.add_paragraph(d['dispute_clause'] or "本合同适用中华人民共和国法律，争议提交合同签订地仲裁委员会仲裁解决。")
 
     doc.add_heading("八、签署", 1)
     sig_table = doc.add_table(rows=3, cols=2)
@@ -573,19 +585,19 @@ def _gen_docx_en(d: Dict, path: str, tmpdir: str) -> None:
     total_row[4].text = _fmt_num(d["grand_total"])
 
     doc.add_heading("3. Payment", 1)
-    doc.add_paragraph("Buyer shall complete payment within 7 business days of contract signing. Accepted: USDT (Polygon) or bank wire.")
+    doc.add_paragraph(f"Buyer shall complete payment within {d['payment_days']} business days of contract signing. Accepted methods: USDT (Polygon network) or bank wire transfer.")
 
     doc.add_heading("4. Delivery", 1)
-    doc.add_paragraph("Seller shall ship within 15 business days after receipt of full payment via DHL/FedEx.")
+    doc.add_paragraph(f"Seller shall ship within {d['shipping_days']} business days after receipt of full payment via {d['shipping_method']}.")
 
     doc.add_heading("5. Warranty", 1)
-    doc.add_paragraph("12-month quality warranty from delivery date. Seller bears cost of defect remediation.")
+    doc.add_paragraph(f"{d['warranty_months']}-month quality warranty from delivery date. Seller bears cost of defect remediation.")
 
     doc.add_heading("6. Liability", 1)
-    doc.add_paragraph("Breaching party pays 10% of contract value as penalty plus actual damages.")
+    doc.add_paragraph(f"Breaching party pays {d['penalty_pct']}% of contract value as penalty plus actual damages.")
 
     doc.add_heading("7. Dispute Resolution", 1)
-    doc.add_paragraph("Governed by the laws of Saint Lucia. Disputes submitted to agreed arbitration body.")
+    doc.add_paragraph(d['dispute_clause'] or "Governed by the laws of Saint Lucia. Disputes submitted to agreed arbitration body.")
 
     doc.add_heading("8. Signatures", 1)
     sig_table = doc.add_table(rows=3, cols=2)
@@ -697,19 +709,19 @@ def _gen_pdf_tw(d: Dict, path: str, tmpdir: str) -> None:
     story.append(t)
 
     story.append(Paragraph("三、付款方式", h2_style))
-    story.append(Paragraph("乙方應於合約簽訂後 <b>7 個工作日內</b>完成付款，支援 USDT（Polygon 網路）或銀行電匯。", body_style))
+    story.append(Paragraph(f"乙方應於合約簽訂後 <b>{d['payment_days']} 個工作日內</b>完成付款，支援 USDT（Polygon 網路）或銀行電匯。", body_style))
 
     story.append(Paragraph("四、交貨條款", h2_style))
-    story.append(Paragraph("甲方於收到全額貨款後 <b>15 個工作日內</b>安排出貨，運輸方式為國際快遞（DHL/FedEx）。", body_style))
+    story.append(Paragraph(f"甲方於收到全額貨款後 <b>{d['shipping_days']} 個工作日內</b>安排出貨，運輸方式為{d['shipping_method']}。", body_style))
 
     story.append(Paragraph("五、品質保證", h2_style))
-    story.append(Paragraph("產品自交貨之日起享有 <b>12 個月</b>品質保固，因產品品質問題導致的損失由甲方承擔。", body_style))
+    story.append(Paragraph(f"產品自交貨之日起享有 <b>{d['warranty_months']} 個月</b>品質保固，因產品品質問題導致的損失由甲方承擔。", body_style))
 
     story.append(Paragraph("六、違約責任", h2_style))
-    story.append(Paragraph("任何一方違約，應向守約方支付合約總金額 <b>10%</b> 的違約金，並賠償實際損失。", body_style))
+    story.append(Paragraph(f"任何一方違約，應向守約方支付合約總金額 <b>{d['penalty_pct']}%</b> 的違約金，並賠償實際損失。", body_style))
 
     story.append(Paragraph("七、爭議解決", h2_style))
-    story.append(Paragraph("本合約適用聖露西亞法律，爭議提交合約簽訂地仲裁委員會仲裁解決。", body_style))
+    story.append(Paragraph(d['dispute_clause'] or "本合約適用聖露西亞法律，爭議提交合約簽訂地仲裁委員會仲裁解決。", body_style))
 
     story.append(Spacer(1, 1*cm))
     story.append(Paragraph("八、簽署", h2_style))
@@ -820,19 +832,19 @@ def _gen_docx_tw(d: Dict, path: str, tmpdir: str) -> None:
     total_row[4].text = _fmt_num(d["grand_total"])
 
     doc.add_heading("三、付款方式", 1)
-    doc.add_paragraph("乙方應於合約簽訂後 7 個工作日內完成付款，支援 USDT（Polygon 網路）或銀行電匯。")
+    doc.add_paragraph(f"乙方應於合約簽訂後 {d['payment_days']} 個工作日內完成付款，支援 USDT（Polygon 網路）或銀行電匯。")
 
     doc.add_heading("四、交貨條款", 1)
-    doc.add_paragraph("甲方於收到全額貨款後 15 個工作日內安排出貨，運輸方式為國際快遞（DHL/FedEx）。")
+    doc.add_paragraph(f"甲方於收到全額貨款後 {d['shipping_days']} 個工作日內安排出貨，運輸方式為{d['shipping_method']}。")
 
     doc.add_heading("五、品質保證", 1)
-    doc.add_paragraph("產品自交貨之日起享有 12 個月品質保固，因產品品質問題導致的損失由甲方承擔。")
+    doc.add_paragraph(f"產品自交貨之日起享有 {d['warranty_months']} 個月品質保固，因產品品質問題導致的損失由甲方承擔。")
 
     doc.add_heading("六、違約責任", 1)
-    doc.add_paragraph("任何一方違約，應向守約方支付合約總金額 10% 的違約金，並賠償實際損失。")
+    doc.add_paragraph(f"任何一方違約，應向守約方支付合約總金額 {d['penalty_pct']}% 的違約金，並賠償實際損失。")
 
     doc.add_heading("七、爭議解決", 1)
-    doc.add_paragraph("本合約適用聖露西亞法律，爭議提交合約簽訂地仲裁委員會仲裁解決。")
+    doc.add_paragraph(d['dispute_clause'] or "本合約適用聖露西亞法律，爭議提交合約簽訂地仲裁委員會仲裁解決。")
 
     doc.add_heading("八、簽署", 1)
     sig_table = doc.add_table(rows=3, cols=2)
