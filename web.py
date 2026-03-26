@@ -1924,6 +1924,70 @@ async function copyAIDraft(modalType) {{
 
     <!-- Tabs -->
 
+<!-- Donate Modal -->
+    <div style="display:flex;gap:.5rem;margin-bottom:1.5rem">
+      <button onclick="switchDonateTab('btc')" id="dtab-btc" class="dtab active-dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #f59e0b;background:#fffbeb;color:#92400e;font-weight:600;cursor:pointer;font-size:.83rem">₿ Bitcoin</button>
+      <button onclick="switchDonateTab('akre')" id="dtab-akre" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #e2e8f0;background:#fff;color:#64748b;font-weight:600;cursor:pointer;font-size:.83rem">🌱 $AKRE</button>
+      <button onclick="switchDonateTab('agent')" id="dtab-agent" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #e2e8f0;background:#fff;color:#64748b;font-weight:600;cursor:pointer;font-size:.83rem">🤖 AI Agent</button>
+    </div>
+
+    <!-- BTC panel -->
+    <div id="dpanel-btc">
+      <div style="text-align:center;margin-bottom:1rem">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=bitcoin:bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3" alt="BTC QR" style="border-radius:8px;border:4px solid #fef3c7">
+      </div>
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem">
+        <div style="font-size:.72rem;color:#92400e;font-weight:600;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">Bitcoin Address (BTC, Native SegWit)</div>
+        <div style="font-family:monospace;font-size:.78rem;word-break:break-all;color:#1e293b;margin-bottom:.6rem">bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3</div>
+        <button onclick="copyAddr('bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3','btc-copy')" id="btc-copy" style="padding:.3rem .9rem;border-radius:6px;border:1.5px solid #f59e0b;background:#fff;color:#92400e;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy</button>
+      </div>
+    </div>
+
+    <!-- AKRE panel -->
+    <div id="dpanel-akre" style="display:none">
+      <div style="text-align:center;margin-bottom:1rem">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=ethereum:0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7" alt="EVM QR" style="border-radius:8px;border:4px solid #dcfce7">
+      </div>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem">
+        <div style="font-size:.72rem;color:#166534;font-weight:600;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">$AKRE — EVM Address (Ethereum / Polygon)</div>
+        <div style="font-family:monospace;font-size:.78rem;word-break:break-all;color:#1e293b;margin-bottom:.6rem">0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7</div>
+        <button onclick="copyAddr('0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7','akre-copy')" id="akre-copy" style="padding:.3rem .9rem;border-radius:6px;border:1.5px solid #22c55e;background:#fff;color:#166534;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy</button>
+      </div>
+      <div style="font-size:.78rem;color:#64748b;background:#f8fafc;border-radius:6px;padding:.6rem .8rem">
+        💡 $AKRE contract on Polygon: <a href="https://polygonscan.com/token/0xE9c21De62C5C5d0cEAcCe2762bF655AfDcEB7ab3" target="_blank" style="color:#22c55e;font-family:monospace">0xE9c2...ab3</a>
+        &nbsp;|&nbsp; <a href="https://docs.arkreen.com/token/what-is-akre" target="_blank" style="color:#64748b">Docs ↗</a>
+      </div>
+    </div>
+
+    <!-- AI Agent (X402) panel -->
+    <div id="dpanel-agent" style="display:none">
+      <div style="background:#0f172a;border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem;font-family:monospace;font-size:.78rem;color:#e2e8f0;line-height:1.8">
+        <div style="color:#60a5fa;font-weight:700;margin-bottom:.5rem"># X402 Protocol — for AI Agents</div>
+        <div><span style="color:#94a3b8">GET</span> <span style="color:#34d399">/api/donate</span></div>
+        <div style="color:#94a3b8;margin-top:.4rem"># Response 402 — accepts 2 options:</div>
+        <div style="color:#fbbf24;margin-top:.3rem">Option 1 · 🌱 AKRE (preferred)</div>
+        <div style="padding-left:1rem;color:#a5f3fc">"network": "polygon",</div>
+        <div style="padding-left:1rem;color:#a5f3fc">"asset": "AKRE",  <span style="color:#64748b">// 0xE9c2...ab3</span></div>
+        <div style="padding-left:1rem;color:#a5f3fc">"minAmount": "10 AKRE"</div>
+        <div style="color:#fbbf24;margin-top:.3rem">Option 2 · 💵 USDT (fallback)</div>
+        <div style="padding-left:1rem;color:#a5f3fc">"network": "polygon",</div>
+        <div style="padding-left:1rem;color:#a5f3fc">"asset": "USDT",  <span style="color:#64748b">// 0xc213...8F</span></div>
+        <div style="padding-left:1rem;color:#a5f3fc">"minAmount": "$0.10 USDT"</div>
+        <div style="padding-left:1rem;color:#a5f3fc">"payTo": "0xBa20...0A7"</div>
+      </div>
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem;font-size:.8rem;color:#0369a1">
+        <strong>How it works:</strong> Your AI agent sends a request to <code style="background:#e0f2fe;padding:.1rem .3rem;border-radius:3px">/api/donate</code>, receives a 402 with payment options on Polygon, pays with AKRE or USDT automatically, then retries with the payment proof in <code style="background:#e0f2fe;padding:.1rem .3rem;border-radius:3px">X-Payment</code> header.
+      </div>
+      <div style="display:flex;gap:.6rem">
+        <button onclick="copyAddr('https://monitor.dailyxdigest.uk/api/donate','agent-copy')" id="agent-copy" style="flex:1;padding:.4rem;border-radius:6px;border:1.5px solid #3b82f6;background:#fff;color:#1d4ed8;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy Endpoint</button>
+        <a href="/api/donate" target="_blank" style="flex:1;padding:.4rem;border-radius:6px;border:1.5px solid #8b5cf6;background:#fff;color:#6d28d9;font-size:.8rem;font-weight:600;cursor:pointer;text-decoration:none;text-align:center">🔗 View 402 Response</a>
+      </div>
+    </div>
+
+    <p style="text-align:center;font-size:.75rem;color:#94a3b8;margin-top:1.2rem">Thank you for supporting open-source Web3 research 💚</p>
+  </div>
+</div>
+
 <!-- AI Retweet Draft Modal -->
 <div id="ai-retweet-modal">
   <div class="ai-modal-content">
@@ -2022,69 +2086,6 @@ async function copyAIDraft(modalType) {{
   </div>
 </div>
 
-<!-- Donate Modal -->
-    <div style="display:flex;gap:.5rem;margin-bottom:1.5rem">
-      <button onclick="switchDonateTab('btc')" id="dtab-btc" class="dtab active-dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #f59e0b;background:#fffbeb;color:#92400e;font-weight:600;cursor:pointer;font-size:.83rem">₿ Bitcoin</button>
-      <button onclick="switchDonateTab('akre')" id="dtab-akre" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #e2e8f0;background:#fff;color:#64748b;font-weight:600;cursor:pointer;font-size:.83rem">🌱 $AKRE</button>
-      <button onclick="switchDonateTab('agent')" id="dtab-agent" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #e2e8f0;background:#fff;color:#64748b;font-weight:600;cursor:pointer;font-size:.83rem">🤖 AI Agent</button>
-    </div>
-
-    <!-- BTC panel -->
-    <div id="dpanel-btc">
-      <div style="text-align:center;margin-bottom:1rem">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=bitcoin:bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3" alt="BTC QR" style="border-radius:8px;border:4px solid #fef3c7">
-      </div>
-      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem">
-        <div style="font-size:.72rem;color:#92400e;font-weight:600;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">Bitcoin Address (BTC, Native SegWit)</div>
-        <div style="font-family:monospace;font-size:.78rem;word-break:break-all;color:#1e293b;margin-bottom:.6rem">bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3</div>
-        <button onclick="copyAddr('bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3','btc-copy')" id="btc-copy" style="padding:.3rem .9rem;border-radius:6px;border:1.5px solid #f59e0b;background:#fff;color:#92400e;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy</button>
-      </div>
-    </div>
-
-    <!-- AKRE panel -->
-    <div id="dpanel-akre" style="display:none">
-      <div style="text-align:center;margin-bottom:1rem">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=ethereum:0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7" alt="EVM QR" style="border-radius:8px;border:4px solid #dcfce7">
-      </div>
-      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem">
-        <div style="font-size:.72rem;color:#166534;font-weight:600;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">$AKRE — EVM Address (Ethereum / Polygon)</div>
-        <div style="font-family:monospace;font-size:.78rem;word-break:break-all;color:#1e293b;margin-bottom:.6rem">0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7</div>
-        <button onclick="copyAddr('0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7','akre-copy')" id="akre-copy" style="padding:.3rem .9rem;border-radius:6px;border:1.5px solid #22c55e;background:#fff;color:#166534;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy</button>
-      </div>
-      <div style="font-size:.78rem;color:#64748b;background:#f8fafc;border-radius:6px;padding:.6rem .8rem">
-        💡 $AKRE contract on Polygon: <a href="https://polygonscan.com/token/0xE9c21De62C5C5d0cEAcCe2762bF655AfDcEB7ab3" target="_blank" style="color:#22c55e;font-family:monospace">0xE9c2...ab3</a>
-        &nbsp;|&nbsp; <a href="https://docs.arkreen.com/token/what-is-akre" target="_blank" style="color:#64748b">Docs ↗</a>
-      </div>
-    </div>
-
-    <!-- AI Agent (X402) panel -->
-    <div id="dpanel-agent" style="display:none">
-      <div style="background:#0f172a;border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem;font-family:monospace;font-size:.78rem;color:#e2e8f0;line-height:1.8">
-        <div style="color:#60a5fa;font-weight:700;margin-bottom:.5rem"># X402 Protocol — for AI Agents</div>
-        <div><span style="color:#94a3b8">GET</span> <span style="color:#34d399">/api/donate</span></div>
-        <div style="color:#94a3b8;margin-top:.4rem"># Response 402 — accepts 2 options:</div>
-        <div style="color:#fbbf24;margin-top:.3rem">Option 1 · 🌱 AKRE (preferred)</div>
-        <div style="padding-left:1rem;color:#a5f3fc">"network": "polygon",</div>
-        <div style="padding-left:1rem;color:#a5f3fc">"asset": "AKRE",  <span style="color:#64748b">// 0xE9c2...ab3</span></div>
-        <div style="padding-left:1rem;color:#a5f3fc">"minAmount": "10 AKRE"</div>
-        <div style="color:#fbbf24;margin-top:.3rem">Option 2 · 💵 USDT (fallback)</div>
-        <div style="padding-left:1rem;color:#a5f3fc">"network": "polygon",</div>
-        <div style="padding-left:1rem;color:#a5f3fc">"asset": "USDT",  <span style="color:#64748b">// 0xc213...8F</span></div>
-        <div style="padding-left:1rem;color:#a5f3fc">"minAmount": "$0.10 USDT"</div>
-        <div style="padding-left:1rem;color:#a5f3fc">"payTo": "0xBa20...0A7"</div>
-      </div>
-      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem;font-size:.8rem;color:#0369a1">
-        <strong>How it works:</strong> Your AI agent sends a request to <code style="background:#e0f2fe;padding:.1rem .3rem;border-radius:3px">/api/donate</code>, receives a 402 with payment options on Polygon, pays with AKRE or USDT automatically, then retries with the payment proof in <code style="background:#e0f2fe;padding:.1rem .3rem;border-radius:3px">X-Payment</code> header.
-      </div>
-      <div style="display:flex;gap:.6rem">
-        <button onclick="copyAddr('https://monitor.dailyxdigest.uk/api/donate','agent-copy')" id="agent-copy" style="flex:1;padding:.4rem;border-radius:6px;border:1.5px solid #3b82f6;background:#fff;color:#1d4ed8;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy Endpoint</button>
-        <a href="/api/donate" target="_blank" style="flex:1;padding:.4rem;border-radius:6px;border:1.5px solid #8b5cf6;background:#fff;color:#6d28d9;font-size:.8rem;font-weight:600;cursor:pointer;text-decoration:none;text-align:center">🔗 View 402 Response</a>
-      </div>
-    </div>
-
-    <p style="text-align:center;font-size:.75rem;color:#94a3b8;margin-top:1.2rem">Thank you for supporting open-source Web3 research 💚</p>
-  </div>
-</div>
 {stats_html}
 {search_html}
 <div class="tabs">
