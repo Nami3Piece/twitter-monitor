@@ -425,6 +425,9 @@ def _build_top_events_html(events: List[Dict]) -> str:
   </div>
   <div class="event-footer">
     {vote_btn}
+    <span style="color:#64748b;font-size:.75rem;display:inline-flex;gap:.5rem">
+      <span>❤️ {likes}</span><span>🔁 {retweets}</span><span>💬 {replies}</span>
+    </span>
     <a class="event-link" href="{url}" target="_blank">View Tweet ↗</a>
     <button class="event-delete-btn" onclick="deleteEventCard(this, \'{tweet_id}\')" title="删除">🗑️</button>
   </div>
@@ -470,7 +473,7 @@ def _render_digest_html(text: str) -> str:
     return '\n'.join(out)
 
 
-def _build_homepage_section(digest: dict, top_events: List[Dict]) -> str:
+def _build_homepage_section(digest: dict, top_events: List[Dict], user_tier: str = "free") -> str:
     """Build the new home section: 今日核心判断 + Top 10 必看推文."""
     # ── 今日核心判断 ────────────────────────────────────────────────────────
     digest_date = (digest.get('date') or '')
@@ -494,6 +497,24 @@ def _build_homepage_section(digest: dict, top_events: List[Dict]) -> str:
         '<button id="cj-listen-btn" class="cj-listen-btn" onclick="cjListen()">🎙️ Audio Brief</button>'
         if has_insight_audio else
         '<span style="color:#64748b;font-size:.75rem">音频生成中...</span>'
+    )
+    # 下载按钮：basic=当天, pro=近7天, admin=全部 → 生成 MP4
+    _can_dl = user_tier in ("basic", "pro", "admin")
+    dl_zh = (
+        f'<a href="/api/digest/insight-video?date={_esc(digest_date)}&lang=zh" '
+        f'title="下载中文语音视频 (MP4)"'
+        f' style="display:inline-flex;align-items:center;gap:.25rem;padding:.18rem .55rem;'
+        f'border-radius:12px;border:1.5px solid #1e3a5f;background:#0f2a45;color:#7dd3fc;'
+        f'font-size:.72rem;font-weight:600;text-decoration:none;margin-left:.3rem">⬇ 中 MP4</a>'
+        if (_can_dl and audio_insight_zh_src) else ""
+    )
+    dl_en = (
+        f'<a href="/api/digest/insight-video?date={_esc(digest_date)}&lang=en" '
+        f'title="Download EN voice video (MP4)"'
+        f' style="display:inline-flex;align-items:center;gap:.25rem;padding:.18rem .55rem;'
+        f'border-radius:12px;border:1.5px solid #1e3a5f;background:#0f2a45;color:#7dd3fc;'
+        f'font-size:.72rem;font-weight:600;text-decoration:none;margin-left:.2rem">⬇ EN MP4</a>'
+        if (_can_dl and audio_insight_en_src) else ""
     )
     # 语言切换 tab
     lang_toggle = (
@@ -525,6 +546,7 @@ def _build_homepage_section(digest: dict, top_events: List[Dict]) -> str:
     <span class="cj-date">{_esc(digest_date)}</span>
     {lang_toggle}
     {listen_btn}
+    {dl_zh}{dl_en}
   </div>
   <div id="ins-zh-body" class="cj-body insight-body">{insight_zh_html}</div>
   <div id="ins-en-body" class="cj-body insight-body" style="display:none">{insight_en_html}</div>
@@ -598,6 +620,9 @@ def _build_homepage_section(digest: dict, top_events: List[Dict]) -> str:
   {media_block}
   <div class="proj-card-footer">
     {vote_btn}
+    <span style="color:#64748b;font-size:.75rem;display:inline-flex;gap:.6rem;margin-left:.3rem">
+      <span>❤️ {likes}</span><span>🔁 {retweets}</span><span>💬 {replies}</span>{f'<span>👁 {views}</span>' if views else ''}
+    </span>
     <a class="top10-link" href="{url}" target="_blank">查看原文 ↗</a>
     <button class="event-delete-btn" onclick="deleteEventCard(this, \'{tweet_id}\')" title="删除">🗑️</button>
   </div>
@@ -1020,7 +1045,7 @@ async function addSuggestedKeyword(project, keyword, index) {{
 """
 
 
-def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], stats: Dict, top_events: List[Dict], keyword_stats: List[Dict], voted_tweets: List[Dict], nickname: str = "monitor", sub: Dict = {}, digest: Dict = {}) -> str:
+def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], stats: Dict, top_events: List[Dict], keyword_stats: List[Dict], voted_tweets: List[Dict], nickname: str = "monitor", sub: Dict = {}, digest: Dict = {}, user_id: str = None) -> str:
     updated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     all_rows = sorted(
         [r for rows in data.values() for r in rows],
@@ -1044,6 +1069,11 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
         f'<div class="tab" data-color="#22c55e" data-target="sec-voted" '
         f'onclick="showTab(this,\'sec-voted\')">✓ Voted ({len(voted_rows)})</div>'
     )
+
+    # Resolve user tier for download permissions
+    _tier = sub.get("tier", "free") if sub.get("status") in ("active", None, "") else "free"
+    if user_id and user_id in _auth_module.ADMIN_USER_IDS:
+        _tier = "admin"
 
     # Contribution Hub tab
     room_tab = (
@@ -2085,7 +2115,7 @@ async function copyAIDraft(modalType) {{
   {room_tab}
 </div>
 <main>
-  {_build_homepage_section(digest, top_events)}
+  {_build_homepage_section(digest, top_events, user_tier=_tier)}
   {voted_section}
   {''.join(proj_sections)}
   {_build_room_section(keyword_stats, nickname)}
@@ -2863,7 +2893,7 @@ async def dashboard(request: Request) -> str:
     keyword_stats = await _fetch_keyword_stats()
     voted_tweets = await _fetch_tweets(voted_only=True, current_user=current_user_id)
     digest = await _fetch_latest_digest()
-    return _build_page(data, accs, stats, top_events, keyword_stats, voted_tweets, nickname, sub, digest)
+    return _build_page(data, accs, stats, top_events, keyword_stats, voted_tweets, nickname, sub, digest, user_id=current_user_id)
 
 
 class VoteRequest(BaseModel):
@@ -6005,17 +6035,11 @@ def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: 
         tweet_id = digest.get("tweet_id") or ""
 
         audio_zh_block = (
-            f'<div style="display:flex;align-items:center;gap:.3rem;flex-wrap:wrap">'
-            f'<audio controls style="flex:1;min-width:0;margin:.5rem 0"><source src="/audio/{_esc(audio_zh)}" type="audio/mpeg">Your browser does not support audio.</audio>'
-            f'{_dl_btn(f"/audio/{_esc(audio_zh)}", "下载")}'
-            f'</div>'
+            f'<audio controls style="width:100%;margin:.5rem 0"><source src="/audio/{_esc(audio_zh)}" type="audio/mpeg">Your browser does not support audio.</audio>'
             if audio_zh else '<p style="color:#94a3b8;font-size:.85rem">音频生成中...</p>'
         )
         audio_en_block = (
-            f'<div style="display:flex;align-items:center;gap:.3rem;flex-wrap:wrap">'
-            f'<audio controls style="flex:1;min-width:0;margin:.5rem 0"><source src="/audio/{_esc(audio_en)}" type="audio/mpeg">Your browser does not support audio.</audio>'
-            f'{_dl_btn(f"/audio/{_esc(audio_en)}", "Download")}'
-            f'</div>'
+            f'<audio controls style="width:100%;margin:.5rem 0"><source src="/audio/{_esc(audio_en)}" type="audio/mpeg">Your browser does not support audio.</audio>'
             if audio_en else '<p style="color:#94a3b8;font-size:.85rem">Audio generating...</p>'
         )
         tweet_link = (
@@ -6145,36 +6169,24 @@ select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:
 
 
 @app.get("/digest", response_class=HTMLResponse)
-async def digest_latest(request: Request):
+async def digest_latest():
     dates = await _fetch_digest_dates(30)
     ticker_items = await _fetch_ticker_items()
-    user = await _auth_module.get_current_user(request)
-    user_id = user["id"] if user else None
-    sub = (await _auth_module.get_subscription(user_id) or {}) if user_id else {}
-    tier = sub.get("tier", "free") if sub.get("status") in ("active", None, "") else "free"
-    if user_id in _auth_module.ADMIN_USER_IDS:
-        tier = "admin"
     if not dates:
-        return HTMLResponse(_build_digest_page(None, [], "", ticker_items, user_tier=tier))
+        return HTMLResponse(_build_digest_page(None, [], "", ticker_items))
     latest = dates[0]
     digest = await _fetch_digest(latest)
-    return HTMLResponse(_build_digest_page(digest, dates, latest, ticker_items, user_tier=tier))
+    return HTMLResponse(_build_digest_page(digest, dates, latest, ticker_items))
 
 
 @app.get("/digest/{date}", response_class=HTMLResponse)
-async def digest_by_date(date: str, request: Request):
+async def digest_by_date(date: str):
     if not _re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(status_code=400, detail="Invalid date format")
     dates = await _fetch_digest_dates(30)
     digest = await _fetch_digest(date)
     ticker_items = await _fetch_ticker_items()
-    user = await _auth_module.get_current_user(request)
-    user_id = user["id"] if user else None
-    sub = (await _auth_module.get_subscription(user_id) or {}) if user_id else {}
-    tier = sub.get("tier", "free") if sub.get("status") in ("active", None, "") else "free"
-    if user_id in _auth_module.ADMIN_USER_IDS:
-        tier = "admin"
-    return HTMLResponse(_build_digest_page(digest, dates, date, ticker_items, user_tier=tier))
+    return HTMLResponse(_build_digest_page(digest, dates, date, ticker_items))
 
 
 @app.post("/api/digest/regen-audio")
@@ -6236,6 +6248,60 @@ async def serve_audio(filename: str):
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Audio not found")
     return FileResponse(path, media_type="audio/mpeg")
+
+
+@app.get("/api/digest/insight-video")
+async def insight_video(date: str, lang: str = "zh", request: Request = None):
+    """On-demand: generate insight MP4, stream directly to client (not stored on server)."""
+    from fastapi.responses import StreamingResponse
+    import io
+
+    if not _re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=400, detail="Invalid date")
+    if lang not in ("zh", "en"):
+        raise HTTPException(status_code=400, detail="Invalid lang")
+
+    # Auth: basic/pro/admin only
+    user = await _auth_module.get_current_user(request)
+    user_id = user["id"] if user else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required")
+    sub = (await _auth_module.get_subscription(user_id) or {})
+    tier = sub.get("tier", "free") if sub.get("status") in ("active", None, "") else "free"
+    if user_id in _auth_module.ADMIN_USER_IDS:
+        tier = "admin"
+    if tier == "free":
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+
+    digest = await _fetch_digest(date)
+    if not digest:
+        raise HTTPException(status_code=404, detail="No digest for this date")
+
+    if lang == "zh":
+        text = digest.get("content_insight_zh") or digest.get("content_zh") or ""
+        audio_fn = digest.get("audio_insight_zh") or digest.get("audio_zh") or ""
+    else:
+        text = digest.get("content_insight_en") or digest.get("content_en") or ""
+        audio_fn = digest.get("audio_insight_en") or digest.get("audio_en") or ""
+
+    if not text or not audio_fn:
+        raise HTTPException(status_code=404, detail="Audio or text not available")
+
+    from ai.video_generator import generate_insight_video
+    import asyncio as _asyncio
+    video_bytes = await generate_insight_video(date, lang, text, audio_fn)
+    if not video_bytes:
+        raise HTTPException(status_code=500, detail="Video generation failed")
+
+    filename = f"daily-x-digest-{date}-{lang}.mp4"
+    return StreamingResponse(
+        io.BytesIO(video_bytes),
+        media_type="video/mp4",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+
 
 
 if __name__ == "__main__":
