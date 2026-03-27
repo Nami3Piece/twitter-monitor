@@ -1,6 +1,6 @@
 """
-ai/video_generator.py — 静态海报 + 音频 → MP4
-一张精美早安海报图，配上语音，合成视频。无字幕。
+ai/video_generator.py — 核心洞察海报 + 音频 → MP4
+分章节布局，无 Good Morning 问候语。
 """
 
 import asyncio
@@ -15,17 +15,19 @@ AUDIO_DIR      = os.getenv("AUDIO_DIR", "data/audio")
 FONT_PATH      = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
 FONT_PATH_BOLD = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
 
-# Light palette
+# Palette
 _BG_WARM    = (252, 250, 248)
-_PURPLE     = (109, 40,  217)
+_PURPLE     = (109,  40, 217)
 _PURPLE_LT  = (237, 233, 254)
-_GOLD       = (217, 119, 6)
+_PURPLE_DK  = ( 76,  29, 149)
+_GOLD       = (180,  90,   5)
 _GOLD_LT    = (254, 243, 199)
-_INK        = (15,  23,  42)
-_BODY       = (30,  41,  59)
+_GOLD_BD    = (217, 119,   6)
+_BODY       = ( 30,  41,  59)
 _MUTED      = (100, 116, 139)
 _BORDER     = (226, 232, 240)
 _RULE       = (203, 213, 225)
+_SECTION_BG = (245, 243, 255)
 
 W = 1080
 
@@ -40,7 +42,6 @@ def _get_font(size: int, bold: bool = False):
 
 
 def _tlen(draw, text: str, font) -> float:
-    """Safe textlength: strip newlines, fall back to textbbox on error."""
     text = text.replace("\n", " ").strip()
     try:
         return draw.textlength(text, font=font)
@@ -54,7 +55,6 @@ def _tlen(draw, text: str, font) -> float:
 
 def _wrap_text(text: str, font, max_width: int, draw) -> list[str]:
     import unicodedata
-    # Normalize: replace newlines with space so single-line measuring works
     text = text.replace("\n", " ").strip()
     is_cjk = sum(1 for c in text if unicodedata.east_asian_width(c) in ('W', 'F')) > len(text) * 0.3
     if is_cjk:
@@ -62,136 +62,179 @@ def _wrap_text(text: str, font, max_width: int, draw) -> list[str]:
         for ch in text:
             test = current + ch
             if _tlen(draw, test, font) > max_width and current:
-                lines.append(current)
-                current = ch
+                lines.append(current); current = ch
             else:
                 current = test
         if current:
             lines.append(current)
-        return lines
     else:
         words = text.split()
         lines, current = [], ""
         for word in words:
             test = (current + " " + word).strip()
             if _tlen(draw, test, font) > max_width and current:
-                lines.append(current)
-                current = word
+                lines.append(current); current = word
             else:
                 current = test
         if current:
             lines.append(current)
-        return lines
+    return lines
 
 
 def _draw_poster(date: str, lang: str, text: str) -> Optional[bytes]:
-    """Draw a single Good Morning insight poster. Returns PNG bytes."""
+    """Draw a sectioned Core Insight poster. Returns PNG bytes."""
     try:
         from PIL import Image, ImageDraw
 
-        MARGIN  = 72
-        BODY_W  = W - MARGIN * 2
+        MARGIN      = 72
+        BAR_W       = 5
+        INDENT      = 20
+        BODY_W      = W - MARGIN * 2 - BAR_W - INDENT
+        SECTION_PAD = 18
+        PARA_GAP    = 40
 
-        # Auto-size body font to fit in ~900px
+        # ── 段落分割（跳过首行 header）────────────────────────────────────
+        raw_paras = [p.strip() for p in text.split('\n\n') if p.strip()]
+        paragraphs = []
+        for p in raw_paras:
+            first = p.split('\n')[0].strip()
+            if first.startswith('📰') or (len(first) < 70 and '\u00b7' in first and len(p.split('\n')) == 1):
+                continue
+            paragraphs.append(p.replace('\n', ' ').strip())
+        if not paragraphs:
+            paragraphs = [text.strip()]
+
         dummy_img  = Image.new("RGB", (W, 100))
         dummy_draw = ImageDraw.Draw(dummy_img)
-        MAX_BODY_H = 900
 
-        chosen_fs = 34
-        for fs in (38, 34, 30, 27, 24, 21):
-            fb = _get_font(fs)
-            lines = _wrap_text(text, fb, BODY_W, dummy_draw)
-            bb = dummy_draw.textbbox((0, 0), "测Ag", font=fb)
-            lh = bb[3] - bb[1] + 12
-            if len(lines) * lh <= MAX_BODY_H:
-                chosen_fs = fs
+        # ── 自动字号（段落总高度 ≤ 1050px）──────────────────────────────
+        f_body, para_data, line_h = None, [], 0
+        for fs in (34, 30, 27, 24, 21, 18):
+            fb   = _get_font(fs)
+            bb   = dummy_draw.textbbox((0, 0), "测Ag", font=fb)
+            lh   = bb[3] - bb[1] + 10
+            pd   = [_wrap_text(p, fb, BODY_W, dummy_draw) for p in paragraphs]
+            tot  = sum(len(ls) * lh for ls in pd) + (len(pd) - 1) * PARA_GAP
+            tot += len(pd) * SECTION_PAD * 2
+            if tot <= 1050:
+                f_body, para_data, line_h = fb, pd, lh
                 break
-        else:
-            chosen_fs = 21
+        if f_body is None:
+            f_body    = _get_font(18)
+            para_data = [_wrap_text(p, f_body, BODY_W, dummy_draw) for p in paragraphs]
+            bb        = dummy_draw.textbbox((0, 0), "测Ag", font=f_body)
+            line_h    = bb[3] - bb[1] + 10
 
-        f_body     = _get_font(chosen_fs)
-        body_lines = _wrap_text(text, f_body, BODY_W, dummy_draw)
-        bb         = dummy_draw.textbbox((0, 0), "测Ag", font=f_body)
-        line_h     = bb[3] - bb[1] + 12
-        body_h     = len(body_lines) * line_h
+        body_h = (sum(len(ls) * line_h for ls in para_data)
+                  + (len(para_data) - 1) * PARA_GAP
+                  + len(para_data) * SECTION_PAD * 2)
 
-        TOP_PAD     = 64
-        GREET_H     = 120
-        DATE_H      = 52
-        RULE1_H     = 32
-        BODY_PAD_T  = 40
-        BODY_PAD_B  = 48
-        CTA_H       = 80
-        RULE2_H     = 28
-        TAG_H       = 60
-        BOT_PAD     = 48
+        # ── 画布尺寸 ──────────────────────────────────────────────────────
+        TOP_PAD    = 64
+        TITLE_H    = 90
+        DATE_H     = 50
+        RULE1_H    = 36
+        BODY_PAD_T = 36
+        BODY_PAD_B = 52
+        CTA_H      = 80
+        RULE2_H    = 30
+        TAG_H      = 56
+        BOT_PAD    = 52
 
-        canvas_h = (TOP_PAD + GREET_H + DATE_H + RULE1_H
+        canvas_h = (TOP_PAD + TITLE_H + DATE_H + RULE1_H
                     + BODY_PAD_T + body_h + BODY_PAD_B
                     + CTA_H + RULE2_H + TAG_H + BOT_PAD)
-        canvas_h += canvas_h % 2  # libx264 requires even dimensions
+        canvas_h += canvas_h % 2
 
         img  = Image.new("RGB", (W, canvas_h), _BG_WARM)
         draw = ImageDraw.Draw(img)
 
-        f_greeting = _get_font(52, bold=True)
-        f_brand    = _get_font(24)
-        f_date     = _get_font(24)
-        f_cta_sub  = _get_font(22)
-        f_tag      = _get_font(20)
+        f_title = _get_font(62, bold=True)
+        f_brand = _get_font(22)
+        f_date  = _get_font(22)
+        f_num   = _get_font(18)
+        f_cta   = _get_font(21)
+        f_tag   = _get_font(19)
 
-        # Top accent bar
-        draw.rectangle([0, 0, W, 6], fill=_PURPLE)
+        # ── 顶部装饰条（三段渐变）────────────────────────────────────────
+        draw.rectangle([0, 0, W // 3,     8], fill=_PURPLE_DK)
+        draw.rectangle([W // 3, 0, W * 2 // 3, 8], fill=_PURPLE)
+        draw.rectangle([W * 2 // 3, 0, W, 8], fill=(168, 85, 247))
 
-        # Greeting
         y = TOP_PAD
-        greeting = "早安 · 今日核心洞察" if lang == "zh" else "Good Morning · Core Insight"
-        draw.text((MARGIN, y), greeting, font=f_greeting, fill=_INK)
 
-        # Brand badge right-aligned
+        # ── 主标题 ────────────────────────────────────────────────────────
+        title = "核心洞察" if lang == "zh" else "Core Insight"
+        draw.text((MARGIN, y), title, font=f_title, fill=_PURPLE)
+
+        # Brand badge（右上）
         badge = "Daily X Digest"
         bw = _tlen(draw, badge, f_brand)
         bx = W - MARGIN - int(bw) - 24
-        by = y + 10
-        draw.rounded_rectangle([bx - 12, by, bx + int(bw) + 12, by + 36], radius=18, fill=_PURPLE_LT)
-        draw.text((bx, by + 8), badge, font=f_brand, fill=_PURPLE)
+        by = y + 16
+        draw.rounded_rectangle([bx - 14, by, bx + int(bw) + 14, by + 34], radius=17, fill=_PURPLE_LT)
+        draw.text((bx, by + 7), badge, font=f_brand, fill=_PURPLE)
 
-        # Date
-        y += GREET_H
+        y += TITLE_H
+
+        # ── 日期 ─────────────────────────────────────────────────────────
         draw.text((MARGIN, y), date, font=f_date, fill=_MUTED)
-
-        # Rule 1
         y += DATE_H
+
+        # ── 分隔线 ───────────────────────────────────────────────────────
         draw.rectangle([MARGIN, y, W - MARGIN, y + 2], fill=_RULE)
-
-        # Body
         y += RULE1_H + BODY_PAD_T
-        for line in body_lines:
-            draw.text((MARGIN, y), line, font=f_body, fill=_BODY)
-            y += line_h
 
-        # CTA pill
+        # ── 章节段落 ──────────────────────────────────────────────────────
+        labels_en = ["Overview", "Deep Dive", "Watch Next"]
+        labels_zh = ["综合信号", "重点分析", "关注要点"]
+        labels    = labels_zh if lang == "zh" else labels_en
+
+        for idx, lines in enumerate(para_data):
+            sec_h = len(lines) * line_h + SECTION_PAD * 2
+
+            # 淡紫背景块
+            draw.rounded_rectangle([MARGIN, y, W - MARGIN, y + sec_h], radius=10, fill=_SECTION_BG)
+            # 左侧紫竖条
+            draw.rounded_rectangle([MARGIN, y, MARGIN + BAR_W, y + sec_h], radius=10, fill=_PURPLE)
+
+            # 章节标签（右上角，留出间距避免遮字）
+            label = labels[idx] if idx < len(labels) else f"§{idx+1}"
+            lw    = _tlen(draw, label, f_num)
+            draw.text((W - MARGIN - int(lw) - 16, y + SECTION_PAD - 1), label, font=f_num, fill=_PURPLE)
+
+            # 正文（缩进，避开标签区域右端留空）
+            text_w = W - MARGIN - BAR_W - INDENT - int(lw) - 32
+            ty = y + SECTION_PAD
+            for line in lines:
+                draw.text((MARGIN + BAR_W + INDENT, ty), line, font=f_body, fill=_BODY)
+                ty += line_h
+
+            y += sec_h
+            if idx < len(para_data) - 1:
+                y += PARA_GAP
+
+        # ── CTA 胶囊 ─────────────────────────────────────────────────────
         y += BODY_PAD_B
         draw.rounded_rectangle([MARGIN, y, W - MARGIN, y + 64], radius=32, fill=_GOLD_LT)
-        draw.rounded_rectangle([MARGIN, y, W - MARGIN, y + 64], radius=32, outline=_GOLD, width=1)
-        cta = ("🌐  monitor.dailyxdigest.uk  ·  免费订阅，每日 8 点" if lang == "zh"
-               else "🌐  monitor.dailyxdigest.uk  ·  Free · Daily at 8AM")
-        cta_w = _tlen(draw, cta, f_cta_sub)
-        draw.text((W // 2 - int(cta_w) // 2, y + 18), cta, font=f_cta_sub, fill=_GOLD)
+        draw.rounded_rectangle([MARGIN, y, W - MARGIN, y + 64], radius=32, outline=_GOLD_BD, width=1)
+        cta = ("monitor.dailyxdigest.uk  ·  免费订阅  ·  早八点准时播报" if lang == "zh"
+               else "monitor.dailyxdigest.uk  ·  Free  ·  Daily UTC 0:00")
+        cta_w = _tlen(draw, cta, f_cta)
+        draw.text((W // 2 - int(cta_w) // 2, y + 18), cta, font=f_cta, fill=_GOLD)
 
-        # Rule 2
+        # ── 底部分隔 + 免责声明 ───────────────────────────────────────────
         y += CTA_H + RULE2_H
         draw.rectangle([MARGIN, y, W - MARGIN, y + 1], fill=_BORDER)
-
-        # Footer tagline
         y += 20
-        tagline = ("Web3 核心信号 · AI 精选分析 · 中英双语" if lang == "zh"
-                   else "Web3 signals · AI-curated · ZH & EN")
+        tagline = ("以上内容仅供参考，不构成任何投资建议。投资有风险，决策需谨慎。" if lang == "zh"
+                   else "For reference only. Not financial advice. Invest at your own risk.")
         tl_w = _tlen(draw, tagline, f_tag)
         draw.text((W // 2 - int(tl_w) // 2, y), tagline, font=f_tag, fill=_MUTED)
 
-        # Bottom accent bar
-        draw.rectangle([0, canvas_h - 6, W, canvas_h], fill=_PURPLE)
+        # ── 底部装饰条 ────────────────────────────────────────────────────
+        draw.rectangle([0, canvas_h - 8, W * 2 // 3, canvas_h], fill=_PURPLE)
+        draw.rectangle([W * 2 // 3, canvas_h - 8, W, canvas_h], fill=(168, 85, 247))
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
