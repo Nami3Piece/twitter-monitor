@@ -69,7 +69,7 @@ async def generate_digest(
             likes = t.get("like_count", 0) or 0
             rts = t.get("retweet_count", 0) or 0
             url = "https://x.com/i/web/status/" + tid if tid else ""
-            lines.append("- @" + username + " [" + str(likes) + "❤ " + str(rts) + "🔁]: " + text)
+            lines.append("- @" + username + ": " + text)
             if url:
                 lines.append("  url: " + url)
         monitored_blocks.append("\n".join(lines))
@@ -89,7 +89,7 @@ async def generate_digest(
             rts = t.get("retweetCount") or t.get("retweet_count", 0) or 0
             tid = t.get("id") or t.get("tweet_id", "")
             url = "https://x.com/i/web/status/" + str(tid) if tid else ""
-            lines.append("- @" + username + " [" + str(likes) + "❤ " + str(rts) + "🔁]: " + text)
+            lines.append("- @" + username + ": " + text)
             if url:
                 lines.append("  url: " + url)
         search_blocks.append("\n".join(lines))
@@ -99,11 +99,13 @@ async def generate_digest(
 
     prompt = (
         "You are a professional Web3/crypto intelligence analyst. "
-        "Produce a daily briefing with TWO distinct sections:\n\n"
+        "Produce a daily briefing with TWO distinct sections.\n\n"
+        "CRITICAL RULE: NEVER mention any engagement numbers in your output — "
+        "no likes, retweets, views, reply counts, or any social metrics. "
+        "Your analysis must be based purely on logic, content, and narrative patterns.\n\n"
         "1. Core Insight (核心洞察) — Deep analytical judgment. NOT a news summary. "
         "Identify the most important signal, trend, or pattern across these 4 projects today. "
-        "What is the market narrative? Be specific: cite real engagement numbers, "
-        "sentiment shifts, or cross-project patterns from the data.\n\n"
+        "What is the market narrative? Identify cross-project patterns and signals from the data.\n\n"
         "2. Today's News (今日要闻) — Specific notable tweets with links. Bullet-point format.\n\n"
         "=== MONITORED ACCOUNTS DATA (past 24h) ===\n"
         + monitored_text + "\n\n"
@@ -116,12 +118,14 @@ async def generate_digest(
         "- Para 1: Cross-cutting theme or macro signal across projects\n"
         "- Para 2: Most important signal for 1-2 specific projects with evidence from the data\n"
         "- Para 3: What to watch next / key risk or opportunity\n"
-        "Rules: No bullet points. No links. Pure analysis. Min 200 Chinese characters.\n"
+        "Rules: No bullet points. No links. Pure analysis. Min 200 Chinese characters. "
+        "Do NOT mention any numbers of likes, retweets, or engagement metrics.\n"
         "IMPORTANT: In Chinese text, always write '绿色比特币' instead of 'GreenBTC'. Keep ARKREEN, TLAY, AI Renaissance as-is.]\n"
         "===INSIGHT_ZH_END===\n\n"
         "===INSIGHT_EN_START===\n"
         "📰 " + date + " · Core Intelligence\n\n"
-        "[Same analytical content in English. 2-3 paragraphs. No bullet points. No links. Min 150 words.]\n"
+        "[Same analytical content in English. 2-3 paragraphs. No bullet points. No links. Min 150 words. "
+        "No engagement numbers whatsoever.]\n"
         "===INSIGHT_EN_END===\n\n"
         "===ZH_START===\n"
         "📰 今日要闻 | " + date + "\n\n"
@@ -159,7 +163,7 @@ async def generate_digest(
     try:
         response = await client.messages.create(
             model="claude-opus-4-6",
-            max_tokens=3000,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         content = response.content[0].text

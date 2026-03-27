@@ -424,10 +424,6 @@ def _build_top_events_html(events: List[Dict]) -> str:
     {"<div class='event-ai'><span class='event-ai-label'>AI Draft</span> " + ai + "</div>" if ai else ""}
   </div>
   <div class="event-footer">
-    <span class="event-likes">❤️ {likes:,}</span>
-    <span class="event-likes">🔁 {retweets:,}</span>
-    <span class="event-likes {'discussion-badge' if ev.get('has_discussion') else ''}">💬 {replies:,}{' 🔥' if ev.get('has_discussion') else ''}</span>
-    <span class="event-likes">👁 {ev.get("view_count") or 0:,}</span>
     {vote_btn}
     <a class="event-link" href="{url}" target="_blank">View Tweet ↗</a>
     <button class="event-delete-btn" onclick="deleteEventCard(this, \'{tweet_id}\')" title="删除">🗑️</button>
@@ -601,12 +597,9 @@ def _build_homepage_section(digest: dict, top_events: List[Dict]) -> str:
   <div class="proj-card-text">{text}</div>
   {media_block}
   <div class="proj-card-footer">
-    <span class="top10-stat">❤️ {likes:,}</span>
-    <span class="top10-stat">🔁 {retweets:,}</span>
-    <span class="top10-stat">💬 {replies:,}</span>
-    <span class="top10-stat">👁 {views:,}</span>
     {vote_btn}
     <a class="top10-link" href="{url}" target="_blank">查看原文 ↗</a>
+    <button class="event-delete-btn" onclick="deleteEventCard(this, \'{tweet_id}\')" title="删除">🗑️</button>
   </div>
 </div>""")
 
@@ -702,10 +695,6 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
             f'  <div class="tc-body">{display_text}</div>'
             f'  {media_block}'
             f'  <div class="tc-footer">'
-            f'    <span class="tc-stat">❤️ {r.get("like_count") or 0}</span>'
-            f'    <span class="tc-stat">🔁 {r.get("retweet_count") or 0}</span>'
-            f'    <span class="tc-stat">💬 {r.get("reply_count") or 0}</span>'
-            f'    <span class="tc-stat">👁 {r.get("view_count") or 0}</span>'
             f'    <a class="tc-link" href="{_esc(r.get("url","#"))}" target="_blank">View Tweet ↗</a>'
             f'  </div>'
             f'</div>'
@@ -2107,7 +2096,9 @@ async function copyAIDraft(modalType) {{
   Twitter Monitor &middot; {total}  tweets &middot; {len(data)}  projects &middot; Auto-fetch every 8 hours
   <br><a href="/admin/keywords" style="color:#8b5cf6;text-decoration:none;margin-top:.5rem;display:inline-block">✨ Contribution Hub - Contribute Keywords</a>
   &nbsp;&middot;&nbsp;
-  <a href="/admin/keywords" style="color:#64748b;text-decoration:none;font-size:.72rem">🔐 Admin Login</a>
+  <a href="/admin/login" style="color:#64748b;text-decoration:none;font-size:.72rem">🔐 Admin Login</a>
+  &nbsp;&middot;&nbsp;
+  <a href="/admin/keywords" style="color:#64748b;text-decoration:none;font-size:.72rem">⚙️ Keywords Admin</a>
 <span id="page-bottom"></span>
 </footer>
 
@@ -3168,11 +3159,94 @@ async def api_cleanup_low_followers(_: None = Depends(_auth)) -> JSONResponse:
     return JSONResponse({"ok": True, **summary})
 
 
+@app.get("/api/admin/deletion-report")
+async def api_deletion_report(_: str = Depends(_auth), days: int = 7) -> JSONResponse:
+    from db.database import get_deletion_report
+    data = await get_deletion_report(days)
+    return JSONResponse({"ok": True, **data})
+
+
+@app.post("/api/admin/ai-strategy-analysis")
+async def api_ai_strategy_analysis(_: str = Depends(_auth)) -> JSONResponse:
+    """Use Claude to analyze deletion patterns and suggest search rule improvements."""
+    from db.database import get_deletion_report
+    from anthropic import AsyncAnthropic
+    import os
+    data = await get_deletion_report(days=14)
+    if data["total"] == 0:
+        return JSONResponse({"ok": True, "analysis": "过去 14 天无删除记录，当前搜索规则运行良好。"})
+    by_reason = "\n".join(f"- {r['reason']}: {r['cnt']} 条" for r in data["by_reason"])
+    top_accounts = "\n".join(f"- @{a['username']}: {a['cnt']} 次" for a in data["top_accounts"][:10])
+    top_keywords = "\n".join(f"- [{k['project']}] {k['keyword']}: {k['cnt']} 次" for k in data["top_keywords"][:10])
+    recent_texts = "\n".join(
+        f"- [{r['project']}] @{r['username']} ({r['reason']}): {(r['text'] or '')[:100]}"
+        for r in data["recent"][:20]
+    )
+    prompt = (
+        f"你是一个 Web3/crypto 内容策略专家。以下是过去 14 天被管理员删除的帖子统计数据：\n\n"
+        f"删除原因分布：\n{by_reason}\n\n"
+        f"高频被删账号：\n{top_accounts}\n\n"
+        f"高频被删关键词（搜索词）：\n{top_keywords}\n\n"
+        f"近期删除样本：\n{recent_texts}\n\n"
+        f"请分析：\n"
+        f"1. 哪些关键词/搜索规则过于宽泛，带来了太多噪音？\n"
+        f"2. 哪些账号应该加入黑名单？\n"
+        f"3. 具体的搜索规则优化建议（可以直接给出修改后的关键词）\n\n"
+        f"输出格式：用中文，分三节，每节 2-4 条建议，简洁直接。"
+    )
+    client = AsyncAnthropic(
+        api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+        base_url=os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+    )
+    try:
+        resp = await client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=1500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        analysis = resp.content[0].text
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+    return JSONResponse({"ok": True, "analysis": analysis})
+
+
+@app.get("/api/admin/algo-weekly")
+async def api_algo_weekly_get(_: str = Depends(_auth)) -> JSONResponse:
+    from db.database import get_algo_weekly
+    reports = await get_algo_weekly(limit=5)
+    return JSONResponse({"ok": True, "reports": reports})
+
+
+@app.post("/api/admin/algo-weekly/refresh")
+async def api_algo_weekly_refresh(_: str = Depends(_auth)) -> JSONResponse:
+    """Manually trigger algo weekly generation."""
+    from ai.algo_weekly import run_algo_weekly
+    try:
+        await run_algo_weekly()
+        from db.database import get_algo_weekly
+        reports = await get_algo_weekly(limit=1)
+        return JSONResponse({"ok": True, "latest": reports[0] if reports else None})
+    except Exception as e:
+        logger.error(f"algo_weekly refresh error: {e}")
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+
+async def admin_login(admin_user: str = Depends(_auth)):
+    """Admin login: Basic Auth → set JWT cookie → redirect to main site with pro access."""
+    token = _auth_module.make_admin_token(admin_user)
+    r = RedirectResponse("/", status_code=303)
+    r.set_cookie("auth_token", token, httponly=True, secure=True, samesite="lax",
+                 max_age=30 * 86400, path="/")
+    return r
+
+
 @app.get("/admin/keywords", response_class=HTMLResponse)
 async def keywords_admin(admin_user: str = Depends(_auth)) -> str:
-    """Keyword management page."""
+    """Admin operations hub: deletion analysis, X algorithm weekly, keyword management."""
     from config import PROJECTS
 
+    # Build keyword rows for Tab 3
     rows = []
     for project, keywords in PROJECTS.items():
         c = _PROJECT_COLOR.get(project, "#3b82f6")
@@ -3181,7 +3255,7 @@ async def keywords_admin(admin_user: str = Depends(_auth)) -> str:
 <div class="project-section" style="border-left:4px solid {c}">
   <div class="project-header">
     <h3 style="color:{c}">{project}</h3>
-    <span class="kw-count">{len(keywords)}  keywords</span>
+    <span class="kw-count">{len(keywords)} keywords</span>
   </div>
   <div class="kw-list">{kw_list}</div>
   <div class="add-kw-form">
@@ -3191,311 +3265,440 @@ async def keywords_admin(admin_user: str = Depends(_auth)) -> str:
 </div>
 """)
 
-    # Build ticker bar HTML
-    ticker_bar = ""
-    _ti = locals().get("ticker_items")
-    if _ti:
-        def _ticker_text(row):
-            username = row.get("username","")
-            text = (row.get("text") or "")[:80].replace('"', '&quot;').replace('<','&lt;').replace('>','&gt;')
-            if len(row.get("text","")) > 80:
-                text += "…"
-            url = row.get("url","#") or "#"
-            replies = row.get("reply_count") or 0
-            likes = row.get("like_count") or 0
-            hot = " 🔥" if replies >= 3 else ""
-            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
-        items_html = "".join(_ticker_text(r) for r in (_ti or []))
-        # Duplicate for seamless loop
-        ticker_bar = f'''<div class="ticker-wrap">
-  <span class="ticker-label">🔥 LIVE</span>
-  <span class="ticker-track">{items_html}{items_html}</span>
-</div>'''
-
     return f"""<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Keyword管理 - Twitter Monitor</title>
+<title>Admin Hub - Twitter Monitor</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f1f5f9;color:#1e293b;padding:2rem}}
-.container{{max-width:1200px;margin:0 auto}}
-header{{background:#0f172a;color:#fff;padding:1.5rem 2rem;border-radius:12px;margin-bottom:2rem}}
-h1{{font-size:1.5rem;margin-bottom:.5rem}}
-.subtitle{{font-size:.9rem;opacity:.7}}
-.back-link{{display:inline-block;margin-bottom:1rem;color:#3b82f6;text-decoration:none;font-size:.9rem}}
-.back-link:hover{{text-decoration:underline}}
-.ai-suggest-section{{background:#fff;border-radius:12px;padding:1.5rem;margin-bottom:1.5rem;box-shadow:0 1px 3px rgba(0,0,0,.1);border-left:4px solid #8b5cf6}}
-.ai-suggest-section h2{{font-size:1.1rem;color:#8b5cf6;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}}
-.url-input-form{{display:flex;gap:.5rem;margin-bottom:1rem}}
-.url-input-form input{{flex:1;padding:.6rem 1rem;border:1px solid #e2e8f0;border-radius:6px;font-size:.9rem}}
-.url-input-form input:focus{{outline:none;border-color:#8b5cf6}}
-.url-input-form button{{padding:.6rem 1.5rem;background:#8b5cf6;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:.9rem}}
-.url-input-form button:hover{{background:#7c3aed}}
-.url-input-form button:disabled{{opacity:.5;cursor:not-allowed}}
-.suggestions-box{{background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:1rem;display:none}}
-.suggestions-box.show{{display:block}}
-.suggestion-item{{background:#fff;border:1px solid #e9d5ff;border-radius:6px;padding:.8rem;margin-bottom:.8rem}}
-.suggestion-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem}}
-.suggestion-keyword{{font-weight:600;color:#7c3aed;font-size:.95rem}}
-.suggestion-project{{font-size:.8rem;color:#64748b;background:#f1f5f9;padding:.2rem .6rem;border-radius:4px}}
-.suggestion-reason{{font-size:.85rem;color:#64748b;margin-bottom:.6rem;line-height:1.5}}
-.suggestion-actions{{display:flex;gap:.5rem}}
-.suggestion-actions button{{padding:.4rem 1rem;border:none;border-radius:6px;font-size:.85rem;font-weight:600;cursor:pointer}}
-.btn-add{{background:#22c55e;color:#fff}}
-.btn-add:hover{{background:#16a34a}}
-.btn-skip{{background:#f1f5f9;color:#64748b}}
-.btn-skip:hover{{background:#e2e8f0}}
-.project-section{{background:#fff;border-radius:12px;padding:1.5rem;margin-bottom:1.5rem;box-shadow:0 1px 3px rgba(0,0,0,.1)}}
-.project-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;padding-bottom:.8rem;border-bottom:2px solid #e2e8f0}}
-.project-header h3{{font-size:1.2rem;font-weight:700}}
-.kw-count{{font-size:.85rem;color:#64748b;background:#f1f5f9;padding:.3rem .8rem;border-radius:20px}}
-.kw-list{{display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:1rem}}
-.kw-item{{display:flex;align-items:center;gap:.4rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:.4rem .7rem;font-size:.85rem}}
-.kw-item span{{color:#475569}}
-.kw-del-btn{{background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:0;width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:4px}}
-.kw-del-btn:hover{{background:#fee2e2}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}}
+.topbar{{background:#1e293b;border-bottom:1px solid #334155;padding:.8rem 2rem;display:flex;align-items:center;gap:1rem}}
+.topbar a{{color:#94a3b8;text-decoration:none;font-size:.9rem}}
+.topbar a:hover{{color:#fff}}
+.topbar .title{{color:#fff;font-weight:700;font-size:1.1rem;margin-left:.5rem}}
+.tabs{{display:flex;gap:0;background:#1e293b;border-bottom:1px solid #334155;padding:0 2rem}}
+.tab{{padding:.9rem 1.5rem;cursor:pointer;font-size:.9rem;font-weight:600;color:#64748b;border-bottom:3px solid transparent;transition:.2s;white-space:nowrap}}
+.tab:hover{{color:#94a3b8}}
+.tab.active{{color:#fff;border-bottom-color:#3b82f6}}
+.tab-content{{display:none;padding:2rem;max-width:1200px;margin:0 auto}}
+.tab-content.active{{display:block}}
+
+/* Stats row */
+.stats-row{{display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}}
+.stat-card{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1rem 1.5rem;flex:1;min-width:140px}}
+.stat-card .val{{font-size:1.8rem;font-weight:700;color:#fff}}
+.stat-card .lbl{{font-size:.8rem;color:#64748b;margin-top:.2rem}}
+.stat-card.red .val{{color:#f87171}}
+.stat-card.yellow .val{{color:#fbbf24}}
+.stat-card.green .val{{color:#34d399}}
+
+/* Reason badges */
+.reason-badge{{display:inline-block;padding:.2rem .6rem;border-radius:4px;font-size:.75rem;font-weight:600;margin:.1rem}}
+.reason-spam{{background:#7f1d1d;color:#fca5a5}}
+.reason-not_relevant{{background:#1e3a5f;color:#93c5fd}}
+.reason-other{{background:#374151;color:#9ca3af}}
+.reason-poor_account{{background:#4a1d96;color:#c4b5fd}}
+
+/* Deleted tweets table */
+.del-table{{width:100%;border-collapse:collapse;font-size:.85rem}}
+.del-table th{{background:#1e293b;color:#94a3b8;padding:.6rem 1rem;text-align:left;font-weight:600;border-bottom:1px solid #334155}}
+.del-table td{{padding:.6rem 1rem;border-bottom:1px solid #1e293b;vertical-align:top}}
+.del-table tr:hover td{{background:#1e293b}}
+.del-table .tweet-text{{color:#cbd5e1;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+.proj-tag{{display:inline-block;padding:.1rem .5rem;border-radius:3px;font-size:.72rem;font-weight:600}}
+
+/* AI analysis */
+.ai-box{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1.5rem;white-space:pre-wrap;font-size:.88rem;line-height:1.7;color:#cbd5e1;min-height:80px}}
+.ai-box.loading{{color:#64748b;font-style:italic}}
+.section-card{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}}
+.section-card h3{{font-size:1rem;font-weight:700;color:#fff;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}}
+.top-list{{display:flex;flex-wrap:wrap;gap:.5rem}}
+.top-chip{{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:.3rem .7rem;font-size:.8rem;color:#94a3b8}}
+.top-chip span{{color:#fff;font-weight:600;margin-left:.3rem}}
+
+/* Action buttons */
+.btn{{padding:.55rem 1.2rem;border:none;border-radius:7px;font-weight:600;cursor:pointer;font-size:.88rem;transition:.2s}}
+.btn-primary{{background:#3b82f6;color:#fff}}
+.btn-primary:hover{{background:#2563eb}}
+.btn-primary:disabled{{opacity:.5;cursor:not-allowed}}
+.btn-purple{{background:#7c3aed;color:#fff}}
+.btn-purple:hover{{background:#6d28d9}}
+.btn-green{{background:#059669;color:#fff}}
+.btn-green:hover{{background:#047857}}
+.btn-sm{{padding:.35rem .8rem;font-size:.8rem}}
+
+/* Algorithm weekly */
+.weekly-card{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1.5rem;margin-bottom:1rem}}
+.weekly-card .week-label{{font-size:.8rem;color:#64748b;margin-bottom:.8rem}}
+.weekly-content{{white-space:pre-wrap;font-size:.88rem;line-height:1.8;color:#cbd5e1}}
+.lang-toggle{{display:flex;gap:.5rem;margin-bottom:1rem}}
+.lang-btn{{padding:.3rem .8rem;border-radius:5px;border:1px solid #334155;background:transparent;color:#64748b;cursor:pointer;font-size:.8rem;font-weight:600}}
+.lang-btn.active{{background:#3b82f6;color:#fff;border-color:#3b82f6}}
+
+/* Keywords tab */
+.project-section{{background:#1e293b;border-radius:10px;padding:1.5rem;margin-bottom:1rem;border:1px solid #334155}}
+.project-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;padding-bottom:.8rem;border-bottom:1px solid #334155}}
+.project-header h3{{font-size:1.1rem;font-weight:700}}
+.kw-count{{font-size:.8rem;color:#64748b;background:#0f172a;padding:.2rem .7rem;border-radius:20px}}
+.kw-list{{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem}}
+.kw-item{{display:flex;align-items:center;gap:.3rem;background:#0f172a;border:1px solid #334155;border-radius:5px;padding:.3rem .6rem;font-size:.82rem;color:#94a3b8}}
+.kw-del-btn{{background:transparent;border:none;color:#f87171;cursor:pointer;font-size:.9rem;padding:0}}
+.kw-del-btn:hover{{color:#ef4444}}
 .add-kw-form{{display:flex;gap:.5rem}}
-.add-kw-form input{{flex:1;padding:.5rem .8rem;border:1px solid #e2e8f0;border-radius:6px;font-size:.9rem}}
+.add-kw-form input{{flex:1;padding:.45rem .8rem;border:1px solid #334155;border-radius:6px;font-size:.85rem;background:#0f172a;color:#e2e8f0}}
 .add-kw-form input:focus{{outline:none;border-color:#3b82f6}}
-.add-kw-form button{{padding:.5rem 1.2rem;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:.9rem}}
-.add-kw-form button:hover{{background:#2563eb}}
-.toast{{position:fixed;bottom:2rem;right:2rem;padding:1rem 1.5rem;background:#0f172a;color:#fff;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.3);opacity:0;transform:translateY(10px);transition:.3s;pointer-events:none;z-index:999}}
+.add-kw-form button{{padding:.45rem 1rem;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:.85rem}}
+.save-notice{{background:#172554;border:1px solid #1d4ed8;border-radius:8px;padding:.8rem 1.2rem;margin-bottom:1.5rem;font-size:.85rem;color:#93c5fd}}
+.ai-suggest-wrap{{background:#1e293b;border:1px solid #7c3aed;border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}}
+.ai-suggest-wrap h2{{font-size:1rem;color:#a78bfa;margin-bottom:.8rem}}
+.url-input-form{{display:flex;gap:.5rem;margin-bottom:1rem}}
+.url-input-form input{{flex:1;padding:.5rem .9rem;border:1px solid #334155;border-radius:6px;font-size:.88rem;background:#0f172a;color:#e2e8f0}}
+.url-input-form input:focus{{outline:none;border-color:#7c3aed}}
+.suggestions-box{{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:1rem;display:none}}
+.suggestions-box.show{{display:block}}
+.suggestion-item{{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:.8rem;margin-bottom:.6rem}}
+.suggestion-keyword{{font-weight:700;color:#a78bfa}}
+.suggestion-project{{font-size:.75rem;color:#64748b;margin-left:.5rem}}
+.suggestion-reason{{font-size:.82rem;color:#64748b;margin:.4rem 0}}
+.suggestion-actions{{display:flex;gap:.5rem}}
+.btn-add{{background:#059669;color:#fff;border:none;border-radius:5px;padding:.3rem .8rem;cursor:pointer;font-size:.8rem;font-weight:600}}
+.btn-skip{{background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:.3rem .8rem;cursor:pointer;font-size:.8rem}}
+
+/* Toast */
+.toast{{position:fixed;bottom:2rem;right:2rem;padding:.8rem 1.5rem;background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.5);opacity:0;transform:translateY(10px);transition:.3s;pointer-events:none;z-index:999;font-size:.88rem}}
 .toast.show{{opacity:1;transform:translateY(0)}}
-.toast.error{{background:#ef4444}}
-.save-notice{{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:1rem 1.5rem;margin-bottom:1.5rem;font-size:.9rem;color:#92400e}}
-.loading{{display:inline-block;width:16px;height:16px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite}}
+.toast.error{{border-color:#ef4444;color:#f87171}}
+.toast.success{{border-color:#22c55e;color:#4ade80}}
+.loading-spin{{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:.4rem}}
 @keyframes spin{{to{{transform:rotate(360deg)}}}}
-@keyframes pulse-glow{{0%,100%{{box-shadow:0 0 8px rgba(245,158,11,.4)}}50%{{box-shadow:0 0 18px rgba(245,158,11,.8)}}}}
 </style>
 </head>
 <body>
-<div class="container">
-  <a href="/" class="back-link">← 返回 Dashboard</a>
-  <header>
-    <h1>🔧 Keyword管理</h1>
-    <div class="subtitle">添加、删除or修改监控Keyword · 修改后自动重启服务生效</div>
-  </header>
+<div class="topbar">
+  <a href="/">← Dashboard</a>
+  <span style="color:#334155">|</span>
+  <span class="title">⚙️ Admin Hub</span>
+  <span style="margin-left:auto;color:#64748b;font-size:.8rem">Welcome, {_esc(admin_user)}</span>
+</div>
 
-  <div class="save-notice">
-    ⚠️ 修改Keyword后会自动保存并重启监控服务，新Keyword将在下次抓取时生效（每8小时一次）
+<div class="tabs">
+  <div class="tab active" onclick="showTab('deletion')">🗑️ 删除分析</div>
+  <div class="tab" onclick="showTab('algo')">📡 X算法周报</div>
+  <div class="tab" onclick="showTab('keywords')">🔧 关键词管理</div>
+</div>
+
+<!-- TAB 1: 删除分析 -->
+<div id="tab-deletion" class="tab-content active">
+  <div id="del-loading" style="color:#64748b;padding:2rem">加载中...</div>
+  <div id="del-content" style="display:none">
+    <div class="stats-row" id="del-stats"></div>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem">
+      <div class="section-card" style="flex:1;min-width:280px">
+        <h3>🔥 高频被删账号</h3>
+        <div class="top-list" id="top-accounts"></div>
+      </div>
+      <div class="section-card" style="flex:1;min-width:280px">
+        <h3>🔑 高频被删关键词</h3>
+        <div class="top-list" id="top-keywords"></div>
+      </div>
+    </div>
+    <div class="section-card">
+      <h3 style="justify-content:space-between">
+        <span>🤖 AI 搜索策略分析</span>
+        <button class="btn btn-purple btn-sm" onclick="runAiAnalysis()" id="ai-btn">分析并给出优化建议</button>
+      </h3>
+      <div class="ai-box" id="ai-result">点击右侧按钮，AI 将分析过去14天的删除数据，给出关键词优化建议。</div>
+    </div>
+    <div class="section-card">
+      <h3 style="justify-content:space-between">
+        <span>📋 近期删除记录（最新100条）</span>
+        <select id="days-select" onchange="loadDeletionReport()" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:.3rem .6rem;border-radius:5px;font-size:.82rem">
+          <option value="7">近7天</option>
+          <option value="14">近14天</option>
+          <option value="30">近30天</option>
+        </select>
+      </h3>
+      <div style="overflow-x:auto">
+        <table class="del-table">
+          <thead><tr><th>时间</th><th>项目</th><th>账号</th><th>原因</th><th>内容</th><th>备注</th></tr></thead>
+          <tbody id="del-tbody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
+</div>
 
-  <div class="ai-suggest-section">
+<!-- TAB 2: X算法周报 -->
+<div id="tab-algo" class="tab-content">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+    <div>
+      <h2 style="font-size:1.2rem;color:#fff">📡 X 算法周报</h2>
+      <p style="color:#64748b;font-size:.85rem;margin-top:.3rem">监控 X 官方账号 & 头部创作者，自动汇总算法变化</p>
+    </div>
+    <button class="btn btn-green" onclick="refreshAlgoWeekly()" id="algo-refresh-btn">🔄 立即生成本周报告</button>
+  </div>
+  <div id="algo-loading" style="color:#64748b;padding:2rem">加载中...</div>
+  <div id="algo-content"></div>
+</div>
+
+<!-- TAB 3: 关键词管理 -->
+<div id="tab-keywords" class="tab-content">
+  <div class="save-notice">⚠️ 修改Keyword后自动保存并重启监控服务，新Keyword将在下次抓取时生效（每8小时一次）</div>
+  <div class="ai-suggest-wrap">
     <h2>🤖 智能Keyword推荐</h2>
-    <p style="font-size:.85rem;color:#64748b;margin-bottom:1rem">粘贴 X (Twitter) 链接，AI 将分析内容并推荐相关Keyword</p>
     <div class="url-input-form">
-      <input type="text" id="url-input" placeholder="https://x.com/username/status/..." />
-      <button id="analyze-btn" onclick="analyzeUrl()">🔍 分析</button>
+      <input type="text" id="url-input" placeholder="粘贴 X 链接或输入关键词..." />
+      <button id="analyze-btn" onclick="analyzeUrl()" class="btn btn-purple">🔍 AI分析</button>
     </div>
     <div id="suggestions-box" class="suggestions-box"></div>
   </div>
-
   {''.join(rows)}
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
-function toast(msg, success = true) {{
+// ── Tab switching ──────────────────────────────────────────
+function showTab(name) {{
+  document.querySelectorAll('.tab').forEach((t,i) => {{
+    const names = ['deletion','algo','keywords'];
+    t.classList.toggle('active', names[i] === name);
+  }});
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'deletion' && !window._delLoaded) loadDeletionReport();
+  if (name === 'algo' && !window._algoLoaded) loadAlgoWeekly();
+}}
+
+// ── Toast ─────────────────────────────────────────────────
+function toast(msg, type='success') {{
   const el = document.getElementById('toast');
   el.textContent = msg;
-  el.className = 'toast show' + (success ? '' : ' error');
+  el.className = 'toast show ' + type;
   setTimeout(() => el.className = 'toast', 3000);
 }}
 
+// ── Reason badge ───────────────────────────────────────────
+const reasonLabels = {{spam:'垃圾广告',not_relevant:'不相关',other:'其他',poor_account:'低质账号'}};
+function reasonBadge(r) {{
+  const lbl = reasonLabels[r] || r;
+  return `<span class="reason-badge reason-${{r}}">${{lbl}}</span>`;
+}}
+
+// ── Project colors ─────────────────────────────────────────
+const projColors = {{ARKREEN:'#22c55e',GREENBTC:'#4ade80',TLAY:'#a78bfa',AI_RENAISSANCE:'#f97316'}};
+function projTag(p) {{
+  const c = projColors[p] || '#64748b';
+  return `<span class="proj-tag" style="background:${{c}}22;color:${{c}}">${{p||'-'}}</span>`;
+}}
+
+// ── Deletion report ────────────────────────────────────────
+async function loadDeletionReport() {{
+  const days = document.getElementById('days-select')?.value || 7;
+  try {{
+    const r = await fetch(`/api/admin/deletion-report?days=${{days}}`);
+    const data = await r.json();
+    if (!data.ok) {{ toast('加载失败', 'error'); return; }}
+
+    // Stats row
+    const reasonMap = {{}};
+    data.by_reason.forEach(x => reasonMap[x.reason] = x.cnt);
+    document.getElementById('del-stats').innerHTML = `
+      <div class="stat-card red"><div class="val">${{data.total}}</div><div class="lbl">近${{data.days}}天删除总数</div></div>
+      <div class="stat-card"><div class="val">${{reasonMap.spam||0}}</div><div class="lbl">垃圾广告</div></div>
+      <div class="stat-card"><div class="val">${{reasonMap.not_relevant||0}}</div><div class="lbl">不相关</div></div>
+      <div class="stat-card"><div class="val">${{reasonMap.other||0}}</div><div class="lbl">其他</div></div>
+    `;
+
+    // Top accounts
+    document.getElementById('top-accounts').innerHTML = data.top_accounts.slice(0,12).map(a =>
+      `<div class="top-chip">@${{a.username}}<span>${{a.cnt}}次</span></div>`
+    ).join('') || '<span style="color:#64748b;font-size:.85rem">暂无数据</span>';
+
+    // Top keywords
+    document.getElementById('top-keywords').innerHTML = data.top_keywords.slice(0,12).map(k =>
+      `<div class="top-chip">${{k.keyword}} <span style="color:#64748b;font-size:.7rem">[${{k.project}}]</span><span>${{k.cnt}}次</span></div>`
+    ).join('') || '<span style="color:#64748b;font-size:.85rem">暂无数据</span>';
+
+    // Table
+    document.getElementById('del-tbody').innerHTML = data.recent.map(r => `
+      <tr>
+        <td style="color:#64748b;white-space:nowrap;font-size:.78rem">${{r.deleted_at?.slice(0,16)||''}}</td>
+        <td>${{projTag(r.project)}}</td>
+        <td style="color:#94a3b8">@${{r.username||'-'}}</td>
+        <td>${{reasonBadge(r.reason)}}</td>
+        <td class="tweet-text" title="${{(r.text||'').replace(/"/g,'&quot;')}}">${{(r.text||'').slice(0,80)}}</td>
+        <td style="color:#64748b;font-size:.78rem">${{r.reason_text||''}}</td>
+      </tr>
+    `).join('');
+
+    document.getElementById('del-loading').style.display = 'none';
+    document.getElementById('del-content').style.display = 'block';
+    window._delLoaded = true;
+  }} catch(e) {{
+    toast('加载失败：' + e.message, 'error');
+  }}
+}}
+
+async function runAiAnalysis() {{
+  const btn = document.getElementById('ai-btn');
+  const box = document.getElementById('ai-result');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spin"></span>分析中...';
+  box.className = 'ai-box loading';
+  box.textContent = 'AI 正在分析删除数据，请稍候（约15-30秒）...';
+  try {{
+    const r = await fetch('/api/admin/ai-strategy-analysis', {{method:'POST'}});
+    const data = await r.json();
+    box.className = 'ai-box';
+    if (data.ok) {{
+      box.textContent = data.analysis;
+    }} else {{
+      box.textContent = '分析失败：' + (data.error||'未知错误');
+    }}
+  }} catch(e) {{
+    box.className = 'ai-box';
+    box.textContent = '请求失败：' + e.message;
+  }}
+  btn.disabled = false;
+  btn.textContent = '重新分析';
+}}
+
+// ── Algo weekly ────────────────────────────────────────────
+let _algoLang = 'zh';
+async function loadAlgoWeekly() {{
+  try {{
+    const r = await fetch('/api/admin/algo-weekly');
+    const data = await r.json();
+    document.getElementById('algo-loading').style.display = 'none';
+    renderAlgoReports(data.reports || []);
+    window._algoLoaded = true;
+  }} catch(e) {{
+    toast('加载失败', 'error');
+  }}
+}}
+
+function renderAlgoReports(reports) {{
+  const el = document.getElementById('algo-content');
+  if (!reports.length) {{
+    el.innerHTML = '<div style="color:#64748b;padding:2rem">暂无周报数据。点击「立即生成本周报告」开始。</div>';
+    return;
+  }}
+  el.innerHTML = reports.map((rpt,i) => `
+    <div class="weekly-card">
+      <div class="week-label">📅 周起始：${{rpt.week_start}} &nbsp;·&nbsp; 生成于 ${{rpt.created_at?.slice(0,16)||''}}</div>
+      <div class="lang-toggle">
+        <button class="lang-btn active" id="zh-btn-${{i}}" onclick="switchLang(${{i}},'zh')">🇨🇳 中文</button>
+        <button class="lang-btn" id="en-btn-${{i}}" onclick="switchLang(${{i}},'en')">🇺🇸 EN</button>
+      </div>
+      <div class="weekly-content" id="content-zh-${{i}}">${{rpt.content_zh||''}}</div>
+      <div class="weekly-content" id="content-en-${{i}}" style="display:none">${{rpt.content_en||''}}</div>
+    </div>
+  `).join('');
+}}
+
+function switchLang(i, lang) {{
+  document.getElementById('content-zh-'+i).style.display = lang==='zh'?'':'none';
+  document.getElementById('content-en-'+i).style.display = lang==='en'?'':'none';
+  document.getElementById('zh-btn-'+i).className = 'lang-btn' + (lang==='zh'?' active':'');
+  document.getElementById('en-btn-'+i).className = 'lang-btn' + (lang==='en'?' active':'');
+}}
+
+async function refreshAlgoWeekly() {{
+  const btn = document.getElementById('algo-refresh-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spin"></span>生成中（约60秒）...';
+  document.getElementById('algo-loading').style.display = 'block';
+  document.getElementById('algo-loading').textContent = '正在抓取 X 官方账号推文并生成周报...';
+  document.getElementById('algo-content').innerHTML = '';
+  try {{
+    const r = await fetch('/api/admin/algo-weekly/refresh', {{method:'POST'}});
+    const data = await r.json();
+    document.getElementById('algo-loading').style.display = 'none';
+    if (data.ok) {{
+      toast('✅ 周报已生成', 'success');
+      loadAlgoWeekly();
+    }} else {{
+      toast('生成失败：' + (data.error||''), 'error');
+    }}
+  }} catch(e) {{
+    toast('请求失败：' + e.message, 'error');
+    document.getElementById('algo-loading').style.display = 'none';
+  }}
+  btn.disabled = false;
+  btn.textContent = '🔄 立即生成本周报告';
+  window._algoLoaded = false;
+}}
+
+// ── Keywords management ────────────────────────────────────
 function analyzeUrl() {{
   const input = document.getElementById('url-input');
   const btn = document.getElementById('analyze-btn');
   const url = input.value.trim();
-
-  if (!url) {{
-    toast('请输入 X 链接', false);
-    return;
-  }}
-
+  if (!url) {{ toast('请输入链接或关键词', 'error'); return; }}
   btn.disabled = true;
-  btn.innerHTML = '<span class="loading"></span> Analyzing...';
-
-  fetch('/api/admin/suggest-keywords', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{url}})
-  }})
-  .then(r => r.json())
-  .then(data => {{
-    btn.disabled = false;
-    btn.textContent = '🔍 分析';
-
-    if (data.ok && data.suggestions && data.suggestions.length > 0) {{
-      displaySuggestions(data.suggestions);
-    }} else {{
-      toast(data.error || '未找到合适的Keyword', false);
-    }}
-  }})
-  .catch(() => {{
-    btn.disabled = false;
-    btn.textContent = '🔍 分析';
-    toast('Analysis failed，Please retry', false);
-  }});
+  btn.innerHTML = '<span class="loading-spin"></span>分析中...';
+  fetch('/api/admin/suggest-keywords', {{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{url}})}})
+    .then(r=>r.json()).then(data=>{{
+      btn.disabled = false; btn.textContent = '🔍 AI分析';
+      if (data.ok && data.suggestions?.length) displaySuggestions(data.suggestions);
+      else toast(data.error||'未找到合适的Keyword', 'error');
+    }}).catch(()=>{{ btn.disabled=false; btn.textContent='🔍 AI分析'; toast('请求失败', 'error'); }});
 }}
 
 function displaySuggestions(suggestions) {{
   const box = document.getElementById('suggestions-box');
-  box.innerHTML = suggestions.map((s, i) => `
-    <div class="suggestion-item" id="suggestion-${{i}}">
-      <div class="suggestion-header">
-        <span class="suggestion-keyword">${{s.keyword}}</span>
-        <span class="suggestion-project">${{s.project}}</span>
-      </div>
+  box.innerHTML = suggestions.map((s,i)=>`
+    <div class="suggestion-item" id="sug-${{i}}">
+      <span class="suggestion-keyword">${{s.keyword}}</span>
+      <span class="suggestion-project">[${{s.project}}]</span>
       <div class="suggestion-reason">${{s.reason}}</div>
       <div class="suggestion-actions">
-        <button class="btn-add" onclick="addSuggestion('${{s.project}}', '${{s.keyword}}', ${{i}})">✓ Add</button>
-        <button class="btn-skip" onclick="skipSuggestion(${{i}})">Skip</button>
+        <button class="btn-add" onclick="addSuggestion('${{s.project}}','${{s.keyword}}',${{i}})">✓ 添加</button>
+        <button class="btn-skip" onclick="document.getElementById('sug-${{i}}').remove()">跳过</button>
       </div>
-    </div>
-  `).join('');
+    </div>`).join('');
   box.className = 'suggestions-box show';
 }}
 
 function addSuggestion(project, keyword, index) {{
-  const btn = document.querySelector(`#suggestion-${{index}} .btn-add`);
-  btn.disabled = true;
-  btn.textContent = 'Adding...';
-
-  fetch('/api/admin/add-keyword', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{
-      project: project,
-      keyword: keyword,
-      contributor: '{admin_user}'  // Current logged-in user
-    }})
-  }})
-  .then(r => r.json())
-  .then(data => {{
-    if (data.ok) {{
-      toast('✓ Keyword已添加，需要重启服务生效');
-      document.getElementById('suggestion-' + index).remove();
-      // Show restart reminder
-      const box = document.getElementById('suggestions-box');
-      if (box.children.length === 0) {{
-        box.innerHTML = '<div style="text-align:center;padding:2rem;color:#22c55e">✓ 所有Keyword已处理完成<br><small style="color:#64748b;margin-top:.5rem;display:block">请重启监控服务以应用新Keyword</small></div>';
-      }}
-    }} else {{
-      toast(data.error || 'Failed to add', false);
-      btn.disabled = false;
-      btn.textContent = '✓ Add';
-    }}
-  }})
-  .catch(err => {{
-    toast('Network error', false);
-    btn.disabled = false;
-    btn.textContent = '✓ Add';
-  }});
-}}
-
-function skipSuggestion(index) {{
-  document.getElementById('suggestion-' + index).remove();
-}}
-
-function addManualKeyword() {{
-  const project = document.getElementById('manual-project').value;
-  const keyword = document.getElementById('manual-keyword').value.trim();
-  const btn = document.getElementById('manual-add-btn');
-
-  if (!project) {{
-    toast('Please select a project', false);
-    return;
-  }}
-
-  if (!keyword) {{
-    toast('请输入Keyword', false);
-    return;
-  }}
-
-  btn.disabled = true;
-  btn.textContent = 'Adding...';
-
-  fetch('/api/admin/add-keyword', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{
-      project: project,
-      keyword: keyword,
-      contributor: '{admin_user}'
-    }})
-  }})
-  .then(r => r.json())
-  .then(data => {{
-    if (data.ok) {{
-      toast('✓ Keyword已添加！需要重启服务生效');
-      document.getElementById('manual-keyword').value = '';
-      document.getElementById('manual-project').value = '';
-      btn.disabled = false;
-      btn.textContent = '✓ Add to Project';
-    }} else {{
-      toast(data.error || 'Failed to add', false);
-      btn.disabled = false;
-      btn.textContent = '✓ Add to Project';
-    }}
-  }})
-  .catch(err => {{
-    toast('Network error', false);
-    btn.disabled = false;
-    btn.textContent = '✓ Add to Project';
-  }});
+  fetch('/api/admin/add-keyword',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{project,keyword,contributor:'{admin_user}'}})}})
+    .then(r=>r.json()).then(data=>{{
+      if(data.ok){{ toast('✅ Keyword已添加','success'); document.getElementById('sug-'+index).remove(); }}
+      else toast(data.error||'添加失败','error');
+    }});
 }}
 
 function addKeyword(project) {{
   const input = document.getElementById('new-kw-' + project);
   const keyword = input.value.trim();
-  if (!keyword) {{
-    toast('请输入Keyword', false);
-    return;
-  }}
-
-  fetch('/api/admin/keywords', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{project, keyword, action: 'add'}})
-  }})
-  .then(r => r.json())
-  .then(data => {{
-    if (data.ok) {{
-      toast('Keyword已添加，正在重启服务...');
-      setTimeout(() => location.reload(), 2000);
-    }} else {{
-      toast(data.error || 'Failed to add', false);
-    }}
-  }})
-  .catch(() => toast('Network error', false));
+  if (!keyword) {{ toast('请输入Keyword','error'); return; }}
+  fetch('/api/admin/keywords',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{project,keyword,action:'add'}})}})
+    .then(r=>r.json()).then(data=>{{
+      if(data.ok){{ toast('✅ 已添加，正在重启服务...','success'); setTimeout(()=>location.reload(),2000); }}
+      else toast(data.error||'添加失败','error');
+    }}).catch(()=>toast('Network error','error'));
 }}
 
 function deleteKeyword(project, keyword) {{
   if (!confirm(`确定删除Keyword "${{keyword}}" 吗？`)) return;
-
-  fetch('/api/admin/keywords', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{project, keyword, action: 'delete'}})
-  }})
-  .then(r => r.json())
-  .then(data => {{
-    if (data.ok) {{
-      toast('Keyword已删除，正在重启服务...');
-      setTimeout(() => location.reload(), 2000);
-    }} else {{
-      toast(data.error || '删除失败', false);
-    }}
-  }})
-  .catch(() => toast('Network error', false));
+  fetch('/api/admin/keywords',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{project,keyword,action:'delete'}})}})
+    .then(r=>r.json()).then(data=>{{
+      if(data.ok){{ toast('✅ 已删除，正在重启服务...','success'); setTimeout(()=>location.reload(),2000); }}
+      else toast(data.error||'删除失败','error');
+    }}).catch(()=>toast('Network error','error'));
 }}
+
+// Auto-load deletion report on page open
+loadDeletionReport();
 </script>
 </body>
 </html>"""
+
+
+
 
 
 class KeywordRequest(BaseModel):

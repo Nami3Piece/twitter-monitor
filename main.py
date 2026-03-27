@@ -142,6 +142,10 @@ def _setup_scheduler() -> AsyncIOScheduler:
     from digest_runner import run_daily_digest
     scheduler.add_job(run_daily_digest, CronTrigger(hour=0, minute=0), id="daily_digest")
 
+    # Weekly X Algorithm Report — every Monday at UTC 01:00
+    from ai.algo_weekly import run_algo_weekly
+    scheduler.add_job(run_algo_weekly, CronTrigger(day_of_week="mon", hour=1, minute=0), id="algo_weekly")
+
     return scheduler
 
 

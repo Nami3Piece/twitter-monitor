@@ -222,6 +222,16 @@ async def init_db() -> None:
                 activated_at TEXT
             )
         """)
+        # X Algorithm Weekly reports
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS algo_weekly (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                week_start TEXT NOT NULL UNIQUE,
+                content_zh TEXT,
+                content_en TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         await db.commit()
     logger.info(f"Database ready: {DB_PATH}")
 
@@ -641,7 +651,61 @@ async def get_deletion_stats() -> dict:
         return {"by_reason": by_reason, "by_account": by_account, "by_keyword": by_keyword}
 
 
-async def get_suppressed_accounts() -> set:
+async def get_deletion_report(days: int = 7) -> dict:
+    """Full deletion report: stats + recent deleted tweets list."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        since = f"datetime('now', '-{days} days')"
+        async with db.execute(
+            f"SELECT reason, COUNT(*) as cnt FROM deleted_tweets WHERE deleted_at >= {since} GROUP BY reason ORDER BY cnt DESC"
+        ) as cur:
+            by_reason = [dict(r) for r in await cur.fetchall()]
+        async with db.execute(
+            f"SELECT username, COUNT(*) as cnt FROM deleted_tweets WHERE deleted_at >= {since} AND username IS NOT NULL GROUP BY username ORDER BY cnt DESC LIMIT 20"
+        ) as cur:
+            top_accounts = [dict(r) for r in await cur.fetchall()]
+        async with db.execute(
+            f"SELECT keyword, project, COUNT(*) as cnt FROM deleted_tweets WHERE deleted_at >= {since} AND keyword IS NOT NULL GROUP BY keyword, project ORDER BY cnt DESC LIMIT 20"
+        ) as cur:
+            top_keywords = [dict(r) for r in await cur.fetchall()]
+        async with db.execute(
+            f"SELECT tweet_id, project, keyword, username, text, reason, reason_text, deleted_at FROM deleted_tweets WHERE deleted_at >= {since} ORDER BY deleted_at DESC LIMIT 100"
+        ) as cur:
+            recent = [dict(r) for r in await cur.fetchall()]
+        async with db.execute(
+            f"SELECT COUNT(*) FROM deleted_tweets WHERE deleted_at >= {since}"
+        ) as cur:
+            total = (await cur.fetchone())[0]
+    return {
+        "total": total,
+        "days": days,
+        "by_reason": by_reason,
+        "top_accounts": top_accounts,
+        "top_keywords": top_keywords,
+        "recent": recent,
+    }
+
+
+async def save_algo_weekly(week_start: str, content_zh: str, content_en: str) -> None:
+    """Save or replace an algo weekly report."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO algo_weekly (week_start, content_zh, content_en) VALUES (?,?,?) "
+            "ON CONFLICT(week_start) DO UPDATE SET content_zh=excluded.content_zh, content_en=excluded.content_en, created_at=CURRENT_TIMESTAMP",
+            (week_start, content_zh, content_en)
+        )
+        await db.commit()
+
+
+async def get_algo_weekly(limit: int = 5) -> list:
+    """Return recent algo weekly reports, newest first."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT week_start, content_zh, content_en, created_at FROM algo_weekly ORDER BY week_start DESC LIMIT ?",
+            (limit,)
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
     """Accounts deleted >=3 times with poor_account reason — suppress from recommendations.""",
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(

@@ -535,8 +535,30 @@ async def delete_api_key(key: str, user_id: str) -> bool:
 
 # ── Subscriptions ─────────────────────────────────────────────────────────────
 
+# Admin user IDs always get pro tier regardless of DB subscription
+ADMIN_USER_IDS = {"google:117585537278830150604", "google:106680641599146406959"}
+
+# Map Basic Auth username → Google user ID
+ADMIN_USERNAME_MAP = {
+    "monitor": "google:117585537278830150604",  # Nami
+    "leo":     "google:106680641599146406959",  # Leo
+}
+
+_ADMIN_PRO_SUB = {
+    "user_id": "",
+    "tier": "pro",
+    "stripe_customer_id": "",
+    "stripe_subscription_id": "",
+    "status": "active",
+    "expires_at": "",
+    "created_at": "",
+}
+
+
 async def get_subscription(user_id: str) -> Optional[Dict]:
     """Get user's subscription info."""
+    if user_id in ADMIN_USER_IDS:
+        return {**_ADMIN_PRO_SUB, "user_id": user_id}
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -616,3 +638,9 @@ async def verify_akre_tx(tx_hash: str, tier: str, period: str, recipient: str) -
             return {"ok": True, "amount": amount}
 
     return {"ok": False, "error": f"No valid AKRE transfer found (need ≥{required} AKRE to {recipient})"}
+
+
+def make_admin_token(username: str = "") -> str:
+    """Generate a JWT token for the given admin username (grants pro access on main site)."""
+    user_id = ADMIN_USERNAME_MAP.get(username) or next(iter(ADMIN_USER_IDS))
+    return _make_token(user_id, "google")
