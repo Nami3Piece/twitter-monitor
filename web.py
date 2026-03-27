@@ -5964,7 +5964,32 @@ async def _fetch_ticker_items(limit: int = 15) -> list:
             rows = [dict(r) for r in await cur.fetchall()]
     return rows
 
-def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: str, ticker_items: list = None) -> str:
+def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: str, ticker_items: list = None, user_tier: str = "free") -> str:
+    import datetime as _dt
+    _today = _dt.datetime.utcnow().strftime("%Y-%m-%d")
+    _7days_ago = (_dt.datetime.utcnow() - _dt.timedelta(days=7)).strftime("%Y-%m-%d")
+
+    def _can_download(date: str) -> bool:
+        if not date or user_tier == "free":
+            return False
+        if user_tier == "admin":
+            return True
+        if user_tier == "pro":
+            return date >= _7days_ago
+        if user_tier == "basic":
+            return date == _today
+        return False
+
+    def _dl_btn(url: str, label: str) -> str:
+        if not url or not _can_download(selected_date):
+            return ""
+        return (
+            f'<a href="{url}" download style="display:inline-flex;align-items:center;gap:.3rem;'
+            f'margin-left:.5rem;padding:.25rem .7rem;border-radius:6px;background:#0f4c75;'
+            f'color:#bae6fd;font-size:.75rem;font-weight:600;text-decoration:none;'
+            f'border:1px solid #1b6ca8">⬇ {label}</a>'
+        )
+
     date_options = "".join(
         f'<option value="{d}" {"selected" if d == selected_date else ""}>{d}</option>'
         for d in dates
@@ -5980,11 +6005,17 @@ def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: 
         tweet_id = digest.get("tweet_id") or ""
 
         audio_zh_block = (
-            f'<audio controls style="width:100%;margin:.5rem 0"><source src="/audio/{_esc(audio_zh)}" type="audio/mpeg">Your browser does not support audio.</audio>'
+            f'<div style="display:flex;align-items:center;gap:.3rem;flex-wrap:wrap">'
+            f'<audio controls style="flex:1;min-width:0;margin:.5rem 0"><source src="/audio/{_esc(audio_zh)}" type="audio/mpeg">Your browser does not support audio.</audio>'
+            f'{_dl_btn(f"/audio/{_esc(audio_zh)}", "下载")}'
+            f'</div>'
             if audio_zh else '<p style="color:#94a3b8;font-size:.85rem">音频生成中...</p>'
         )
         audio_en_block = (
-            f'<audio controls style="width:100%;margin:.5rem 0"><source src="/audio/{_esc(audio_en)}" type="audio/mpeg">Your browser does not support audio.</audio>'
+            f'<div style="display:flex;align-items:center;gap:.3rem;flex-wrap:wrap">'
+            f'<audio controls style="flex:1;min-width:0;margin:.5rem 0"><source src="/audio/{_esc(audio_en)}" type="audio/mpeg">Your browser does not support audio.</audio>'
+            f'{_dl_btn(f"/audio/{_esc(audio_en)}", "Download")}'
+            f'</div>'
             if audio_en else '<p style="color:#94a3b8;font-size:.85rem">Audio generating...</p>'
         )
         tweet_link = (
@@ -6114,24 +6145,36 @@ select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:
 
 
 @app.get("/digest", response_class=HTMLResponse)
-async def digest_latest():
+async def digest_latest(request: Request):
     dates = await _fetch_digest_dates(30)
     ticker_items = await _fetch_ticker_items()
+    user = await _auth_module.get_current_user(request)
+    user_id = user["id"] if user else None
+    sub = (await _auth_module.get_subscription(user_id) or {}) if user_id else {}
+    tier = sub.get("tier", "free") if sub.get("status") in ("active", None, "") else "free"
+    if user_id in _auth_module.ADMIN_USER_IDS:
+        tier = "admin"
     if not dates:
-        return HTMLResponse(_build_digest_page(None, [], "", ticker_items))
+        return HTMLResponse(_build_digest_page(None, [], "", ticker_items, user_tier=tier))
     latest = dates[0]
     digest = await _fetch_digest(latest)
-    return HTMLResponse(_build_digest_page(digest, dates, latest, ticker_items))
+    return HTMLResponse(_build_digest_page(digest, dates, latest, ticker_items, user_tier=tier))
 
 
 @app.get("/digest/{date}", response_class=HTMLResponse)
-async def digest_by_date(date: str):
+async def digest_by_date(date: str, request: Request):
     if not _re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(status_code=400, detail="Invalid date format")
     dates = await _fetch_digest_dates(30)
     digest = await _fetch_digest(date)
     ticker_items = await _fetch_ticker_items()
-    return HTMLResponse(_build_digest_page(digest, dates, date, ticker_items))
+    user = await _auth_module.get_current_user(request)
+    user_id = user["id"] if user else None
+    sub = (await _auth_module.get_subscription(user_id) or {}) if user_id else {}
+    tier = sub.get("tier", "free") if sub.get("status") in ("active", None, "") else "free"
+    if user_id in _auth_module.ADMIN_USER_IDS:
+        tier = "admin"
+    return HTMLResponse(_build_digest_page(digest, dates, date, ticker_items, user_tier=tier))
 
 
 @app.post("/api/digest/regen-audio")
