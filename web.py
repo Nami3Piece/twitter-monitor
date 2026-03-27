@@ -502,15 +502,15 @@ def _build_homepage_section(digest: dict, top_events: List[Dict], user_tier: str
     _can_dl = user_tier in ("basic", "pro", "admin")
     dl_zh = (
         f'<a href="#" onclick="downloadInsightVideo(\'{_esc(digest_date)}\',\'zh\',this);return false;" '
-        f'title="下载中文语音视频 (MP4)"'
+        f'title="下载中文洞察图片"'
         f' style="display:inline-flex;align-items:center;gap:.25rem;padding:.18rem .55rem;'
         f'border-radius:12px;border:1.5px solid #1e3a5f;background:#0f2a45;color:#7dd3fc;'
-        f'font-size:.72rem;font-weight:600;text-decoration:none;margin-left:.3rem">⬇ 中 MP4</a>'
+        f'font-size:.72rem;font-weight:600;text-decoration:none;margin-left:.3rem">⬇ 中文 MP4</a>'
         if (_can_dl and audio_insight_zh_src) else ""
     )
     dl_en = (
         f'<a href="#" onclick="downloadInsightVideo(\'{_esc(digest_date)}\',\'en\',this);return false;" '
-        f'title="Download EN voice video (MP4)"'
+        f'title="Download EN insight image"'
         f' style="display:inline-flex;align-items:center;gap:.25rem;padding:.18rem .55rem;'
         f'border-radius:12px;border:1.5px solid #1e3a5f;background:#0f2a45;color:#7dd3fc;'
         f'font-size:.72rem;font-weight:600;text-decoration:none;margin-left:.2rem">⬇ EN MP4</a>'
@@ -552,7 +552,7 @@ def _build_homepage_section(digest: dict, top_events: List[Dict], user_tier: str
   <div id="vid-msg" style="color:#94a3b8;font-size:.72rem">准备中...</div>
 </div>
 <script>
-var _vidJob = null, _vidPoll = null;
+var _vidJob = null, _vidPoll = null, _vidHeart = null, _vidLastPct = 0, _vidLastPctTime = 0;
 function downloadInsightVideo(date, lang, el) {
   if (_vidJob) return;
   // disable button
@@ -566,7 +566,18 @@ function downloadInsightVideo(date, lang, el) {
   label.textContent = lang === 'zh' ? '🎬 生成视频中' : '🎬 Generating video';
   wrap.style.display = 'block';
   bar.style.width = '0%'; pct.textContent = '0%';
+  _vidLastPct = 0; _vidLastPctTime = Date.now();
   msg.textContent = lang === 'zh' ? '启动中...' : 'Starting...';
+
+  // heartbeat: slowly advance bar when stuck in ffmpeg (65-89% zone)
+  _vidHeart = setInterval(function(){
+    var curPct = _vidLastPct;
+    if (curPct >= 65 && curPct < 90 && (Date.now() - _vidLastPctTime) > 2000) {
+      var fake = Math.min(curPct + 0.4, 89);
+      document.getElementById('vid-bar').style.width = fake.toFixed(1) + '%';
+      document.getElementById('vid-pct').textContent = Math.floor(fake) + '%';
+    }
+  }, 800);
 
   fetch('/api/digest/insight-video/start?date=' + date + '&lang=' + lang, {method:'POST'})
     .then(function(r){ return r.json(); })
@@ -584,11 +595,14 @@ function _pollJob(jobId, date, lang, el) {
       var bar = document.getElementById('vid-bar');
       var pct = document.getElementById('vid-pct');
       var msg = document.getElementById('vid-msg');
-      bar.style.width  = (d.progress || 0) + '%';
-      pct.textContent  = (d.progress || 0) + '%';
+      var realPct = d.progress || 0;
+      if (realPct !== _vidLastPct) { _vidLastPct = realPct; _vidLastPctTime = Date.now(); }
+      bar.style.width  = realPct + '%';
+      pct.textContent  = realPct + '%';
       msg.textContent  = d.message || '';
       if (d.status === 'done') {
         clearInterval(_vidPoll); _vidPoll = null;
+        clearInterval(_vidHeart); _vidHeart = null;
         bar.style.width = '100%'; pct.textContent = '100%';
         msg.textContent = lang === 'zh' ? '下载中...' : 'Downloading...';
         // trigger download
@@ -609,6 +623,7 @@ function _pollJob(jobId, date, lang, el) {
 }
 function _vidError(el, lang, errMsg) {
   clearInterval(_vidPoll); _vidPoll = null; _vidJob = null;
+  clearInterval(_vidHeart); _vidHeart = null;
   var msg = document.getElementById('vid-msg');
   var bar = document.getElementById('vid-bar');
   if (msg) { msg.textContent = errMsg || (lang==='zh'?'生成失败，请重试':'Failed, please retry'); msg.style.color='#f87171'; }
@@ -634,7 +649,7 @@ function _vidError(el, lang, errMsg) {
     {dl_zh}{dl_en}
   </div>
   <div id="ins-zh-body" class="cj-body insight-body">{insight_zh_html}</div>
-  <div class="cj-body insight-body" style="display:none">{insight_en_html}</div>
+  <div id="ins-en-body" class="cj-body insight-body" style="display:none">{insight_en_html}</div>
 </div>
 <div class="core-judgment news-block">
   <div class="cj-header">
@@ -6474,8 +6489,8 @@ async def start_insight_video(request: Request, date: str, lang: str = "zh"):
         text = digest.get("content_insight_en") or digest.get("content_en") or ""
         audio_fn = digest.get("audio_insight_en") or digest.get("audio_en") or ""
 
-    if not text or not audio_fn:
-        raise HTTPException(status_code=404, detail="Audio or text not available")
+    if not text:
+        raise HTTPException(status_code=404, detail="Text not available")
 
     job_id = _uuid.uuid4().hex[:10]
     _video_jobs[job_id] = {
