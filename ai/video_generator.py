@@ -206,23 +206,29 @@ async def generate_insight_video(
     lang: str,
     text: str,
     audio_fn: str,
+    on_progress=None,          # async callable(pct: int, msg: str)
 ) -> Optional[bytes]:
     """
     Generate MP4 video bytes on demand.
     Returns raw MP4 bytes, or None on failure.
-    text     — 核心洞察正文
-    audio_fn — audio filename (under AUDIO_DIR)
+    on_progress — optional async callable(pct: int, msg: str)
     """
+    async def _p(pct: int, msg: str):
+        if on_progress:
+            await on_progress(pct, msg)
+
     audio_path = os.path.join(AUDIO_DIR, audio_fn)
     if not os.path.exists(audio_path):
         logger.error(f"video_gen: audio not found: {audio_path}")
         return None
 
+    await _p(5, "解析文字..." if lang == "zh" else "Parsing text...")
     paragraphs = _split_paragraphs(text)
     if not paragraphs:
         logger.error("video_gen: no paragraphs")
         return None
 
+    await _p(10, "读取音频..." if lang == "zh" else "Reading audio...")
     duration = await asyncio.to_thread(_get_audio_duration, audio_path)
     logger.info(f"video_gen: {date}/{lang} dur={duration:.1f}s slides={len(paragraphs)}")
 
@@ -236,6 +242,8 @@ async def generate_insight_video(
             ok = await asyncio.to_thread(_draw_slide, para, date, i + 1, len(paragraphs), lang, png)
             if ok:
                 slide_files.append((png, para))
+            pct = 15 + int(35 * (i + 1) / len(paragraphs))
+            await _p(pct, f"生成幻灯片 {i+1}/{len(paragraphs)}..." if lang == "zh" else f"Slide {i+1}/{len(paragraphs)}...")
 
         if not slide_files:
             logger.error("video_gen: no slide images generated")
@@ -245,6 +253,7 @@ async def generate_insight_video(
         cta_png = os.path.join(tmpdir, "slide_cta.png")
         await asyncio.to_thread(_draw_cta_slide, lang, cta_png)
         CTA_DURATION = 3.0
+        await _p(55, "生成字幕..." if lang == "zh" else "Building subtitles...")
 
         # 2. Build ffmpeg concat file (content slides + CTA)
         concat_txt = os.path.join(tmpdir, "concat.txt")
@@ -266,6 +275,7 @@ async def generate_insight_video(
             f.write(srt_content)
 
         # 4. ffmpeg: concat images + audio + burned-in subtitles → MP4
+        await _p(65, "合成视频中，请稍候..." if lang == "zh" else "Encoding video...")
         out_mp4 = os.path.join(tmpdir, "output.mp4")
 
         # subtitle drawtext filter via libass (uses the Noto font)
@@ -296,6 +306,8 @@ async def generate_insight_video(
         if proc.returncode != 0:
             logger.error(f"video_gen: ffmpeg failed:\n{proc.stderr[-800:]}")
             return None
+
+        await _p(95, "打包完成..." if lang == "zh" else "Finalizing...")
 
         with open(out_mp4, "rb") as f:
             data = f.read()

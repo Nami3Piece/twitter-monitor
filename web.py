@@ -501,7 +501,7 @@ def _build_homepage_section(digest: dict, top_events: List[Dict], user_tier: str
     # 下载按钮：basic=当天, pro=近7天, admin=全部 → 生成 MP4
     _can_dl = user_tier in ("basic", "pro", "admin")
     dl_zh = (
-        f'<a href="/api/digest/insight-video?date={_esc(digest_date)}&lang=zh" '
+        f'<a href="#" onclick="downloadInsightVideo(\'{_esc(digest_date)}\',\'zh\',this);return false;" '
         f'title="下载中文语音视频 (MP4)"'
         f' style="display:inline-flex;align-items:center;gap:.25rem;padding:.18rem .55rem;'
         f'border-radius:12px;border:1.5px solid #1e3a5f;background:#0f2a45;color:#7dd3fc;'
@@ -509,7 +509,7 @@ def _build_homepage_section(digest: dict, top_events: List[Dict], user_tier: str
         if (_can_dl and audio_insight_zh_src) else ""
     )
     dl_en = (
-        f'<a href="/api/digest/insight-video?date={_esc(digest_date)}&lang=en" '
+        f'<a href="#" onclick="downloadInsightVideo(\'{_esc(digest_date)}\',\'en\',this);return false;" '
         f'title="Download EN voice video (MP4)"'
         f' style="display:inline-flex;align-items:center;gap:.25rem;padding:.18rem .55rem;'
         f'border-radius:12px;border:1.5px solid #1e3a5f;background:#0f2a45;color:#7dd3fc;'
@@ -537,6 +537,91 @@ def _build_homepage_section(digest: dict, top_events: List[Dict], user_tier: str
         '</script>'
         if has_insight_audio else ""
     )
+    download_js = """
+<div id="vid-progress-wrap" style="display:none;position:fixed;top:18px;right:18px;z-index:9999;
+  background:#1e1b4b;border:1px solid #4f46e5;border-radius:14px;padding:14px 18px;
+  min-width:240px;box-shadow:0 8px 32px rgba(79,70,229,.35);font-family:inherit">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+    <span style="color:#c4b5fd;font-size:.78rem;font-weight:700">🎬 生成视频中</span>
+    <span id="vid-pct" style="color:#7dd3fc;font-size:.78rem;font-weight:700">0%</span>
+  </div>
+  <div style="background:#0f172a;border-radius:6px;height:6px;overflow:hidden;margin-bottom:8px">
+    <div id="vid-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#4f46e5,#7c3aed);
+      border-radius:6px;transition:width .4s ease"></div>
+  </div>
+  <div id="vid-msg" style="color:#94a3b8;font-size:.72rem">准备中...</div>
+</div>
+<script>
+var _vidJob = null, _vidPoll = null;
+function downloadInsightVideo(date, lang, el) {
+  if (_vidJob) return;
+  // disable button
+  el.style.opacity = '0.5'; el.style.pointerEvents = 'none';
+  // show progress
+  var wrap = document.getElementById('vid-progress-wrap');
+  var bar  = document.getElementById('vid-bar');
+  var pct  = document.getElementById('vid-pct');
+  var msg  = document.getElementById('vid-msg');
+  var label = document.querySelector('#vid-progress-wrap span:first-child');
+  label.textContent = lang === 'zh' ? '🎬 生成视频中' : '🎬 Generating video';
+  wrap.style.display = 'block';
+  bar.style.width = '0%'; pct.textContent = '0%';
+  msg.textContent = lang === 'zh' ? '启动中...' : 'Starting...';
+
+  fetch('/api/digest/insight-video/start?date=' + date + '&lang=' + lang, {method:'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.job_id) { _vidError(el, lang); return; }
+      _vidJob = d.job_id;
+      _vidPoll = setInterval(function(){ _pollJob(d.job_id, date, lang, el); }, 1500);
+    })
+    .catch(function(){ _vidError(el, lang); });
+}
+function _pollJob(jobId, date, lang, el) {
+  fetch('/api/digest/insight-video/status/' + jobId)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var bar = document.getElementById('vid-bar');
+      var pct = document.getElementById('vid-pct');
+      var msg = document.getElementById('vid-msg');
+      bar.style.width  = (d.progress || 0) + '%';
+      pct.textContent  = (d.progress || 0) + '%';
+      msg.textContent  = d.message || '';
+      if (d.status === 'done') {
+        clearInterval(_vidPoll); _vidPoll = null;
+        bar.style.width = '100%'; pct.textContent = '100%';
+        msg.textContent = lang === 'zh' ? '下载中...' : 'Downloading...';
+        // trigger download
+        var a = document.createElement('a');
+        a.href = '/api/digest/insight-video/download/' + jobId;
+        a.download = 'daily-x-digest-' + date + '-' + lang + '.mp4';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function(){
+          document.getElementById('vid-progress-wrap').style.display = 'none';
+          el.style.opacity = '1'; el.style.pointerEvents = '';
+          _vidJob = null;
+        }, 2000);
+      } else if (d.status === 'error' || d.status === 'not_found') {
+        _vidError(el, lang, d.message);
+      }
+    })
+    .catch(function(){ /* keep polling */ });
+}
+function _vidError(el, lang, errMsg) {
+  clearInterval(_vidPoll); _vidPoll = null; _vidJob = null;
+  var msg = document.getElementById('vid-msg');
+  var bar = document.getElementById('vid-bar');
+  if (msg) { msg.textContent = errMsg || (lang==='zh'?'生成失败，请重试':'Failed, please retry'); msg.style.color='#f87171'; }
+  if (bar) { bar.style.background='#ef4444'; }
+  if (el) { el.style.opacity='1'; el.style.pointerEvents=''; }
+  setTimeout(function(){
+    document.getElementById('vid-progress-wrap').style.display='none';
+    if (document.getElementById('vid-bar')) document.getElementById('vid-bar').style.background='linear-gradient(90deg,#4f46e5,#7c3aed)';
+    if (document.getElementById('vid-msg')) document.getElementById('vid-msg').style.color='#94a3b8';
+  }, 4000);
+}
+</script>
+"""
     # Show insight block if we have it, otherwise fall back to news only
     if insight_zh_html:
         core_block = f"""
@@ -549,7 +634,7 @@ def _build_homepage_section(digest: dict, top_events: List[Dict], user_tier: str
     {dl_zh}{dl_en}
   </div>
   <div id="ins-zh-body" class="cj-body insight-body">{insight_zh_html}</div>
-  <div id="ins-en-body" class="cj-body insight-body" style="display:none">{insight_en_html}</div>
+  <div class="cj-body insight-body" style="display:none">{insight_en_html}</div>
 </div>
 <div class="core-judgment news-block">
   <div class="cj-header">
@@ -558,7 +643,7 @@ def _build_homepage_section(digest: dict, top_events: List[Dict], user_tier: str
   </div>
   <div class="cj-body">{news_html}</div>
   <div class="cj-disclaimer">⚠️ 以上内容仅供参考，不构成任何投资建议。投资有风险，决策需谨慎。</div>
-</div>{dpb_init_js}"""
+</div>{dpb_init_js}{download_js}"""
     else:
         core_block = f"""
 <div class="core-judgment">
@@ -1088,7 +1173,35 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
   <div class="stat-card"><div class="stat-num" style="color:#22c55e">{stats['voted']}</div><div class="stat-label">Voted</div></div>
   <div class="stat-card"><div class="stat-num" style="color:#a855f7">{stats['accounts']}</div><div class="stat-label">Tracked Accounts</div></div>
   <div class="stat-card"><div class="stat-num" style="color:#f97316">{stats['followed']}</div><div class="stat-label">Following</div></div>
-</div>"""
+  <div class="stat-card" id="btc-card" style="cursor:default">
+    <div class="stat-num" id="btc-price" style="color:#f59e0b;font-size:1rem">—</div>
+    <div class="stat-label">₿ BTC/USD</div>
+  </div>
+  <div class="stat-card" id="akre-card" style="cursor:default">
+    <div class="stat-num" id="akre-price" style="color:#22d3ee;font-size:1rem">—</div>
+    <div class="stat-label">🌱 AKRE/USD</div>
+  </div>
+</div>
+<script>
+(function fetchPrices(){{
+  // BTC via CoinGecko public API
+  fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd')
+    .then(r=>r.json()).then(d=>{{
+      var p=d&&d.bitcoin&&d.bitcoin.usd;
+      if(p) document.getElementById('btc-price').textContent='$'+p.toLocaleString('en-US',{{maximumFractionDigits:0}});
+    }}).catch(()=>{{}});
+  // AKRE via DexScreener (Polygon chain token)
+  fetch('https://api.dexscreener.com/latest/dex/tokens/0xE9c21De62C5C5d0cEAcCe2762bF655AfDcEB7ab3')
+    .then(r=>r.json()).then(d=>{{
+      var pairs=d&&d.pairs;
+      if(pairs&&pairs.length>0){{
+        var p=parseFloat(pairs[0].priceUsd);
+        if(!isNaN(p)) document.getElementById('akre-price').textContent='$'+p.toFixed(p<0.01?6:4);
+      }}
+    }}).catch(()=>{{}});
+  setTimeout(fetchPrices, 60000);
+}})();
+</script>"""
 
     # Search box
     search_html = '<div class="search-wrap"><input id="search-box" type="text" placeholder="搜索Keyword、账号、Tweet…" oninput="filterTable()"></div>'
@@ -6296,6 +6409,116 @@ async def insight_video(date: str, lang: str = "zh", request: Request = None):
     filename = f"daily-x-digest-{date}-{lang}.mp4"
     return StreamingResponse(
         io.BytesIO(video_bytes),
+        media_type="video/mp4",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Video Job API (async, avoids Cloudflare 504) ──────────────────────────────
+import uuid as _uuid
+
+_video_jobs: dict = {}   # job_id -> {status, progress, message, data, error, date, lang}
+
+
+async def _run_video_job(job_id: str, date: str, lang: str, text: str, audio_fn: str):
+    job = _video_jobs[job_id]
+    from ai.video_generator import generate_insight_video
+
+    async def _cb(pct: int, msg: str):
+        job["progress"] = pct
+        job["message"] = msg
+
+    try:
+        job.update({"status": "running"})
+        data = await generate_insight_video(date, lang, text, audio_fn, on_progress=_cb)
+        if data:
+            job.update({"status": "done", "progress": 100,
+                        "message": "完成！" if lang == "zh" else "Done!",
+                        "data": data, "size": len(data)})
+        else:
+            job.update({"status": "error", "message": "生成失败，请重试"})
+    except Exception as e:
+        logger.error(f"video job {job_id}: {e}")
+        job.update({"status": "error", "message": str(e)[:120]})
+    # cleanup after 10 min
+    await asyncio.sleep(600)
+    _video_jobs.pop(job_id, None)
+
+
+@app.post("/api/digest/insight-video/start")
+async def start_insight_video(request: Request, date: str, lang: str = "zh"):
+    if not _re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=400, detail="Invalid date")
+    if lang not in ("zh", "en"):
+        raise HTTPException(status_code=400, detail="Invalid lang")
+
+    user = await _auth_module.get_current_user(request)
+    user_id = user["id"] if user else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required")
+    sub = (await _auth_module.get_subscription(user_id) or {})
+    tier = sub.get("tier", "free") if sub.get("status") in ("active", None, "") else "free"
+    if user_id in _auth_module.ADMIN_USER_IDS:
+        tier = "admin"
+    if tier == "free":
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+
+    digest = await _fetch_digest(date)
+    if not digest:
+        raise HTTPException(status_code=404, detail="No digest for this date")
+
+    if lang == "zh":
+        text = digest.get("content_insight_zh") or digest.get("content_zh") or ""
+        audio_fn = digest.get("audio_insight_zh") or digest.get("audio_zh") or ""
+    else:
+        text = digest.get("content_insight_en") or digest.get("content_en") or ""
+        audio_fn = digest.get("audio_insight_en") or digest.get("audio_en") or ""
+
+    if not text or not audio_fn:
+        raise HTTPException(status_code=404, detail="Audio or text not available")
+
+    job_id = _uuid.uuid4().hex[:10]
+    _video_jobs[job_id] = {
+        "status": "pending", "progress": 0,
+        "message": "排队中..." if lang == "zh" else "Queued...",
+        "date": date, "lang": lang,
+    }
+    asyncio.create_task(_run_video_job(job_id, date, lang, text, audio_fn))
+    return JSONResponse({"job_id": job_id})
+
+
+@app.get("/api/digest/insight-video/status/{job_id}")
+async def insight_video_status(job_id: str):
+    job = _video_jobs.get(job_id)
+    if not job:
+        return JSONResponse({"status": "not_found"})
+    return JSONResponse({
+        "status": job["status"],
+        "progress": job.get("progress", 0),
+        "message": job.get("message", ""),
+        "size": job.get("size", 0),
+    })
+
+
+@app.get("/api/digest/insight-video/download/{job_id}")
+async def download_insight_video(job_id: str, request: Request):
+    from fastapi.responses import StreamingResponse
+    import io
+    job = _video_jobs.get(job_id)
+    if not job or job.get("status") != "done":
+        raise HTTPException(status_code=404, detail="Video not ready")
+    # Auth check
+    user = await _auth_module.get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    data = job.pop("data", None)
+    if not data:
+        raise HTTPException(status_code=410, detail="Already downloaded")
+    date = job.get("date", "")
+    lang = job.get("lang", "zh")
+    filename = f"daily-x-digest-{date}-{lang}.mp4"
+    return StreamingResponse(
+        io.BytesIO(data),
         media_type="video/mp4",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
