@@ -152,7 +152,6 @@ def _draw_poster(date: str, lang: str, text: str) -> Optional[bytes]:
         f_title = _get_font(62, bold=True)
         f_brand = _get_font(22)
         f_date  = _get_font(22)
-        f_num   = _get_font(18)
         f_cta   = _get_font(21)
         f_tag   = _get_font(19)
 
@@ -186,10 +185,6 @@ def _draw_poster(date: str, lang: str, text: str) -> Optional[bytes]:
         y += RULE1_H + BODY_PAD_T
 
         # ── 章节段落 ──────────────────────────────────────────────────────
-        labels_en = ["Overview", "Deep Dive", "Watch Next"]
-        labels_zh = ["综合信号", "重点分析", "关注要点"]
-        labels    = labels_zh if lang == "zh" else labels_en
-
         for idx, lines in enumerate(para_data):
             sec_h = len(lines) * line_h + SECTION_PAD * 2
 
@@ -198,13 +193,7 @@ def _draw_poster(date: str, lang: str, text: str) -> Optional[bytes]:
             # 左侧紫竖条
             draw.rounded_rectangle([MARGIN, y, MARGIN + BAR_W, y + sec_h], radius=10, fill=_PURPLE)
 
-            # 章节标签（右上角，留出间距避免遮字）
-            label = labels[idx] if idx < len(labels) else f"§{idx+1}"
-            lw    = _tlen(draw, label, f_num)
-            draw.text((W - MARGIN - int(lw) - 16, y + SECTION_PAD - 1), label, font=f_num, fill=_PURPLE)
-
-            # 正文（缩进，避开标签区域右端留空）
-            text_w = W - MARGIN - BAR_W - INDENT - int(lw) - 32
+            # 正文
             ty = y + SECTION_PAD
             for line in lines:
                 draw.text((MARGIN + BAR_W + INDENT, ty), line, font=f_body, fill=_BODY)

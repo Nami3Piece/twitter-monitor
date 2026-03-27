@@ -1203,7 +1203,11 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
   fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd')
     .then(r=>r.json()).then(d=>{{
       var p=d&&d.bitcoin&&d.bitcoin.usd;
-      if(p) document.getElementById('btc-price').textContent='$'+p.toLocaleString('en-US',{{maximumFractionDigits:0}});
+      if(p) {{
+        var fmt='$'+p.toLocaleString('en-US',{{maximumFractionDigits:0}});
+        document.getElementById('btc-price').textContent=fmt;
+        var h=document.getElementById('hdr-btc-price');if(h)h.textContent=fmt;
+      }}
     }}).catch(()=>{{}});
   // AKRE via DexScreener (Polygon chain token)
   fetch('https://api.dexscreener.com/latest/dex/tokens/0xE9c21De62C5C5d0cEAcCe2762bF655AfDcEB7ab3')
@@ -1211,7 +1215,11 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
       var pairs=d&&d.pairs;
       if(pairs&&pairs.length>0){{
         var p=parseFloat(pairs[0].priceUsd);
-        if(!isNaN(p)) document.getElementById('akre-price').textContent='$'+p.toFixed(p<0.01?6:4);
+        if(!isNaN(p)) {{
+          var fmt='$'+p.toFixed(p<0.01?6:4);
+          document.getElementById('akre-price').textContent=fmt;
+          var h=document.getElementById('hdr-akre-price');if(h)h.textContent=fmt;
+        }}
       }}
     }}).catch(()=>{{}});
   setTimeout(fetchPrices, 60000);
@@ -1832,6 +1840,8 @@ async function copyAIDraft(modalType) {{
   <h1>🐦 Twitter Monitor Dashboard</h1>
   <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
     <div class="meta">Updated: {updated} &nbsp;|&nbsp; Showing last 24h tweets</div>
+    <div id="hdr-btc" style="display:flex;flex-direction:column;align-items:center;line-height:1.2;flex-shrink:0"><span id="hdr-btc-price" style="color:#f59e0b;font-size:.82rem;font-weight:700">—</span><span style="color:#64748b;font-size:.65rem">₿ BTC/USD</span></div>
+    <div id="hdr-akre" style="display:flex;flex-direction:column;align-items:center;line-height:1.2;flex-shrink:0"><span id="hdr-akre-price" style="color:#22d3ee;font-size:.82rem;font-weight:700">—</span><span style="color:#64748b;font-size:.65rem">🌱 AKRE/USD</span></div>
     <a href="#page-bottom" style="padding:.35rem .75rem;border-radius:6px;border:1px solid #334155;background:transparent;color:#64748b;font-size:.78rem;cursor:pointer;white-space:nowrap;flex-shrink:0;text-decoration:none;display:inline-block" title="Jump to bottom">↓ Bottom</a>
     <a href="/digest" style="padding:.4rem .9rem;border-radius:20px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:.82rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;box-shadow:0 2px 12px rgba(168,85,247,.45);letter-spacing:.01em"><span style="font-size:1rem">🎙️</span> Daily Digest</a>
     <a href="/logo/" target="_blank" style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #8b5cf6;background:transparent;color:#8b5cf6;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block">🎨 Logo Agent</a>
