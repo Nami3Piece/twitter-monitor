@@ -43,6 +43,9 @@ async def search_tweets(
 _GLOBAL_EXCLUDE = (
     ' -Adani -Fico -Liberal -Conservative'
     ' -conference -expo -hiring -"looking for"'
+    ' -"price prediction" -"buy signal" -ATH -ETF'
+    ' -hashrate -Antminer -candle'
+    ' -from:FAOclimate -from:EarthshotPrize -from:ndtv -from:SchumannBotDE'
 )
 
 
