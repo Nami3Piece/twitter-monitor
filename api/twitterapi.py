@@ -46,6 +46,7 @@ _GLOBAL_EXCLUDE = (
     ' -"price prediction" -"buy signal" -ATH -ETF'
     ' -hashrate -Antminer -candle'
     ' -from:FAOclimate -from:EarthshotPrize -from:ndtv -from:SchumannBotDE'
+    ' -wallpaper -cosplay -podcast -cricket -PS5 -"tip screen" -gm'
 )
 
 

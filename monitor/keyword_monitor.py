@@ -17,6 +17,7 @@ _ALLOWED_EXCHANGES = {"binance", "coinbase"}
 _BLOCKED_ACCOUNTS = {
     "cryptolifer33",
     "bellecosplayer",
+    "drainqueenm",
     "schumannbotde",
     "oopsguess",
     "earthshotprize",
