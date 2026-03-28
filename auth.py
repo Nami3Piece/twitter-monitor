@@ -555,23 +555,35 @@ _ADMIN_PRO_SUB = {
 }
 
 
-async def get_subscription(user_id: str) -> Optional[Dict]:
-    """Get user's subscription info."""
+# In-memory subscription cache: user_id -> (result, expire_ts)
+_sub_cache = {}
+_SUB_CACHE_TTL = 300
+
+
+async def get_subscription(user_id: str):
+    """Get user's subscription info. Cached 5 min."""
     if user_id in ADMIN_USER_IDS:
         return {**_ADMIN_PRO_SUB, "user_id": user_id}
+    now = time.time()
+    cached = _sub_cache.get(user_id)
+    if cached and now < cached[1]:
+        return cached[0]
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM subscriptions WHERE user_id=?", (user_id,)
         ) as cur:
             row = await cur.fetchone()
-    return dict(row) if row else None
+    result = dict(row) if row else None
+    _sub_cache[user_id] = (result, now + _SUB_CACHE_TTL)
+    return result
 
 
 async def upsert_subscription(user_id: str, tier: str, stripe_customer_id: str = "",
                                stripe_subscription_id: str = "", status: str = "active",
                                expires_at: str = "") -> None:
     """Create or update subscription."""
+    _sub_cache.pop(user_id, None)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             INSERT INTO subscriptions (user_id, tier, stripe_customer_id, stripe_subscription_id, status, expires_at)

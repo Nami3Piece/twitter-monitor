@@ -97,6 +97,15 @@ def _auth(credentials: HTTPBasicCredentials = Depends(_security)) -> str:
     return credentials.username
 
 
+def _auth_optional(credentials: Optional[HTTPBasicCredentials] = Depends(HTTPBasic(auto_error=False))):
+    if not credentials:
+        return None
+    expected = _ADMIN_ACCOUNTS.get(credentials.username, "")
+    if expected and secrets.compare_digest(credentials.password.encode(), expected.encode()):
+        return credentials.username
+    return None
+
+
 async def _user_auth(request: Request) -> Dict:
     """JWT auth for member actions (vote, etc.). Raises 401 if not logged in."""
     user = await _auth_module.get_current_user(request)
@@ -121,21 +130,24 @@ async def _fetch_tweets(project: Optional[str] = None, voted_only: bool = False,
 
         if voted_only:
             # Show only voted tweets, no time limit
-            q = "SELECT * FROM tweets WHERE voted=1"
+            q = ("SELECT t.*, a.followers AS acc_followers, a.tweet_count AS acc_tweet_count, a.join_date AS acc_join_date "
+                 "FROM tweets t LEFT JOIN accounts a ON t.username=a.username AND t.project=a.project "
+                 "WHERE t.voted=1")
             params: list = []
             if project:
-                q += " AND project=?"; params.append(project)
-            q += " ORDER BY created_at_iso DESC"
+                q += " AND t.project=?"; params.append(project)
+            q += " ORDER BY t.created_at_iso DESC"
         else:
             # Show only unvoted tweets from last 24 hours
-            q = ("SELECT * FROM tweets "
-                 "WHERE created_at_iso >= datetime('now', '-24 hours') "
-                 "AND voted = 0 "
-                 "AND created_at_iso IS NOT NULL AND created_at_iso != ''")
+            q = ("SELECT t.*, a.followers AS acc_followers, a.tweet_count AS acc_tweet_count, a.join_date AS acc_join_date "
+                 "FROM tweets t LEFT JOIN accounts a ON t.username=a.username AND t.project=a.project "
+                 "WHERE t.created_at_iso >= datetime('now', '-24 hours') "
+                 "AND t.voted = 0 "
+                 "AND t.created_at_iso IS NOT NULL AND t.created_at_iso != ''")
             params = []
             if project:
-                q += " AND project=?"; params.append(project)
-            q += " ORDER BY created_at_iso DESC"
+                q += " AND t.project=?"; params.append(project)
+            q += " ORDER BY t.created_at_iso DESC"
 
         async with db.execute(q, params) as cur:
             all_rows = [dict(r) for r in await cur.fetchall()]
@@ -650,6 +662,13 @@ function _vidError(el, lang, errMsg) {
   </div>
   <div id="ins-zh-body" class="cj-body insight-body">{insight_zh_html}</div>
   <div id="ins-en-body" class="cj-body insight-body" style="display:none">{insight_en_html}</div>
+  <div style="margin-top:.9rem;padding:.55rem .9rem;background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.2);border-radius:8px;display:flex;align-items:flex-start;gap:.55rem">
+    <span style="font-size:.85rem;flex-shrink:0;line-height:1.6">⚡</span>
+    <div>
+      <span style="font-size:.7rem;font-weight:700;color:#818cf8;letter-spacing:.05em">CLAUDE CODE</span>
+      <div id="cc-insight-text" style="font-size:.83rem;color:#cbd5e1;margin-top:.15rem;line-height:1.55">加载中...</div>
+    </div>
+  </div>
 </div>
 <div class="core-judgment news-block">
   <div class="cj-header">
@@ -805,13 +824,45 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
         user_voted = r.get("user_voted", False)
         my_vote_badge = '<span class="my-vote-badge">👤 My Vote</span>' if user_voted else ''
 
+        # Account stats from JOIN
+        acc_followers = r.get('acc_followers') or 0
+        acc_tweet_count = r.get('acc_tweet_count') or 0
+        acc_join_date = r.get('acc_join_date') or ''
+        # Format followers: 1.2K, 3.4M etc
+        def _fmt_num(n):
+            if n >= 1_000_000: return f'{n/1_000_000:.1f}M'
+            if n >= 1_000: return f'{n/1_000:.1f}K'
+            return str(n)
+        # Format join date: '2020-09-15' -> 'Sep 2020'
+        _MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        def _fmt_date(d):
+            if not d or len(d) < 7: return ''
+            try: return _MONTHS[int(d[5:7])-1] + ' ' + d[:4]
+            except: return d[:7]
+        acc_stats_parts = []
+        if acc_followers: acc_stats_parts.append(f'👥 {_fmt_num(acc_followers)}')
+        if acc_tweet_count: acc_stats_parts.append(f'📝 {_fmt_num(acc_tweet_count)}')
+        if acc_join_date: acc_stats_parts.append(f'📅 {_fmt_date(acc_join_date)}')
+        acc_stats_html = ('<span class="tc-acc-stats">' + ' · '.join(acc_stats_parts) + '</span>') if acc_stats_parts else ''
+        # Tweet engagement stats
+        views = r.get('view_count') or 0
+        likes = r.get('like_count') or 0
+        reposts = r.get('retweet_count') or 0
+        comments = r.get('reply_count') or 0
+        eng_parts = []
+        if views: eng_parts.append(f'👁 {_fmt_num(views)}')
+        if likes: eng_parts.append(f'❤️ {_fmt_num(likes)}')
+        if reposts: eng_parts.append(f'🔁 {_fmt_num(reposts)}')
+        if comments: eng_parts.append(f'💬 {_fmt_num(comments)}')
+        eng_html = ('<div class="tc-eng">' + ' &nbsp;·&nbsp; '.join(eng_parts) + '</div>') if eng_parts else ''
         tweet_card = (
-            f'<div class="tweet-card{"  hot" if (r.get("like_count") or 0) >= 50 else ""}{"  my-voted" if user_voted else ""}">'
+            f'<div class="tweet-card{"  hot" if (r.get("like_count") or 0) >= 50 else ""}{"  my-voted" if user_voted else ""}">' 
             f'  <div class="tc-header">'
             f'    <div class="tc-avatar" style="background:{c}">{uname[0].upper() if uname else "?"}</div>'
             f'    <div class="tc-meta">'
             f'      <a class="tc-name" href="https://twitter.com/{uname}" target="_blank" style="color:{c}">@{uname}</a>'
-            f'      {"<span class=hot-badge>🔥 Hot</span>" if (r.get("like_count") or 0) >= 50 else ""}'
+            f'      {acc_stats_html}'
+            f'      {"<span class=hot-badge>\U0001f525 Hot</span>" if (r.get("like_count") or 0) >= 50 else ""}'
             f'      {my_vote_badge}'
             f'      <span class="tc-time">{tweet_time}</span>'
             f'    </div>'
@@ -819,6 +870,7 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
             f'  {quoted_block}'
             f'  <div class="tc-body">{display_text}</div>'
             f'  {media_block}'
+            f'  {eng_html}'
             f'  <div class="tc-footer">'
             f'    <a class="tc-link" href="{_esc(r.get("url","#"))}" target="_blank">View Tweet ↗</a>'
             f'  </div>'
@@ -1479,6 +1531,8 @@ tr.hidden{{display:none}}
 .tc-name{{font-weight:600;text-decoration:none;font-size:.85rem}}
 .tc-name:hover{{text-decoration:underline}}
 .tc-time{{font-size:.72rem;color:var(--muted)}}
+.tc-acc-stats{{font-size:.72rem;color:#64748b;margin-left:.5rem}}
+.tc-eng{{font-size:.76rem;color:#64748b;padding:.35rem 0 .15rem;border-top:1px solid #1e293b;margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.5rem}}
 .tc-body{{color:var(--text);word-break:break-word;margin-bottom:.6rem}}
 .tc-footer{{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:.45rem;margin-top:.2rem;gap:.8rem;flex-wrap:wrap}}
 .tc-stat{{font-size:.75rem;color:var(--muted);white-space:nowrap}}
@@ -2258,15 +2312,25 @@ async function copyAIDraft(modalType) {{
   {''.join(proj_sections)}
   {_build_room_section(keyword_stats, nickname)}
 </main>
+<!-- TAB 4: 定时任务 -->
+<div id="tab-schedules" class="tab-content">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+    <h2 style="font-size:1.1rem;font-weight:700;color:#fff;margin:0">⏰ 定时任务一览</h2>
+    <button onclick="loadSchedules()" style="padding:.35rem .9rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:.8rem;cursor:pointer">↻ 刷新</button>
+  </div>
+  <div id="schedules-loading" style="color:#64748b;padding:2rem;text-align:center">加载中...</div>
+  <div id="schedules-table-wrap" style="overflow-x:auto;display:none"></div>
+  <div style="margin-top:1.2rem;padding:.8rem 1rem;background:#1e293b;border:1px solid #334155;border-radius:8px;font-size:.8rem;color:#64748b">
+    调度器：APScheduler (AsyncIOScheduler) &nbsp;·&nbsp; 部署：supervisord &nbsp;·&nbsp; <span id="schedules-server-time" style="color:#475569"></span>
+  </div>
+</div>
+
+
 <div class="toast" id="toast"></div>
 <footer>
   <a href="#page-top" style="display:inline-flex;align-items:center;gap:.4rem;margin-bottom:.8rem;padding:.45rem 1.1rem;border-radius:20px;border:1.5px solid #334155;background:#1e293b;color:#94a3b8;font-size:.82rem;font-weight:600;cursor:pointer;transition:all .2s;text-decoration:none" onmouseover="this.style.borderColor='#3b82f6';this.style.color='#60a5fa'" onmouseout="this.style.borderColor='#334155';this.style.color='#94a3b8'">↑ Back to Top</a><br>
   Twitter Monitor &middot; {total}  tweets &middot; {len(data)}  projects &middot; Auto-fetch every 8 hours
-  <br><a href="/admin/keywords" style="color:#8b5cf6;text-decoration:none;margin-top:.5rem;display:inline-block">✨ Contribution Hub - Contribute Keywords</a>
-  &nbsp;&middot;&nbsp;
-  <a href="/admin/login" style="color:#64748b;text-decoration:none;font-size:.72rem">🔐 Admin Login</a>
-  &nbsp;&middot;&nbsp;
-  <a href="/admin/keywords" style="color:#64748b;text-decoration:none;font-size:.72rem">⚙️ Keywords Admin</a>
+  <a href="/admin/login" style="color:#334155;text-decoration:none;font-size:.75rem;font-weight:500" title="Admin Hub">⚙️ Admin</a>
 <span id="page-bottom"></span>
 </footer>
 
@@ -3012,6 +3076,8 @@ function cjListen() {{
 
 # ── API Routes ────────────────────────────────────────────────────────────────
 
+LOGIN_HTML_BASE = '<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin Login — Twitter Monitor</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0f1a;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:system-ui,sans-serif}.card{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:2.4rem 2rem;width:100%;max-width:340px}h1{color:#fff;font-size:1.05rem;font-weight:700;margin-bottom:1.6rem;text-align:center}label{display:block;font-size:.78rem;color:#64748b;margin-bottom:.3rem;font-weight:600}input{width:100%;padding:.62rem .8rem;background:#1e293b;border:1px solid #334155;border-radius:7px;color:#e2e8f0;font-size:.9rem;margin-bottom:.95rem;outline:none}input:focus{border-color:#6366f1}button{width:100%;padding:.7rem;background:#6366f1;color:#fff;border:none;border-radius:7px;font-size:.9rem;font-weight:700;cursor:pointer;margin-top:.2rem}button:hover{background:#4f46e5}.err{color:#f87171;font-size:.82rem;margin-bottom:.9rem;text-align:center}</style></head><body><div class="card"><h1>&#9881;&#65039; Admin Hub</h1>{ERR}<form method="POST" action="/admin/login"><label>用户名</label><input type="text" name="username" autocomplete="username" required><label>密码</label><input type="password" name="password" autocomplete="current-password" required><button type="submit">登录</button></form></div></body></html>'
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request) -> str:
     user = await _auth_module.get_current_user(request)
@@ -3400,6 +3466,28 @@ async def api_algo_weekly_refresh(_: str = Depends(_auth)) -> JSONResponse:
 
 
 
+@app.get("/admin/login", response_class=HTMLResponse)
+async def admin_login_form(err: str = ""):
+    err_block = '<div class="err">用户名或密码错误</div>' if err else ""
+    html = LOGIN_HTML_BASE.replace("{ERR}", err_block)
+    return HTMLResponse(html)
+
+
+@app.post("/admin/login")
+async def admin_login_post(request: Request):
+    form = await request.form()
+    username = (form.get("username") or "").strip()
+    password = (form.get("password") or "").strip()
+    expected = _ADMIN_ACCOUNTS.get(username, "")
+    if expected and secrets.compare_digest(password.encode(), expected.encode()):
+        token = _auth_module.make_admin_token(username)
+        r = RedirectResponse("/admin/keywords", status_code=303)
+        r.set_cookie("admin_token", token, httponly=True, secure=True, samesite="lax",
+                     max_age=30 * 86400, path="/")
+        return r
+    return RedirectResponse("/admin/login?err=1", status_code=303)
+
+
 async def admin_login(admin_user: str = Depends(_auth)):
     """Admin login: Basic Auth → set JWT cookie → redirect to main site with pro access."""
     token = _auth_module.make_admin_token(admin_user)
@@ -3410,7 +3498,17 @@ async def admin_login(admin_user: str = Depends(_auth)):
 
 
 @app.get("/admin/keywords", response_class=HTMLResponse)
-async def keywords_admin(admin_user: str = Depends(_auth)) -> str:
+async def keywords_admin(request: Request, admin_user: Optional[str] = Depends(_auth_optional)) -> str:
+    if not admin_user:
+        token = request.cookies.get("admin_token", "")
+        if token:
+            try:
+                payload = _auth_module._decode_token(token)
+                admin_user = (payload or {}).get("sub") or "admin"
+            except Exception:
+                pass
+    if not admin_user:
+        return RedirectResponse("/admin/login", status_code=303)
     """Admin operations hub: deletion analysis, X algorithm weekly, keyword management."""
     from config import PROJECTS
 
@@ -3555,6 +3653,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
   <div class="tab active" onclick="showTab('deletion')">🗑️ 删除分析</div>
   <div class="tab" onclick="showTab('algo')">📡 X算法周报</div>
   <div class="tab" onclick="showTab('keywords')">🔧 关键词管理</div>
+  <div class="tab" onclick="showTab('schedules')">⏰ 定时任务</div>
 </div>
 
 <!-- TAB 1: 删除分析 -->
@@ -3625,19 +3724,73 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
   {''.join(rows)}
 </div>
 
+<!-- TAB 4: 定时任务 -->
+<div id="tab-schedules" class="tab-content">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+    <h2 style="font-size:1.1rem;font-weight:700;color:#fff;margin:0">⏰ 定时任务一览</h2>
+    <button onclick="loadSchedules()" style="padding:.35rem .9rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:.8rem;cursor:pointer">↻ 刷新</button>
+  </div>
+  <div id="schedules-loading" style="color:#64748b;padding:2rem;text-align:center">加载中...</div>
+  <div id="schedules-table-wrap" style="overflow-x:auto;display:none"></div>
+  <div style="margin-top:1.2rem;padding:.8rem 1rem;background:#1e293b;border:1px solid #334155;border-radius:8px;font-size:.8rem;color:#64748b">
+    调度器：APScheduler (AsyncIOScheduler) &nbsp;·&nbsp; 部署：supervisord &nbsp;·&nbsp; <span id="schedules-server-time" style="color:#475569"></span>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 // ── Tab switching ──────────────────────────────────────────
 function showTab(name) {{
   document.querySelectorAll('.tab').forEach((t,i) => {{
-    const names = ['deletion','algo','keywords'];
+    const names = ['deletion','algo','keywords','schedules'];
     t.classList.toggle('active', names[i] === name);
   }});
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'deletion' && !window._delLoaded) loadDeletionReport();
   if (name === 'algo' && !window._algoLoaded) loadAlgoWeekly();
+  if (name === 'schedules') loadSchedules();
+}}
+
+function loadSchedules() {{
+  document.getElementById('schedules-loading').style.display = '';
+  document.getElementById('schedules-table-wrap').style.display = 'none';
+  fetch('/api/schedules')
+    .then(function(r) {{ return r.json(); }})
+    .then(function(data) {{
+      document.getElementById('schedules-loading').style.display = 'none';
+      document.getElementById('schedules-server-time').textContent = '\u670d\u52a1\u5668\u65f6\u95f4\uff1a' + data.server_time_utc;
+      var wrap = document.getElementById('schedules-table-wrap');
+      wrap.style.display = '';
+      var rows = data.jobs.map(function(j, i) {{
+        var bg = i % 2 === 1 ? 'background:#0a0f1a;' : '';
+        var dot = '<span style=\"display:inline-block;width:7px;height:7px;border-radius:50%;background:#4ade80;margin-right:5px;vertical-align:middle\"></span>';
+        var lr = j.last_run ? j.last_run.slice(0,16) : '<span style=\"color:#334155\">\u2014</span>';
+        return '<tr style=\"border-bottom:1px solid #1e293b;' + bg + '\">'
+          + '<td style=\"padding:.7rem 1rem;color:#e2e8f0;font-weight:600;white-space:nowrap\">' + j.icon + ' ' + j.name + '</td>'
+          + '<td style=\"padding:.7rem 1rem;font-family:monospace;color:#93c5fd;white-space:nowrap\">' + j.cron_display + '</td>'
+          + '<td style=\"padding:.7rem 1rem;color:#86efac;white-space:nowrap\">' + j.beijing_time + '</td>'
+          + '<td style=\"padding:.7rem 1rem;color:#94a3b8;font-size:.83rem\">' + j.description + '</td>'
+          + '<td style=\"padding:.7rem 1rem;color:#64748b;font-family:monospace;font-size:.8rem;white-space:nowrap\">' + lr + '</td>'
+          + '<td style=\"padding:.7rem 1rem;color:#fbbf24;font-family:monospace;font-size:.8rem;white-space:nowrap\">' + (j.next_run||'\u2014') + '</td>'
+          + '<td style=\"padding:.7rem 1rem;white-space:nowrap\">' + dot + '<span style=\"color:#4ade80;font-size:.8rem\">\u8fd0\u884c\u4e2d</span></td>'
+          + '</tr>';
+      }});
+      wrap.innerHTML = '<table style=\"width:100%;border-collapse:collapse;font-size:.86rem\">'
+        + '<thead><tr style=\"background:#1e293b;border-bottom:2px solid #334155\">'
+        + '<th style=\"padding:.7rem 1rem;text-align:left;color:#94a3b8;font-weight:600\">\u4efb\u52a1</th>'
+        + '<th style=\"padding:.7rem 1rem;text-align:left;color:#94a3b8;font-weight:600\">\u89e6\u53d1\u65f6\u95f4 (UTC)</th>'
+        + '<th style=\"padding:.7rem 1rem;text-align:left;color:#94a3b8;font-weight:600\">\u5317\u4eac\u65f6\u95f4</th>'
+        + '<th style=\"padding:.7rem 1rem;text-align:left;color:#94a3b8;font-weight:600\">\u8bf4\u660e</th>'
+        + '<th style=\"padding:.7rem 1rem;text-align:left;color:#94a3b8;font-weight:600\">\u4e0a\u6b21\u6267\u884c</th>'
+        + '<th style=\"padding:.7rem 1rem;text-align:left;color:#94a3b8;font-weight:600\">\u4e0b\u6b21\u6267\u884c</th>'
+        + '<th style=\"padding:.7rem 1rem;text-align:left;color:#94a3b8;font-weight:600\">\u72b6\u6001</th>'
+        + '</tr></thead><tbody>' + rows.join('') + '</tbody></table>';
+    }})
+    .catch(function() {{
+      document.getElementById('schedules-loading').textContent = '\u52a0\u8f7d\u5931\u8d25';
+    }});
 }}
 
 // ── Toast ─────────────────────────────────────────────────
@@ -3859,7 +4012,12 @@ function deleteKeyword(project, keyword) {{
     }}).catch(()=>toast('Network error','error'));
 }}
 
-// Auto-load deletion report on page open
+// Load Claude Code community insight
+  fetch('/api/claude-code-insight').then(function(r){{return r.json();}}).then(function(d){{
+    var el=document.getElementById('cc-insight-text');
+    if(el && d.insight) el.textContent=d.insight;
+  }}).catch(function(){{}});
+  // Auto-load deletion report on page open
 loadDeletionReport();
 </script>
 </body>
@@ -3922,10 +4080,9 @@ async def api_manage_keywords(req: KeywordRequest, _: None = Depends(_auth)) -> 
     with open(env_path, "w", encoding="utf-8") as f:
         f.writelines(new_lines)
 
-    # Restart service
+    # Restart service to reload config.PROJECTS from updated .env
     try:
-        subprocess.run(["launchctl", "stop", "com.twitter-monitor.app"], check=False)
-        subprocess.run(["launchctl", "start", "com.twitter-monitor.app"], check=False)
+        subprocess.run(["supervisorctl", "restart", "twitter-monitor-main", "twitter-monitor-web"], check=False)
     except Exception as e:
         return JSONResponse({"ok": False, "error": f"重启服务失败: {str(e)}"})
 
@@ -6549,6 +6706,123 @@ async def download_insight_video(job_id: str, request: Request):
     )
 
 
+
+
+@app.get("/api/schedules")
+async def api_get_schedules():
+    import datetime as _dt
+    import aiosqlite as _sq
+
+    JOBS = [
+        {"id":"keyword_monitor","name":"关键词监控","icon":"🔍","cron_display":"每8小时 (0/8/16:00 UTC)","beijing_time":"08:00 / 16:00 / 00:00","description":"抓取所有项目关键词推文，写入数据库","interval_hours":8},
+        {"id":"cleanup","name":"清理过期推文","icon":"🗑️","cron_display":"每天 03:00 UTC","beijing_time":"每天 11:00","description":"删除24小时前的旧推文","hour_utc":3,"minute_utc":0},
+        {"id":"cleanup_low_followers","name":"清理低粉账号","icon":"👥","cron_display":"每天 04:00 UTC","beijing_time":"每天 12:00","description":"清理低质量关联账号","hour_utc":4,"minute_utc":0},
+        {"id":"daily_report","name":"日使用报告","icon":"📊","cron_display":"每天 23:00 UTC","beijing_time":"次日 07:00","description":"Telegram推送API用量日报","hour_utc":23,"minute_utc":0},
+        {"id":"daily_digest","name":"Daily Digest","icon":"📰","cron_display":"每天 00:00 UTC","beijing_time":"每天 08:00","description":"AI生成中英文摘要+TTS音频，发布到 /digest","hour_utc":0,"minute_utc":0},
+        {"id":"algo_weekly_github","name":"算法周报发布GitHub","icon":"📤","cron_display":"每周一 00:00 UTC","beijing_time":"每周一 08:00","description":"将X算法周报自动提交到 GitHub docs/weekly-reports/","hour_utc":0,"minute_utc":0,"day_of_week":0},
+        {"id":"algo_weekly","name":"X算法周报生成","icon":"📡","cron_display":"每周一 01:00 UTC","beijing_time":"每周一 09:00","description":"AI分析X平台算法趋势，生成中英文周报","hour_utc":1,"minute_utc":0,"day_of_week":0},
+    ]
+
+    last_runs = {}
+    try:
+        async with _sq.connect(DB_PATH) as db:
+            row = await (await db.execute("SELECT date FROM digests ORDER BY date DESC LIMIT 1")).fetchone()
+            if row:
+                last_runs["daily_digest"] = row[0]
+            row = await (await db.execute("SELECT created_at FROM algo_weekly ORDER BY created_at DESC LIMIT 1")).fetchone()
+            if row:
+                last_runs["algo_weekly"] = row[0]
+                last_runs["algo_weekly_github"] = row[0]
+    except Exception:
+        pass
+
+    now = _dt.datetime.utcnow()
+
+    def next_daily(h, m=0):
+        t = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if now >= t:
+            t += _dt.timedelta(days=1)
+        return t.strftime("%Y-%m-%d %H:%M UTC")
+
+    def next_weekly(dow, h, m=0):
+        t = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        days = dow - now.weekday()
+        if days < 0:
+            days += 7
+        elif days == 0 and now >= t:
+            days = 7
+        return (t + _dt.timedelta(days=days)).strftime("%Y-%m-%d %H:%M UTC")
+
+    def next_interval(hours):
+        h = (now.hour // hours + 1) * hours % 24
+        t = now.replace(hour=h, minute=0, second=0, microsecond=0)
+        if t <= now:
+            t += _dt.timedelta(hours=hours)
+        return t.strftime("%Y-%m-%d %H:%M UTC")
+
+    result = []
+    for job in JOBS:
+        j = dict(job)
+        j["last_run"] = last_runs.get(job["id"])
+        if "day_of_week" in job:
+            j["next_run"] = next_weekly(job["day_of_week"], job["hour_utc"], job.get("minute_utc", 0))
+        elif "hour_utc" in job:
+            j["next_run"] = next_daily(job["hour_utc"], job.get("minute_utc", 0))
+        else:
+            j["next_run"] = next_interval(job["interval_hours"])
+        result.append(j)
+
+    return JSONResponse({"jobs": result, "server_time_utc": now.strftime("%Y-%m-%d %H:%M:%S UTC")})
+
+
+
+@app.get("/api/claude-code-insight")
+async def api_claude_code_insight():
+    import json, time, asyncio, os
+    from anthropic import AsyncAnthropic
+    cache_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "claude_code_insight.json")
+    try:
+        if os.path.exists(cache_file):
+            cached = json.loads(open(cache_file).read())
+            if time.time() - cached.get("ts", 0) < 28800:
+                return JSONResponse({"insight": cached["insight"], "cached": True})
+    except Exception:
+        pass
+    try:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        base_url = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+        client = AsyncAnthropic(api_key=api_key, base_url=base_url)
+        msg = await asyncio.wait_for(
+            client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=200,
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        "Search for the most important Claude Code (Anthropic CLI coding tool) "
+                        "community development, feature update, or hot discussion from the past 24 hours. "
+                        "Reply in ONE sentence in Chinese (max 60 characters). "
+                        "If nothing notable, say: Claude Code 社区今日暂无重大动态。"
+                    )
+                }]
+            ),
+            timeout=45
+        )
+        import re as _re
+        full_text = " ".join(b.text for b in msg.content if hasattr(b, "text") and b.text)
+        # Extract last Chinese sentence (ends with Chinese punctuation)
+        insight = full_text.split('\n')[-1].strip() or full_text.strip()
+        if not insight:
+            insight = "Claude Code 社区今日暂无重大动态。"
+        try:
+            with open(cache_file, "w") as _f:
+                json.dump({"insight": insight, "ts": time.time()}, _f)
+        except Exception:
+            pass
+        return JSONResponse({"insight": insight, "cached": False})
+    except Exception as e:
+        return JSONResponse({"insight": "Claude Code 社区动态加载中...", "error": str(e)})
 
 
 

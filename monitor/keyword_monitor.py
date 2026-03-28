@@ -13,6 +13,24 @@ MIN_FOLLOWER_THRESHOLD = 1000
 # Exchanges allowed to appear in results
 _ALLOWED_EXCHANGES = {"binance", "coinbase"}
 
+# Accounts permanently blocked from appearing in results (system-wide blacklist)
+_BLOCKED_ACCOUNTS = {
+    "cryptolifer33",
+    "bellecosplayer",
+    "schumannbotde",
+    "oopsguess",
+    "earthshotprize",
+    "faoclimate",
+    "cgiarclimate",
+    "ndtv",
+    "wionews",
+    "breakingxalerts",
+    "rupinyradio",
+    "newsfrombw",
+    "cardiffcouncil",
+    "uninsouthafrica",
+}
+
 # Keywords that identify exchange accounts (username or display name).
 # Any match → blocked, unless the account is in _ALLOWED_EXCHANGES.
 _EXCHANGE_PATTERNS = {
@@ -230,6 +248,12 @@ async def monitor_keyword(project: str, keyword: str, since_hours: int = 8) -> N
         followers = author.get("followers") or 0
         if followers < MIN_FOLLOWER_THRESHOLD:
             continue
+        # Skip system-wide blacklisted accounts
+        username_lower = (author.get("userName") or author.get("username") or "").lower()
+        if username_lower in _BLOCKED_ACCOUNTS:
+            logger.debug(f"Skipped blacklisted account: {author.get('userName')}")
+            continue
+
         # Skip non-whitelisted exchange accounts
         if _is_blocked_exchange(author):
             logger.debug(f"Skipped exchange account: {author.get('userName')}")
@@ -296,7 +320,13 @@ async def monitor_keyword(project: str, keyword: str, since_hours: int = 8) -> N
                 author.get("userName") or author.get("username") or tweet.get("username", "")
             )
             if username:
-                await record_account(username, project, keyword, followers=followers)
+                tweet_count = author.get("statusesCount") or author.get("tweetsCount") or 0
+                join_date = author.get("createdAt") or ""
+                # Normalize createdAt to YYYY-MM-DD
+                if join_date and len(join_date) > 10:
+                    join_date = join_date[:10]
+                await record_account(username, project, keyword, followers=followers,
+                                     tweet_count=tweet_count, join_date=join_date)
 
     logger.info(f"[{project}] '{keyword}': {len(new_tweets)} new / {len(tweets)} fetched")
 

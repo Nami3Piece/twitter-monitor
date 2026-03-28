@@ -108,6 +108,10 @@ async def init_db() -> None:
             acols = {row[1] for row in await cur.fetchall()}
         if "followers" not in acols:
             await db.execute("ALTER TABLE accounts ADD COLUMN followers INTEGER DEFAULT 0")
+        if "tweet_count" not in acols:
+            await db.execute("ALTER TABLE accounts ADD COLUMN tweet_count INTEGER DEFAULT 0")
+        if "join_date" not in acols:
+            await db.execute("ALTER TABLE accounts ADD COLUMN join_date TEXT DEFAULT ''")
         # Used TX hashes — prevent replay attacks on AKRE subscription payments
         await db.execute("""
             CREATE TABLE IF NOT EXISTS used_tx_hashes (
@@ -415,15 +419,16 @@ async def update_ai_engagement(tweet_id: str, quotes: list, comments: list) -> N
         await db.commit()
 
 
-async def record_account(username: str, project: str, keyword: str, followers: int = 0) -> None:
+async def record_account(username: str, project: str, keyword: str, followers: int = 0,
+                         tweet_count: int = 0, join_date: str = "") -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO accounts (username, project, followers) VALUES (?, ?, ?)",
-            (username, project, followers),
+            "INSERT OR IGNORE INTO accounts (username, project, followers, tweet_count, join_date) VALUES (?, ?, ?, ?, ?)",
+            (username, project, followers, tweet_count, join_date),
         )
         await db.execute(
-            "UPDATE accounts SET followers=? WHERE username=? AND project=?",
-            (followers, username, project),
+            "UPDATE accounts SET followers=?, tweet_count=?, join_date=? WHERE username=? AND project=?",
+            (followers, tweet_count, join_date, username, project),
         )
         await db.execute(
             "INSERT OR IGNORE INTO account_keywords (username, project, keyword) VALUES (?, ?, ?)",

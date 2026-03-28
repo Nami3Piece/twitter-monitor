@@ -107,6 +107,79 @@ async def _send_daily_report() -> None:
     logger.info(f"Daily report sent: twitter={twitter_calls}, claude={claude_calls}, tweets={tweet_count}")
 
 
+
+async def _publish_algo_weekly_to_github() -> None:
+    """Publish this week algo weekly report to GitHub every Monday UTC 0:00 (Beijing 8:00)."""
+    import asyncio
+    import base64
+    import os as _os
+    import datetime as _dt
+
+    now_beijing = _dt.datetime.utcnow() + _dt.timedelta(hours=8)
+    monday = now_beijing - _dt.timedelta(days=now_beijing.weekday())
+    week_str = monday.strftime("%Y-W%V")
+    year_str = monday.strftime("%Y")
+    monday_str = monday.strftime("%Y-%m-%d")
+
+    logger.info(f"GitHub publish: looking for algo_weekly week_start={monday_str}")
+
+    import aiosqlite
+    db_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "tweets.db")
+    content = None
+    async with aiosqlite.connect(db_path) as db:
+        row = await (await db.execute(
+            "SELECT content_zh FROM algo_weekly WHERE week_start = ?", (monday_str,)
+        )).fetchone()
+        if row:
+            content = row[0]
+
+    if not content:
+        logger.warning(f"GitHub publish: no algo_weekly entry for {monday_str}, skipping")
+        return
+
+    github_token = _os.environ.get("GITHUB_TOKEN")
+    if not github_token:
+        env_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".env")
+        try:
+            for line in open(env_path).read().splitlines():
+                if line.startswith("GITHUB_TOKEN="):
+                    github_token = line.split("=", 1)[1].strip()
+                    break
+        except Exception:
+            pass
+
+    if not github_token:
+        logger.error("GitHub publish: GITHUB_TOKEN not set")
+        return
+
+    _content = content  # capture for closure
+
+    def _push():
+        import requests as _req
+        file_path = f"docs/weekly-reports/{year_str}/{week_str}.md"
+        api_url = f"https://api.github.com/repos/Nami3Piece/twitter-monitor/contents/{file_path}"
+        hdrs = {"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"}
+        sha = None
+        r = _req.get(api_url, headers=hdrs, timeout=30)
+        if r.status_code == 200:
+            sha = r.json().get("sha")
+        payload = {
+            "message": f"report: X algorithm weekly report {week_str} (auto-published)",
+            "content": base64.b64encode(_content.encode()).decode(),
+        }
+        if sha:
+            payload["sha"] = sha
+        r = _req.put(api_url, headers=hdrs, json=payload, timeout=30)
+        r.raise_for_status()
+        return r.json().get("content", {}).get("html_url", "")
+
+    try:
+        html_url = await asyncio.to_thread(_push)
+        logger.info(f"GitHub publish: ✅ {week_str} → {html_url}")
+    except Exception as e:
+        logger.error(f"GitHub publish error: {e}")
+
+
 def _setup_scheduler() -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler()
 
@@ -130,21 +203,24 @@ def _setup_scheduler() -> AsyncIOScheduler:
     logger.info(f"Scheduled {total} jobs across {len(PROJECTS)} projects every 8 hours")
 
     # Cleanup old tweets every hour
-    scheduler.add_job(_run_cleanup, "interval", hours=1, id="cleanup")
+    scheduler.add_job(_run_cleanup, CronTrigger(hour=3, minute=0, timezone="UTC"), id="cleanup")
 
     # Unfollow low-follower accounts every 6 hours
-    scheduler.add_job(cleanup_low_follower_accounts, "interval", hours=6, id="cleanup_low_followers")
+    scheduler.add_job(cleanup_low_follower_accounts, CronTrigger(hour=4, minute=0, timezone="UTC"), id="cleanup_low_followers")
 
     # Daily API usage report at 23:00 UTC
     scheduler.add_job(_send_daily_report, CronTrigger(hour=23, minute=0), id="daily_report")
 
     # Daily Digest at UTC 0:00 (Beijing 8:00)
     from digest_runner import run_daily_digest
-    scheduler.add_job(run_daily_digest, CronTrigger(hour=0, minute=0), id="daily_digest")
+    scheduler.add_job(run_daily_digest, CronTrigger(hour=0, minute=0, timezone="UTC"), id="daily_digest")
 
     # Weekly X Algorithm Report — every Monday at UTC 01:00
     from ai.algo_weekly import run_algo_weekly
     scheduler.add_job(run_algo_weekly, CronTrigger(day_of_week="mon", hour=1, minute=0), id="algo_weekly")
+
+    # Publish X Algorithm Weekly Report to GitHub — every Monday UTC 0:00 (Beijing 8:00)
+    scheduler.add_job(_publish_algo_weekly_to_github, CronTrigger(day_of_week="mon", hour=0, minute=0, timezone="UTC"), id="algo_weekly_github")
 
     return scheduler
 
@@ -177,3 +253,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+
