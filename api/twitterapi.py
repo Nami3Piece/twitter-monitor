@@ -39,9 +39,16 @@ async def search_tweets(
     return tweets, next_cursor
 
 
+# Global negative terms appended to every search query
+_GLOBAL_EXCLUDE = (
+    ' -Adani -Fico -Liberal -Conservative'
+    ' -conference -expo -hiring -"looking for"'
+)
+
+
 async def fetch_latest_tweets(query: str, max_pages: int = 1, since_hours: int = 0) -> List[Dict]:
-    # Append lang:en to get English-only tweets
-    en_query = f"{query} lang:en"
+    # Append lang:en + global negative filters
+    en_query = f"{query} lang:en{_GLOBAL_EXCLUDE}"
     # Add a time window filter to avoid re-fetching already-seen tweets.
     # A 1-hour overlap (since_hours + 1) guards against any clock skew.
     if since_hours > 0:
