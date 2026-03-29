@@ -79,6 +79,11 @@ _PROJECT_COLOR = {
     name: _PALETTE[i % len(_PALETTE)] for i, name in enumerate(PROJECTS.keys())
 }
 
+_OFFICIAL_ACCOUNTS: dict = {
+    "ARKREEN": "arkreen_network",
+    "GREENBTC": "GreenBTCClub",
+}
+
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -784,6 +789,61 @@ function _vidError(el, lang, errMsg) {
 </div>"""
     return f'<div id="sec-home" class="section active">{core_block}{top10_block}</div>'
 
+
+def _official_banner_html(rows: list, color: str) -> str:
+    """Render pinned official account banner (no vote buttons)."""
+    if not rows:
+        return ""
+    def _fmt(n):
+        if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
+        if n >= 1_000: return f"{n/1_000:.1f}K"
+        return str(n)
+    parts = []
+    for r in rows[:2]:
+        uname = _esc(r.get("username", ""))
+        tweet_time = (r.get("created_at") or "")[:16]
+        raw_text = r.get("text", "")
+        display_text = _esc(raw_text[:200] + ("…" if len(raw_text) > 200 else ""))
+        media_url = r.get("media_url") or ""
+        media_html = (
+            f'<img src="{_esc(media_url)}" alt="media" loading="lazy" '
+            f'style="width:100%;border-radius:6px;margin-top:.5rem;max-height:180px;object-fit:cover">'
+        ) if media_url else ""
+        tweet_url = _esc(r.get("url", "#"))
+        views = r.get("view_count") or 0
+        likes = r.get("like_count") or 0
+        eng = ""
+        if views or likes:
+            ep = []
+            if views: ep.append(f"👁 {_fmt(views)}")
+            if likes: ep.append(f"❤️ {_fmt(likes)}")
+            eng = f'<div style="font-size:.75rem;color:#64748b;margin-top:.35rem">{" &nbsp;·&nbsp; ".join(ep)}</div>'
+        parts.append(
+            f'<div style="background:#0f172a;border:1px solid {color}33;border-radius:8px;'
+            f'padding:.7rem .9rem;margin-bottom:.5rem">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">'
+            f'<a href="https://twitter.com/{uname}" target="_blank" '
+            f'style="color:{color};font-weight:700;font-size:.88rem;text-decoration:none">@{uname}</a>'
+            f'<span style="color:#475569;font-size:.75rem">{tweet_time}</span>'
+            f'</div>'
+            f'<div style="color:#cbd5e1;font-size:.84rem;line-height:1.5">{display_text}</div>'
+            f'{media_html}'
+            f'{eng}'
+            f'<a href="{tweet_url}" target="_blank" '
+            f'style="font-size:.75rem;color:#64748b;text-decoration:none;margin-top:.4rem;display:inline-block">'
+            f'View Tweet ↗</a>'
+            f'</div>'
+        )
+    return (
+        f'<div style="margin-bottom:1rem;padding:.6rem .8rem;'
+        f'background:#1e293b;border:1px solid {color}44;border-radius:10px">'
+        f'<div style="font-size:.72rem;font-weight:700;color:{color};'
+        f'letter-spacing:.06em;margin-bottom:.5rem">📌 官方动态</div>'
+        + "".join(parts)
+        + '</div>'
+    )
+
+
 def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
     if not rows:
         colspan = "6" if show_ai_draft else "5"
@@ -1341,13 +1401,18 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
     for name, rows in data.items():
         c = _PROJECT_COLOR.get(name, "#3b82f6")
         accs = accounts.get(name, [])
+        _off_acct = _OFFICIAL_ACCOUNTS.get(name, "").lower()
+        _official_rows = [r for r in rows if (r.get("username") or "").lower() == _off_acct] if _off_acct else []
+        _display_rows = [r for r in rows if (r.get("username") or "").lower() != _off_acct] if _off_acct else rows
+        _off_banner = _official_banner_html(_official_rows, c) if _official_rows else ""
         proj_sections.append(f"""
 <div id="sec-{name}" class="section">
   <div class="subtabs">
-    <div class="subtab active" onclick="showSub(this,'tweets-{name}')">Tweet ({len(rows)})</div>
+    <div class="subtab active" onclick="showSub(this,'tweets-{name}')">Tweet ({len(_display_rows)})</div>
     <div class="subtab" onclick="showSub(this,'accounts-{name}')" style="color:{c}">账号列表 ({len(accs)})</div>
   </div>
   <div id="tweets-{name}" class="subsection active">
+    {_off_banner}
     <div class="batch-actions">
       <button class="batch-delete-btn" onclick="deleteSelected()">🗑️ Delete Selected</button>
       <label><input type="checkbox" onchange="toggleAll(this)"> Select All</label>
@@ -1356,7 +1421,7 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
       <th><input type="checkbox" onchange="toggleAll(this)"></th>
       <th>Keyword</th><th>Tweet</th><th>Vote</th><th>Actions</th>
     </tr></thead><tbody>
-      {_tweet_rows(rows, show_ai_draft=False)}
+      {_tweet_rows(_display_rows, show_ai_draft=False)}
     </tbody></table>
   </div>
   <div id="accounts-{name}" class="subsection" style="display:none">

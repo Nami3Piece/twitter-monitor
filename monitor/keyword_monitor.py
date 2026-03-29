@@ -32,6 +32,10 @@ _BLOCKED_ACCOUNTS = {
     "uninsouthafrica",
 }
 
+# VIP accounts (followed=1 or vote_count>0) — updated by monitor_vip_accounts
+_VIP_USERS_CACHE: set = set()
+
+
 # Keywords that identify exchange accounts (username or display name).
 # Any match → blocked, unless the account is in _ALLOWED_EXCHANGES.
 _EXCHANGE_PATTERNS = {
@@ -291,11 +295,11 @@ async def monitor_keyword(project: str, keyword: str, since_hours: int = 8) -> N
         if _is_regenerative_agriculture(text):
             logger.debug(f"Skipped regenerative agriculture: {text[:50]}...")
             continue
-        # Skip tweets without media (images or videos) - only for new tweets
-        # Note: voted tweets are preserved regardless of media
+        # Skip tweets without media (images or videos)
+        # Exception: VIP accounts (followed=1 or vote_count>0) bypass this
         ext = tweet.get("extendedEntities") or tweet.get("entities") or {}
         media_list = ext.get("media") or []
-        if not media_list:
+        if not media_list and username_lower not in _VIP_USERS_CACHE:
             logger.debug(f"Skipped tweet without media: {text[:50]}...")
             continue
         # Generate AI draft before inserting so it's available immediately
@@ -429,10 +433,9 @@ async def monitor_vip_accounts(top_n: int = 60) -> None:
                     uname_lower = (author.get("userName") or "").lower()
                     if uname_lower in _BLOCKED_ACCOUNTS:
                         continue
+                    # No media requirement for VIP/followed accounts
                     ext = tweet.get("extendedEntities") or tweet.get("entities") or {}
                     media_list = ext.get("media") or []
-                    if not media_list:
-                        continue
                     from db.database import insert_tweet
                     is_new = await insert_tweet(project, f"vip:{username}", tweet)
                     if is_new:
@@ -443,7 +446,10 @@ async def monitor_vip_accounts(top_n: int = 60) -> None:
                 logger.warning(f"VIP fetch @{username} failed: {e}")
 
     await asyncio.gather(*[_fetch_one(acc) for acc in vip_accounts])
-    logger.info("VIP monitor complete")
+    # Refresh VIP cache so regular monitor also benefits
+    global _VIP_USERS_CACHE
+    _VIP_USERS_CACHE = {a["username"].lower() for a in vip_accounts}
+    logger.info(f"VIP monitor complete — cache refreshed: {len(_VIP_USERS_CACHE)} accounts")
 
 
 async def cleanup_low_follower_accounts(threshold: int = MIN_FOLLOWER_THRESHOLD) -> Dict:
