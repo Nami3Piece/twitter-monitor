@@ -30,6 +30,12 @@ _BLOCKED_ACCOUNTS = {
     "newsfrombw",
     "cardiffcouncil",
     "uninsouthafrica",
+    "theeconomist",
+    "reuters",
+    "reutersbiz",
+    "xhnews",
+    "chinadaily",
+    "lifehacker",
 }
 
 # VIP accounts (followed=1 or vote_count>0) — updated by monitor_vip_accounts
