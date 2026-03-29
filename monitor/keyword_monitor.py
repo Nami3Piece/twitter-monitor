@@ -301,13 +301,9 @@ async def monitor_keyword(project: str, keyword: str, since_hours: int = 8) -> N
         if _is_regenerative_agriculture(text):
             logger.debug(f"Skipped regenerative agriculture: {text[:50]}...")
             continue
-        # Skip tweets without media (images or videos)
-        # Exception: VIP accounts or 100K+ follower accounts bypass this
+        # Media info (used for display, no longer a hard filter)
         ext = tweet.get("extendedEntities") or tweet.get("entities") or {}
         media_list = ext.get("media") or []
-        if not media_list and username_lower not in _VIP_USERS_CACHE and followers < 100_000:
-            logger.debug(f"Skipped tweet without media: {text[:50]}...")
-            continue
         # Generate AI draft before inserting so it's available immediately
         from ai.retweet import generate_retweet
         ai_reply = await generate_retweet(project, keyword, tweet)
