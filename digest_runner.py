@@ -161,7 +161,7 @@ async def _save_digest(
 
 async def run_daily_digest() -> None:
     """每日播报主函数，由调度器在 UTC 0:00 调用。"""
-    date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    date = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime("%Y-%m-%d")
     logger.info(f"=== Daily Digest starting for {date} ===")
 
     # 1. 获取过去 24 小时推文
@@ -233,3 +233,4 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
     asyncio.run(run_daily_digest())
+
