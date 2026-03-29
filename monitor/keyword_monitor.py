@@ -385,6 +385,67 @@ async def handle_vote(tweet_id: str, voter: str) -> Dict:
     return result
 
 
+
+async def monitor_vip_accounts(top_n: int = 30) -> None:
+    """Directly fetch latest tweets from top voted/followed accounts.
+    Bypasses keyword matching so high-quality accounts always surface."""
+    from db.database import DB_PATH
+    import aiosqlite as _aiosqlite
+
+    async with _aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = _aiosqlite.Row
+        async with db.execute(
+            """SELECT username, project, followers, vote_count
+               FROM accounts
+               WHERE vote_count > 0 OR followed = 1
+               ORDER BY vote_count DESC, followers DESC
+               LIMIT ?""",
+            (top_n,)
+        ) as cur:
+            vip_accounts = [dict(r) for r in await cur.fetchall()]
+
+    if not vip_accounts:
+        logger.info("VIP monitor: no voted accounts yet")
+        return
+
+    logger.info(f"VIP monitor: checking {len(vip_accounts)} accounts")
+    sem = asyncio.Semaphore(3)
+
+    async def _fetch_one(acc: dict) -> None:
+        username = acc["username"]
+        project = acc["project"]
+        async with sem:
+            try:
+                from api.twitterapi import fetch_latest_tweets
+                tweets = await fetch_latest_tweets(
+                    f"from:{username}", max_pages=1, since_hours=24
+                )
+                new_count = 0
+                for tweet in tweets:
+                    text = (tweet.get("text") or "").strip()
+                    if text.startswith("RT @") or len(text) < 20:
+                        continue
+                    author = tweet.get("author") or {}
+                    uname_lower = (author.get("userName") or "").lower()
+                    if uname_lower in _BLOCKED_ACCOUNTS:
+                        continue
+                    ext = tweet.get("extendedEntities") or tweet.get("entities") or {}
+                    media_list = ext.get("media") or []
+                    if not media_list:
+                        continue
+                    from db.database import insert_tweet
+                    is_new = await insert_tweet(project, f"vip:{username}", tweet)
+                    if is_new:
+                        new_count += 1
+                if new_count:
+                    logger.info(f"VIP @{username}: {new_count} new tweets")
+            except Exception as e:
+                logger.warning(f"VIP fetch @{username} failed: {e}")
+
+    await asyncio.gather(*[_fetch_one(acc) for acc in vip_accounts])
+    logger.info("VIP monitor complete")
+
+
 async def cleanup_low_follower_accounts(threshold: int = MIN_FOLLOWER_THRESHOLD) -> Dict:
     """
     Unfollow accounts with fewer than `threshold` followers, delete their tweets

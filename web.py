@@ -182,15 +182,39 @@ async def _fetch_tweets(project: Optional[str] = None, voted_only: bool = False,
             row["user_voted"] = False
 
     # Limit to 5 tweets per keyword for unvoted view
+    # Voted/VIP accounts bypass the per-keyword cap
     if not voted_only:
         from collections import defaultdict
+        # Get voted account usernames for priority treatment
+        try:
+            async with aiosqlite.connect(DB_PATH) as _db:
+                async with _db.execute(
+                    "SELECT DISTINCT username FROM accounts WHERE vote_count > 0 OR followed=1"
+                ) as _cur:
+                    vip_users = {r[0].lower() for r in await _cur.fetchall()}
+        except Exception:
+            vip_users = set()
         keyword_counts = defaultdict(int)
         filtered = []
+        # First pass: always include VIP account tweets
         for row in all_rows:
+            uname = (row.get("username") or "").lower()
+            if uname in vip_users:
+                filtered.append(row)
+        vip_set = {id(r) for r in filtered}
+        # Second pass: fill remaining slots with keyword-limited tweets
+        for row in all_rows:
+            if id(row) in vip_set:
+                continue
             kw = row.get("keyword", "")
             if keyword_counts[kw] < 5:
                 filtered.append(row)
                 keyword_counts[kw] += 1
+        # Sort: VIP first, then by follower count desc
+        filtered.sort(key=lambda r: (
+            0 if (r.get("username") or "").lower() in vip_users else 1,
+            -(r.get("acc_followers") or 0)
+        ))
         return filtered
 
     return all_rows
@@ -6720,6 +6744,7 @@ async def api_get_schedules():
         {"id":"daily_report","name":"日使用报告","icon":"📊","cron_display":"每天 23:00 UTC","beijing_time":"次日 07:00","description":"Telegram推送API用量日报","hour_utc":23,"minute_utc":0},
         {"id":"daily_digest","name":"Daily Digest","icon":"📰","cron_display":"每天 00:00 UTC","beijing_time":"每天 08:00","description":"AI生成中英文摘要+TTS音频，发布到 /digest","hour_utc":0,"minute_utc":0},
         {"id":"algo_weekly_github","name":"算法周报发布GitHub","icon":"📤","cron_display":"每周一 00:00 UTC","beijing_time":"每周一 08:00","description":"将X算法周报自动提交到 GitHub docs/weekly-reports/","hour_utc":0,"minute_utc":0,"day_of_week":0},
+        {"id":"vip_monitor","name":"VIP账号监控","icon":"⭐","cron_display":"每天 0/8/16:30 UTC","beijing_time":"08:30/16:30/00:30","description":"直接抓取被投票账号的最新推文，确保高质量账号每8小时出现一次","hour_utc":0,"minute_utc":30},
         {"id":"algo_weekly","name":"X算法周报生成","icon":"📡","cron_display":"每周一 01:00 UTC","beijing_time":"每周一 09:00","description":"AI分析X平台算法趋势，生成中英文周报","hour_utc":1,"minute_utc":0,"day_of_week":0},
     ]
 

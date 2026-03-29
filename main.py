@@ -20,7 +20,7 @@ from loguru import logger
 
 from config import PROJECTS
 from db.database import init_db, cleanup_old_tweets, get_daily_usage, get_daily_tweet_count
-from monitor.keyword_monitor import monitor_keyword, cleanup_low_follower_accounts
+from monitor.keyword_monitor import monitor_keyword, cleanup_low_follower_accounts, monitor_vip_accounts
 
 SCHEDULE_HOURS = list(range(0, 24, 8))  # every 8 hours: 0, 8, 16
 
@@ -207,6 +207,9 @@ def _setup_scheduler() -> AsyncIOScheduler:
 
     # Unfollow low-follower accounts every 6 hours
     scheduler.add_job(cleanup_low_follower_accounts, CronTrigger(hour=4, minute=0, timezone="UTC"), id="cleanup_low_followers")
+
+    # VIP account monitor — fetch latest from voted/followed accounts every 8h
+    scheduler.add_job(monitor_vip_accounts, CronTrigger(hour="0,8,16", minute=30, timezone="UTC"), id="vip_monitor")
 
     # Daily API usage report at 23:00 UTC
     scheduler.add_job(_send_daily_report, CronTrigger(hour=23, minute=0), id="daily_report")
