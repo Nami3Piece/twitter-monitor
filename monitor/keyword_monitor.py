@@ -429,7 +429,7 @@ async def monitor_vip_accounts(top_n: int = 60) -> None:
         project = acc["project"]
         async with sem:
             try:
-                from api.twitterapi import fetch_latest_tweets
+                from api.twitterapi import fetch_latest_tweets, fetch_tweet_by_id
                 tweets = await fetch_latest_tweets(
                     f"from:{username}", max_pages=1, since_hours=24
                 )
@@ -445,8 +445,23 @@ async def monitor_vip_accounts(top_n: int = 60) -> None:
                     # No media requirement for VIP/followed accounts
                     ext = tweet.get("extendedEntities") or tweet.get("entities") or {}
                     media_list = ext.get("media") or []
+                    # Fetch original tweet if this is a reply
+                    reply_to_text = None
+                    reply_to_media_url = None
+                    if tweet.get("isReply") and tweet.get("inReplyToId"):
+                        try:
+                            original = await fetch_tweet_by_id(tweet["inReplyToId"])
+                            if original:
+                                reply_to_text = original.get("text", "")
+                                ext_orig = original.get("extendedEntities") or original.get("entities") or {}
+                                media_orig = ext_orig.get("media") or []
+                                if media_orig:
+                                    reply_to_media_url = media_orig[0].get("media_url_https") or media_orig[0].get("media_url")
+                        except Exception:
+                            pass
                     from db.database import insert_tweet
-                    is_new = await insert_tweet(project, f"vip:{username}", tweet)
+                    is_new = await insert_tweet(project, f"vip:{username}", tweet,
+                                               reply_to_text=reply_to_text, reply_to_media_url=reply_to_media_url)
                     if is_new:
                         new_count += 1
                     if new_count >= 1:
