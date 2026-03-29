@@ -2533,12 +2533,12 @@ function deleteAccount(project, username) {{
     credentials: 'include'
   }}).then(function(r) {{ return r.json(); }}).then(function(d) {{
     if (d.ok) {{
-      showToast('\u5df2\u5220\u9664 @' + username);
+      toast('\u5df2\u5220\u9664 @' + username, true);
       setTimeout(function() {{ location.reload(); }}, 800);
     }} else {{
-      showToast('\u5220\u9664\u5931\u8d25: ' + (d.error || ''), 'error');
+      toast('\u5220\u9664\u5931\u8d25: ' + (d.error || ''), false);
     }}
-  }}).catch(function() {{ showToast('\u5220\u9664\u5931\u8d25', 'error'); }});
+  }}).catch(function() {{ toast('\u5220\u9664\u5931\u8d25', false); }});
 }}
 
 function promptAddAccount(project) {{
@@ -2552,12 +2552,12 @@ function promptAddAccount(project) {{
     body: JSON.stringify({{username: username}})
   }}).then(function(r) {{ return r.json(); }}).then(function(d) {{
     if (d.ok) {{
-      showToast('\u5df2\u6dfb\u52a0 @' + d.added + ' (followed)');
+      toast('\u5df2\u6dfb\u52a0 @' + d.added, true);
       setTimeout(function() {{ location.reload(); }}, 800);
     }} else {{
-      showToast('\u6dfb\u52a0\u5931\u8d25: ' + (d.error || ''), 'error');
+      toast('\u6dfb\u52a0\u5931\u8d25: ' + (d.error || ''), false);
     }}
-  }}).catch(function() {{ showToast('\u6dfb\u52a0\u5931\u8d25', 'error'); }});
+  }}).catch(function() {{ toast('\u6dfb\u52a0\u5931\u8d25', false); }});
 }}
 
 function filterTable() {{
