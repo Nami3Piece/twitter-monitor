@@ -331,7 +331,7 @@ async def _fetch_accounts(project: str) -> List[Dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            """SELECT a.username, a.vote_count, a.followed, a.followers, a.first_seen,
+            """SELECT a.username, a.project, a.vote_count, a.followed, a.followers, a.first_seen,
                       GROUP_CONCAT(ak.keyword, '|||') AS keywords
                FROM accounts a
                LEFT JOIN account_keywords ak
@@ -976,7 +976,7 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
 
 def _account_rows(rows: List[Dict]) -> str:
     if not rows:
-        return '<tr><td colspan="6" class="empty">暂无Tracked Accounts</td></tr>'
+        return '<tr><td colspan="7" class="empty">暂无Tracked Accounts</td></tr>'
     out = []
     for r in rows:
         kws = (r.get("keywords") or "").split("|||")
@@ -1002,6 +1002,7 @@ def _account_rows(rows: List[Dict]) -> str:
             f'<td class="followers-cell">👥 {followers_fmt}</td>'
             f'<td>{status_badge}</td>'
             f'<td class="time">{(r.get("first_seen",""))[:10]}</td>'
+            f'<td><button onclick="deleteAccount(\'{_esc(r.get("project",""))}\',\'{_esc(r.get("username",""))}\')" 'f'style="padding:.2rem .5rem;background:transparent;border:1px solid #ef4444;border-radius:4px;color:#ef4444;font-size:.75rem;cursor:pointer">❌</button></td>'
             f'</tr>'
         )
     return "\n".join(out)
@@ -1425,8 +1426,12 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
     </tbody></table>
   </div>
   <div id="accounts-{name}" class="subsection" style="display:none">
-    <table><thead><tr>
-      <th>账号</th><th>关联Keyword</th><th>Vote进度</th><th>粉丝数</th><th>状态</th><th>首次发现</th>
+    <div style="display:flex;gap:.5rem;margin-bottom:.8rem;align-items:center;flex-wrap:wrap">
+      <input type="text" id="acct-search-{name}" placeholder="搜索账号..." oninput="filterAccounts('{name}')" style="flex:1;min-width:180px;padding:.45rem .7rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:.85rem;outline:none">
+      <button onclick="promptAddAccount('{name}')" style="padding:.45rem .8rem;background:#6366f1;border:none;border-radius:6px;color:#fff;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap">+ 添加账号</button>
+    </div>
+    <table id="acct-table-{name}"><thead><tr>
+      <th>账号</th><th>关联Keyword</th><th>Vote进度</th><th>粉丝数</th><th>状态</th><th>首次发现</th><th>操作</th>
     </tr></thead><tbody>
       {_account_rows(accs)}
     </tbody></table>
@@ -2512,6 +2517,48 @@ function copyAddr(addr, btnId) {{
   }});
 }}
 
+function filterAccounts(proj) {{
+  var q = document.getElementById('acct-search-' + proj).value.toLowerCase();
+  var rows = document.querySelectorAll('#acct-table-' + proj + ' tbody tr');
+  rows.forEach(function(row) {{
+    var text = row.textContent.toLowerCase();
+    row.style.display = text.includes(q) ? '' : 'none';
+  }});
+}}
+
+function deleteAccount(project, username) {{
+  if (!confirm('\u786e\u8ba4\u5220\u9664 @' + username + ' \u4ece ' + project + '?')) return;
+  fetch('/api/accounts/' + project + '/' + username, {{
+    method: 'DELETE',
+    headers: {{'Authorization': 'Basic ' + btoa(document.cookie.match(/admin_token=([^;]*)/)?.[1] || '')}}
+  }}).then(function(r) {{ return r.json(); }}).then(function(d) {{
+    if (d.ok) {{
+      showToast('\u5df2\u5220\u9664 @' + username);
+      setTimeout(function() {{ location.reload(); }}, 800);
+    }} else {{
+      showToast('\u5220\u9664\u5931\u8d25: ' + (d.error || ''), 'error');
+    }}
+  }}).catch(function() {{ showToast('\u5220\u9664\u5931\u8d25', 'error'); }});
+}}
+
+function promptAddAccount(project) {{
+  var username = prompt('\u8f93\u5165\u8981\u6dfb\u52a0\u7684 Twitter \u8d26\u53f7 (\u4e0d\u5e26@):');
+  if (!username) return;
+  username = username.trim().replace(/^@/, '');
+  fetch('/api/accounts/' + project, {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa(document.cookie.match(/admin_token=([^;]*)/)?.[1] || '')}},
+    body: JSON.stringify({{username: username}})
+  }}).then(function(r) {{ return r.json(); }}).then(function(d) {{
+    if (d.ok) {{
+      showToast('\u5df2\u6dfb\u52a0 @' + d.added + ' (followed)');
+      setTimeout(function() {{ location.reload(); }}, 800);
+    }} else {{
+      showToast('\u6dfb\u52a0\u5931\u8d25: ' + (d.error || ''), 'error');
+    }}
+  }}).catch(function() {{ showToast('\u6dfb\u52a0\u5931\u8d25', 'error'); }});
+}}
+
 function filterTable() {{
   var q = (document.getElementById('search-box').value || '').toLowerCase();
   // filter the visible table (sec-all table, or per-project table)
@@ -3321,6 +3368,39 @@ async def api_tweets(
     _: None = Depends(_auth),
 ) -> List[Dict]:
     return await _fetch_tweets(project)
+
+
+@app.delete("/api/accounts/{project}/{username}")
+async def api_delete_account(project: str, username: str, _: str = Depends(_auth)):
+    """Delete an account and its unvoted tweets from a project."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM tweets WHERE username=? AND project=? AND voted=0", (username, project))
+        await db.execute("DELETE FROM account_keywords WHERE username=? AND project=?", (username, project))
+        await db.execute("DELETE FROM accounts WHERE username=? AND project=?", (username, project))
+        await db.commit()
+    return {"ok": True, "deleted": username, "project": project}
+
+
+@app.post("/api/accounts/{project}")
+async def api_add_account(project: str, request: Request, _: str = Depends(_auth)):
+    """Manually add an account to a project."""
+    body = await request.json()
+    username = (body.get("username") or "").strip().lstrip("@")
+    if not username:
+        return JSONResponse({"error": "username required"}, status_code=400)
+    if project not in PROJECTS:
+        return JSONResponse({"error": "invalid project"}, status_code=400)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO accounts (username, project, followers, followed) VALUES (?, ?, 0, 1)",
+            (username, project)
+        )
+        await db.execute(
+            "UPDATE accounts SET followed=1 WHERE username=? AND project=?",
+            (username, project)
+        )
+        await db.commit()
+    return {"ok": True, "added": username, "project": project, "followed": True}
 
 
 @app.get("/api/accounts")
