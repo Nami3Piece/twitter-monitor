@@ -399,10 +399,14 @@ async def monitor_vip_accounts(top_n: int = 60) -> None:
     async with _aiosqlite.connect(DB_PATH) as db:
         db.row_factory = _aiosqlite.Row
         async with db.execute(
-            """SELECT username, project, followers, vote_count, followed
-               FROM accounts
-               WHERE vote_count > 0 OR followed = 1
-               ORDER BY followed DESC, vote_count DESC, followers DESC
+            """SELECT DISTINCT a.username, a.project, a.followers, a.vote_count, a.followed
+               FROM accounts a
+               WHERE a.vote_count > 0 OR a.followed = 1
+                  OR a.username IN (
+                     SELECT DISTINCT username FROM tweets
+                     WHERE created_at_iso >= datetime('now', '-48 hours')
+                  )
+               ORDER BY a.followed DESC, a.vote_count DESC, a.followers DESC
                LIMIT ?""",
             (top_n,)
         ) as cur:
