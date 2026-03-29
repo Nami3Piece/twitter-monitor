@@ -36,6 +36,9 @@ _BLOCKED_ACCOUNTS = {
     "xhnews",
     "chinadaily",
     "lifehacker",
+    "lasvegaslocally",
+    "fox5vegas",
+    "defi_rocketeer",
 }
 
 # VIP accounts (followed=1 or vote_count>0) — updated by monitor_vip_accounts
@@ -446,6 +449,8 @@ async def monitor_vip_accounts(top_n: int = 60) -> None:
                     is_new = await insert_tweet(project, f"vip:{username}", tweet)
                     if is_new:
                         new_count += 1
+                    if new_count >= 1:
+                        break  # max 1 tweet per VIP account per cycle
                 if new_count:
                     logger.info(f"VIP @{username}: {new_count} new tweets")
             except Exception as e:
