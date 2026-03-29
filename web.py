@@ -2530,7 +2530,7 @@ function deleteAccount(project, username) {{
   if (!confirm('\u786e\u8ba4\u5220\u9664 @' + username + ' \u4ece ' + project + '?')) return;
   fetch('/api/accounts/' + project + '/' + username, {{
     method: 'DELETE',
-    headers: {{'Authorization': 'Basic ' + btoa(document.cookie.match(/admin_token=([^;]*)/)?.[1] || '')}}
+    credentials: 'include'
   }}).then(function(r) {{ return r.json(); }}).then(function(d) {{
     if (d.ok) {{
       showToast('\u5df2\u5220\u9664 @' + username);
@@ -2547,7 +2547,8 @@ function promptAddAccount(project) {{
   username = username.trim().replace(/^@/, '');
   fetch('/api/accounts/' + project, {{
     method: 'POST',
-    headers: {{'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa(document.cookie.match(/admin_token=([^;]*)/)?.[1] || '')}},
+    headers: {{'Content-Type': 'application/json'}},
+    credentials: 'include',
     body: JSON.stringify({{username: username}})
   }}).then(function(r) {{ return r.json(); }}).then(function(d) {{
     if (d.ok) {{
@@ -3371,8 +3372,17 @@ async def api_tweets(
 
 
 @app.delete("/api/accounts/{project}/{username}")
-async def api_delete_account(project: str, username: str, _: str = Depends(_auth)):
+async def api_delete_account(project: str, username: str, request: Request, admin_user: Optional[str] = Depends(_auth_optional)):
     """Delete an account and its unvoted tweets from a project."""
+    if not admin_user:
+        token = request.cookies.get("admin_token", "")
+        if token:
+            try:
+                payload = _auth_module._decode_token(token)
+                admin_user = (payload or {}).get("sub") or "admin"
+            except Exception: pass
+    if not admin_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM tweets WHERE username=? AND project=? AND voted=0", (username, project))
         await db.execute("DELETE FROM account_keywords WHERE username=? AND project=?", (username, project))
@@ -3382,8 +3392,17 @@ async def api_delete_account(project: str, username: str, _: str = Depends(_auth
 
 
 @app.post("/api/accounts/{project}")
-async def api_add_account(project: str, request: Request, _: str = Depends(_auth)):
+async def api_add_account(project: str, request: Request, admin_user: Optional[str] = Depends(_auth_optional)):
     """Manually add an account to a project."""
+    if not admin_user:
+        token = request.cookies.get("admin_token", "")
+        if token:
+            try:
+                payload = _auth_module._decode_token(token)
+                admin_user = (payload or {}).get("sub") or "admin"
+            except Exception: pass
+    if not admin_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
     body = await request.json()
     username = (body.get("username") or "").strip().lstrip("@")
     if not username:
