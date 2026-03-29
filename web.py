@@ -138,10 +138,10 @@ async def _fetch_tweets(project: Optional[str] = None, voted_only: bool = False,
                 q += " AND t.project=?"; params.append(project)
             q += " ORDER BY t.created_at_iso DESC"
         else:
-            # Show only unvoted tweets from last 24 hours
+            # Show only unvoted tweets from last 48 hours
             q = ("SELECT t.*, a.followers AS acc_followers, a.tweet_count AS acc_tweet_count, a.join_date AS acc_join_date "
                  "FROM tweets t LEFT JOIN accounts a ON t.username=a.username AND t.project=a.project "
-                 "WHERE t.created_at_iso >= datetime('now', '-24 hours') "
+                 "WHERE t.created_at_iso >= datetime('now', '-48 hours') "
                  "AND t.voted = 0 "
                  "AND t.created_at_iso IS NOT NULL AND t.created_at_iso != ''")
             params = []
@@ -787,7 +787,7 @@ function _vidError(el, lang, errMsg) {
 def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
     if not rows:
         colspan = "6" if show_ai_draft else "5"
-        return f'<tr><td colspan="{colspan}" class="empty">No tweets in last 24 hours</td></tr>'
+        return f'<tr><td colspan="{colspan}" class="empty">No tweets in last 48 hours</td></tr>'
     out = []
     for r in rows:
         c = _PROJECT_COLOR.get(r.get("project", ""), "#3b82f6")

@@ -386,7 +386,7 @@ async def handle_vote(tweet_id: str, voter: str) -> Dict:
 
 
 
-async def monitor_vip_accounts(top_n: int = 30) -> None:
+async def monitor_vip_accounts(top_n: int = 60) -> None:
     """Directly fetch latest tweets from top voted/followed accounts.
     Bypasses keyword matching so high-quality accounts always surface."""
     from db.database import DB_PATH
@@ -395,10 +395,10 @@ async def monitor_vip_accounts(top_n: int = 30) -> None:
     async with _aiosqlite.connect(DB_PATH) as db:
         db.row_factory = _aiosqlite.Row
         async with db.execute(
-            """SELECT username, project, followers, vote_count
+            """SELECT username, project, followers, vote_count, followed
                FROM accounts
                WHERE vote_count > 0 OR followed = 1
-               ORDER BY vote_count DESC, followers DESC
+               ORDER BY followed DESC, vote_count DESC, followers DESC
                LIMIT ?""",
             (top_n,)
         ) as cur:
