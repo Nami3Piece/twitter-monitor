@@ -691,11 +691,11 @@ function _vidError(el, lang, errMsg) {
   </div>
   <div id="ins-zh-body" class="cj-body insight-body">{insight_zh_html}</div>
   <div id="ins-en-body" class="cj-body insight-body" style="display:none">{insight_en_html}</div>
-  <div style="margin-top:.9rem;padding:.55rem .9rem;background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.2);border-radius:8px;display:flex;align-items:flex-start;gap:.55rem">
+  <div id="cc-insight-wrap" style="margin-top:.9rem;padding:.55rem .9rem;background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.2);border-radius:8px;display:none;align-items:flex-start;gap:.55rem">
     <span style="font-size:.85rem;flex-shrink:0;line-height:1.6">⚡</span>
     <div>
       <span style="font-size:.7rem;font-weight:700;color:#818cf8;letter-spacing:.05em">CLAUDE CODE</span>
-      <div id="cc-insight-text" style="font-size:.83rem;color:#cbd5e1;margin-top:.15rem;line-height:1.55">加载中...</div>
+      <div id="cc-insight-text" style="font-size:.83rem;color:#cbd5e1;margin-top:.15rem;line-height:1.55"></div>
     </div>
   </div>
 </div>
@@ -4200,10 +4200,17 @@ function deleteKeyword(project, keyword) {{
     }}).catch(()=>toast('Network error','error'));
 }}
 
-// Load Claude Code community insight
+// Load Claude Code community insight — only show when there is real content
   fetch('/api/claude-code-insight').then(function(r){{return r.json();}}).then(function(d){{
-    var el=document.getElementById('cc-insight-text');
-    if(el && d.insight) el.textContent=d.insight;
+    var skip = ['加载中', '暂无重大动态', '动态加载中', ''];
+    var insight = (d.insight || '').trim();
+    var isReal = insight && !skip.some(function(s){{ return insight.includes(s); }});
+    if(isReal) {{
+      var el=document.getElementById('cc-insight-text');
+      var wrap=document.getElementById('cc-insight-wrap');
+      if(el) el.textContent=insight;
+      if(wrap) wrap.style.display='flex';
+    }}
   }}).catch(function(){{}});
   // Auto-load deletion report on page open
 loadDeletionReport();
