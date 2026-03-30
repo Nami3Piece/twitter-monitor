@@ -1294,11 +1294,21 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
 
     # Nav tabs
     proj_tabs = []
+    _PROJECT_X_URLS = {
+        "ARKREEN": "https://x.com/arkreen_network",
+        "GREENBTC": "https://x.com/GreenBTCClub",
+        "TLAY": "https://x.com/tlay_io",
+        "AI_RENAISSANCE": "https://x.com/claudeai",
+    }
     for name, rows in data.items():
         c = _PROJECT_COLOR.get(name, "#3b82f6")
+        x_url = _PROJECT_X_URLS.get(name, "")
+        x_link = (f'<a href="{x_url}" target="_blank" onclick="event.stopPropagation()" '
+                  f'style="color:{c};opacity:.7;font-size:.75rem;margin-left:.35rem;text-decoration:none" '
+                  f'title="View on X">↗</a>') if x_url else ""
         proj_tabs.append(
             f'<div class="tab" data-color="{c}" data-proj="{name}" '
-            f'onclick="showProj(this)">{name} ({len(rows)})</div>'
+            f'onclick="showProj(this)">{name} ({len(rows)}){x_link}</div>'
         )
 
     # Voted tab
