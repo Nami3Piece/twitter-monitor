@@ -477,39 +477,89 @@ def _build_top_events_html(events: List[Dict]) -> str:
 
 
 
-def _render_digest_html(text: str) -> str:
-    """Convert plain-text digest to styled HTML bullet list."""
+def _render_digest_html(text: str, add_anchors: bool = False) -> str:
+    """Convert plain-text digest to styled HTML. Handles markdown links [text](url)."""
     if not text:
         return '<p style="color:#64748b;font-size:.9rem">暂无今日要闻，将于北京时间每日 08:00 自动生成。</p>'
     import re
+
+    def _with_md_links(s: str) -> str:
+        """Convert [text](url) → <a href="url">text</a>, then HTML-escape the rest."""
+        parts = []
+        last = 0
+        for m in re.finditer(r'\[([^\]]+)\]\((https?://[^\)]+)\)', s):
+            parts.append(_esc(s[last:m.start()]))
+            label = _esc(m.group(1))
+            url   = m.group(2)
+            parts.append(
+                f'<a href="{url}" target="_blank" rel="noopener" '
+                f'style="color:#60a5fa;text-decoration:none;font-weight:500">{label}</a>'
+            )
+            last = m.end()
+        parts.append(_esc(s[last:]))
+        return ''.join(parts)
+
     lines = text.splitlines()
-    out = []
-    i = 0
-    # Skip title line (first non-empty line)
+    out   = []
+    i     = 0
+    bullet_idx  = 0
+    in_sources  = False
+
+    # Skip title line
     while i < len(lines) and not lines[i].strip():
         i += 1
     if i < len(lines):
-        i += 1  # skip "📰 每日 X 摘要 | date" header
+        i += 1  # skip "📰 今日要闻 | date" header
+
     while i < len(lines):
         line = lines[i].strip()
         if not line:
             i += 1
             continue
+
+        # ── 消息来源 / Sources section header ──
+        if re.match(r'^(消息来源|Sources?)\s*$', line):
+            in_sources = True
+            out.append(
+                f'<div style="color:#94a3b8;font-size:.8rem;margin-top:1.1rem;'
+                f'margin-bottom:.35rem;font-weight:600;border-top:1px solid #1e293b;'
+                f'padding-top:.7rem">{_esc(line)}</div>'
+            )
+            i += 1
+            continue
+
         if line.startswith('🔗'):
             url = line[1:].strip()
             if url:
                 out.append(f'<a class="digest-link" href="{_esc(url)}" target="_blank">🔗 原文链接</a>')
-        elif re.match(r'^[^\-\s].{0,3}[一-鿿 A-Z]', line) and not line.startswith('-'):
-            # Section header (e.g. "🌱 ARKREEN" or "💚 绿色比特币")
+        elif re.match(r'^[^\-\s•].{0,3}[一-鿿 A-Z]', line) and not line.startswith('-') and not line.startswith('•'):
+            # Section header (e.g. "🌱 ARKREEN")
+            in_sources = False
             out.append(f'<div class="digest-proj-header">{_esc(line)}</div>')
         elif line.startswith('- ') or line.startswith('• '):
             body = line[2:].strip()
-            # Bold **text** markers
-            body = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', _esc(body))
-            out.append(f'<div class="digest-bullet"><span class="digest-dot"></span><span>{body}</span></div>')
+            html_body = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', _with_md_links(body))
+            if in_sources:
+                # Source item: render link + anchor jump to 今日要闻
+                out.append(
+                    f'<div class="digest-bullet">'
+                    f'<span class="digest-dot"></span>'
+                    f'<span>{html_body}'
+                    f' <a href="#digest-news" style="color:#a78bfa;font-size:.78rem;'
+                    f'text-decoration:none;margin-left:.4rem">↓ 今日要闻</a>'
+                    f'</span></div>'
+                )
+            else:
+                anchor = f' id="news-item-{bullet_idx}"' if add_anchors else ''
+                out.append(
+                    f'<div class="digest-bullet"{anchor}>'
+                    f'<span class="digest-dot"></span>'
+                    f'<span>{html_body}</span></div>'
+                )
+                bullet_idx += 1
         else:
-            body = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', _esc(line))
-            out.append(f'<div class="digest-misc">{body}</div>')
+            html_body = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', _with_md_links(line))
+            out.append(f'<div class="digest-misc">{html_body}</div>')
         i += 1
     return '\n'.join(out)
 
@@ -520,7 +570,7 @@ def _build_homepage_section(digest: dict, top_events: List[Dict], user_tier: str
     digest_date = (digest.get('date') or '')
     insight_zh_html = _render_digest_html(digest.get('content_insight_zh') or '')
     insight_en_html = _render_digest_html(digest.get('content_insight_en') or '')
-    news_html    = _render_digest_html(digest.get('content_zh') or '')
+    news_html    = _render_digest_html(digest.get('content_zh') or '', add_anchors=True)
     # 核心洞察用专属音频，今日要闻用 news 音频
     audio_insight_zh_fn = (digest.get('audio_insight_zh') or '')
     audio_insight_en_fn = (digest.get('audio_insight_en') or '')
@@ -699,7 +749,7 @@ function _vidError(el, lang, errMsg) {
     </div>
   </div>
 </div>
-<div class="core-judgment news-block">
+<div id="digest-news" class="core-judgment news-block">
   <div class="cj-header">
     <span class="cj-badge news-badge">📰 今日要闻</span>
     <a href="/digest" style="margin-left:.6rem;padding:.25rem .75rem;border-radius:20px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:.78rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem;white-space:nowrap;box-shadow:0 2px 8px rgba(168,85,247,.4)"><span>🎙️</span>Daily Digest</a>
@@ -6653,7 +6703,6 @@ select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:
   <h1>📰 Daily X Digest</h1>
   <a href="/" class="back-link">← Back to Monitor</a>
 </header>
-{ticker_bar}
 <main>
   <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap">
     <h2 style="font-size:1.2rem;color:#f1f5f9">每日新闻播报</h2>
