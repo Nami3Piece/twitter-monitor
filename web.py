@@ -80,9 +80,65 @@ _PROJECT_COLOR = {
 }
 
 _OFFICIAL_ACCOUNTS: dict = {
-    "ARKREEN": "arkreen_network",
-    "GREENBTC": "GreenBTCClub",
+    "ARKREEN":        {"username": "arkreen_network", "pinned_id": "2014700277954445559"},
+    "GREENBTC":       {"username": "GreenBTCClub",    "pinned_id": "1874697145451938151"},
+    "TLAY":           {"username": "tlay_io",          "pinned_id": "1904922626805686689"},
+    "AI_RENAISSANCE": {"username": "claudeai",         "pinned_id": "2019024565398299074"},
 }
+
+
+async def _fetch_pinned_tweets() -> dict:
+    """Return {proj_name: tweet_dict} for each official account's pinned tweet.
+    Checks DB first; falls back to twitterapi.io fetch_tweet_by_id."""
+    result = {}
+    for proj, info in _OFFICIAL_ACCOUNTS.items():
+        tid = info.get("pinned_id", "")
+        if not tid:
+            continue
+        # 1. DB lookup
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM tweets WHERE tweet_id=?", (tid,)) as cur:
+                row = await cur.fetchone()
+                if row:
+                    result[proj] = dict(row)
+                    continue
+        # 2. API fetch and store
+        try:
+            from api.twitterapi import fetch_tweet_by_id as _ftbi
+            raw = await _ftbi(tid)
+            if raw:
+                tweet = {
+                    "tweet_id":      str(raw.get("id") or raw.get("tweet_id") or tid),
+                    "project":       proj,
+                    "username":      (raw.get("author") or {}).get("userName") or info["username"],
+                    "text":          raw.get("text") or "",
+                    "like_count":    raw.get("likeCount") or 0,
+                    "retweet_count": raw.get("retweetCount") or 0,
+                    "reply_count":   raw.get("replyCount") or 0,
+                    "view_count":    raw.get("viewCount") or 0,
+                    "media_url":     ((raw.get("media") or [{}])[0].get("media_url_https") or ""),
+                    "url":           f"https://x.com/i/web/status/{tid}",
+                    "created_at":    raw.get("createdAt") or "",
+                    "created_at_iso": raw.get("createdAt") or "",
+                }
+                # Cache in DB
+                async with aiosqlite.connect(DB_PATH) as db:
+                    await db.execute(
+                        """INSERT OR IGNORE INTO tweets
+                           (tweet_id,project,username,text,like_count,retweet_count,
+                            reply_count,view_count,media_url,url,created_at_iso)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                        (tweet["tweet_id"], tweet["project"], tweet["username"],
+                         tweet["text"], tweet["like_count"], tweet["retweet_count"],
+                         tweet["reply_count"], tweet["view_count"], tweet["media_url"],
+                         tweet["url"], tweet["created_at_iso"])
+                    )
+                    await db.commit()
+                result[proj] = tweet
+        except Exception as e:
+            logger.warning(f"_fetch_pinned_tweets {proj}: {e}")
+    return result
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
@@ -916,67 +972,84 @@ function _vidError(el, lang, errMsg) {
     return f'<div id="sec-home" class="section active">{core_block}{top10_block}</div>'
 
 
-def _official_banner_html(rows: list, color: str) -> str:
-    """Render pinned official account banner: left=text, right=16:9 image."""
-    if not rows:
+def _official_banner_html(pinned_row: dict, latest_row: dict, color: str,
+                          proj_name: str, username: str) -> str:
+    """Official account banner: header with logo+X link, then pinned|latest side by side."""
+    if not pinned_row and not latest_row:
         return ""
+
     def _fmt(n):
         if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
         if n >= 1_000: return f"{n/1_000:.1f}K"
         return str(n)
-    parts = []
-    for r in rows[:2]:
-        uname      = _esc(r.get("username", ""))
-        tweet_time = (r.get("created_at") or "")[:16]
-        raw_text   = r.get("text", "")
+
+    emoji = _PROJECT_EMOJI.get(proj_name, "📌")
+
+    def _card(row: dict, label: str, badge_color: str) -> str:
+        if not row:
+            return '<div style="flex:1"></div>'
+        uname        = _esc((row.get("username") or username))
+        tweet_time   = (row.get("created_at_iso") or row.get("created_at") or "")[:16]
+        raw_text     = row.get("text") or ""
         display_text = _esc(raw_text[:200] + ("…" if len(raw_text) > 200 else ""))
-        media_url  = r.get("media_url") or ""
-        tweet_url  = _esc(r.get("url", "#"))
-        views  = r.get("view_count") or 0
-        likes  = r.get("like_count") or 0
+        media_url    = row.get("media_url") or ""
+        tweet_url    = _esc(row.get("url") or f"https://x.com/{uname}")
+        views = row.get("view_count") or 0
+        likes = row.get("like_count") or 0
         eng = ""
         if views or likes:
             ep = []
             if views: ep.append(f"👁 {_fmt(views)}")
             if likes: ep.append(f"❤️ {_fmt(likes)}")
-            eng = f'<div style="font-size:.75rem;color:#64748b;margin-top:.35rem">{" &nbsp;·&nbsp; ".join(ep)}</div>'
-
-        # 16:9 image block (right side, ~40% width)
+            eng = f'<div style="font-size:.72rem;color:#64748b;margin-top:.3rem">{" · ".join(ep)}</div>'
         img_block = (
-            f'<div style="flex:0 0 42%;max-width:42%;aspect-ratio:16/9;overflow:hidden;border-radius:6px">'
-            f'<img src="{_esc(media_url)}" alt="media" loading="lazy" '
-            f'style="width:100%;height:100%;object-fit:cover"></div>'
+            f'<div style="margin-top:.5rem;aspect-ratio:16/9;overflow:hidden;border-radius:6px">'
+            f'<img src="{_esc(media_url)}" loading="lazy" '
+            f'style="width:100%;height:100%;object-fit:cover" '
+            f'onerror="this.parentElement.style.display=\'none\'"></div>'
         ) if media_url else ""
-
-        # Left: logo badge + username + text
-        left = (
-            f'<div style="flex:1;min-width:0;padding-right:.75rem">'
-            f'<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'
+        return (
+            f'<div style="flex:1;min-width:0;background:#0f172a;border:1px solid {color}33;'
+            f'border-radius:8px;padding:.7rem .9rem">'
+            f'<div style="font-size:.67rem;font-weight:700;color:{badge_color};'
+            f'background:{badge_color}22;display:inline-block;padding:.1rem .5rem;'
+            f'border-radius:10px;margin-bottom:.4rem">{label}</div>'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem">'
             f'<a href="https://twitter.com/{uname}" target="_blank" '
-            f'style="color:{color};font-weight:700;font-size:.88rem;text-decoration:none">@{uname}</a>'
+            f'style="color:{color};font-weight:700;font-size:.85rem;text-decoration:none">@{uname}</a>'
             f'<span style="color:#475569;font-size:.72rem">{tweet_time}</span>'
             f'</div>'
             f'<div style="color:#cbd5e1;font-size:.84rem;line-height:1.5">{display_text}</div>'
-            f'{eng}'
+            f'{img_block}{eng}'
             f'<a href="{tweet_url}" target="_blank" '
-            f'style="font-size:.75rem;color:#64748b;text-decoration:none;margin-top:.4rem;display:inline-block">'
-            f'View Tweet ↗</a>'
+            f'style="font-size:.74rem;color:#64748b;text-decoration:none;'
+            f'margin-top:.4rem;display:inline-block">View Tweet ↗</a>'
             f'</div>'
         )
 
-        parts.append(
-            f'<div style="background:#0f172a;border:1px solid {color}33;border-radius:8px;'
-            f'padding:.7rem .9rem;margin-bottom:.5rem;display:flex;align-items:flex-start;gap:.75rem">'
-            f'{left}{img_block}'
-            f'</div>'
-        )
+    pinned_card = _card(pinned_row, "📌 置顶", "#f59e0b")
+    latest_card = _card(latest_row, "🆕 最新", "#22c55e")
+
     return (
-        f'<div style="margin-bottom:1rem;padding:.6rem .8rem;'
+        f'<div style="margin-bottom:1rem;padding:.7rem .9rem;'
         f'background:#1e293b;border:1px solid {color}44;border-radius:10px">'
-        f'<div style="font-size:.72rem;font-weight:700;color:{color};'
-        f'letter-spacing:.06em;margin-bottom:.5rem">📌 官方动态</div>'
-        + "".join(parts)
-        + '</div>'
+        # ── header: logo + account link
+        f'<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.65rem">'
+        f'<span style="font-size:.9rem">{emoji}</span>'
+        f'<a href="https://x.com/{_esc(username)}" target="_blank" '
+        f'style="color:{color};font-weight:700;font-size:.9rem;text-decoration:none">'
+        f'@{_esc(username)}</a>'
+        f'<span style="color:#334155;font-size:.75rem">·</span>'
+        f'<a href="https://x.com/{_esc(username)}" target="_blank" '
+        f'style="color:#60a5fa;font-size:.72rem;text-decoration:none">X主页 ↗</a>'
+        f'<span style="font-size:.68rem;font-weight:700;color:{color};background:{color}1a;'
+        f'padding:.1rem .5rem;border-radius:8px;margin-left:auto">📌 官方动态</span>'
+        f'</div>'
+        # ── two-column cards
+        f'<div style="display:flex;gap:.75rem">'
+        f'{pinned_card}{latest_card}'
+        f'</div>'
+        f'</div>'
     )
 
 
@@ -1418,7 +1491,7 @@ async function addSuggestedKeyword(project, keyword, index) {{
 """
 
 
-def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], stats: Dict, top_events: List[Dict], keyword_stats: List[Dict], voted_tweets: List[Dict], nickname: str = "monitor", sub: Dict = {}, digest: Dict = {}, user_id: str = None) -> str:
+def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], stats: Dict, top_events: List[Dict], keyword_stats: List[Dict], voted_tweets: List[Dict], nickname: str = "monitor", sub: Dict = {}, digest: Dict = {}, user_id: str = None, pinned_tweets: Dict = {}) -> str:
     updated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     all_rows = sorted(
         [r for rows in data.values() for r in rows],
@@ -1544,14 +1617,55 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
     )
 
     # Per-project sections: tweets + accounts tabs
+    import re as _re_proj
     proj_sections = []
     for name, rows in data.items():
         c = _PROJECT_COLOR.get(name, "#3b82f6")
         accs = accounts.get(name, [])
-        _off_acct = _OFFICIAL_ACCOUNTS.get(name, "").lower()
-        _official_rows = [r for r in rows if (r.get("username") or "").lower() == _off_acct] if _off_acct else []
-        _display_rows = [r for r in rows if (r.get("username") or "").lower() != _off_acct] if _off_acct else rows
-        _off_banner = _official_banner_html(_official_rows, c) if _official_rows else ""
+        off_info = _OFFICIAL_ACCOUNTS.get(name, {})
+        off_uname = (off_info.get("username") or "").lower() if isinstance(off_info, dict) else ""
+        _display_rows = [r for r in rows if (r.get("username") or "").lower() != off_uname] if off_uname else rows
+
+        # ── Official banner: pinned (pre-fetched) + latest from DB
+        pinned_row = pinned_tweets.get(name) or {}
+        latest_row = next((r for r in sorted(rows, key=lambda x: x.get("created_at_iso",""), reverse=True)
+                           if (r.get("username") or "").lower() == off_uname), {}) if off_uname else {}
+        _off_banner = _official_banner_html(pinned_row, latest_row, c, name,
+                                            off_info.get("username","") if isinstance(off_info,dict) else "")
+
+        # ── Digest news bar for this project
+        content_zh = (digest.get("content_zh") or "")
+        proj_aliases = {"ARKREEN":["ARKREEN"],"GREENBTC":["绿色比特币","GREENBTC","GreenBTC"],
+                        "TLAY":["TLAY"],"AI_RENAISSANCE":["AI Renaissance","AI_RENAISSANCE"]}
+        aliases = proj_aliases.get(name, [name])
+        sec_re = "|".join(_re_proj.escape(a) for a in aliases)
+        sec_m = _re_proj.search(rf'(?:{sec_re})[^\n]*\n((?:(?!\n[🌱💚👜🤖]).)+)', content_zh, _re_proj.DOTALL)
+        digest_items = []
+        if sec_m:
+            for line in sec_m.group(1).splitlines():
+                line = line.strip()
+                if (line.startswith("•") or line.startswith("-")) and line:
+                    url_m = _re_proj.search(r'https?://\S+', line)
+                    text_m = _re_proj.match(r'[•\-]\s*(.+?)(?:\s*—\s*(?:\[链接\]|\[link\]|https?).*)?$', line)
+                    item_text = _esc(text_m.group(1).strip() if text_m else line[2:].strip())
+                    item_url = url_m.group(0).rstrip(")") if url_m else "#"
+                    digest_items.append(
+                        f'<span style="color:#94a3b8;margin:0 .3rem">•</span>'
+                        f'<span style="color:#e2e8f0">{item_text}</span>'
+                        f'<a href="{_esc(item_url)}" target="_blank" '
+                        f'style="color:#60a5fa;margin-left:.4rem;text-decoration:none;font-size:.8rem">链接↗</a>'
+                    )
+        digest_bar = ""
+        if digest_items:
+            digest_bar = (
+                f'<div style="background:#1e293b;border-left:3px solid {c};border-radius:6px;'
+                f'padding:.6rem .9rem;margin-bottom:.8rem;font-size:.83rem;line-height:1.9">'
+                f'<span style="font-size:.7rem;font-weight:700;color:{c};'
+                f'text-transform:uppercase;letter-spacing:.06em;margin-right:.6rem">📰 今日要闻</span>'
+                + "".join(digest_items)
+                + "</div>"
+            )
+
         proj_sections.append(f"""
 <div id="sec-{name}" class="section">
   <div class="subtabs">
@@ -1560,6 +1674,7 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
   </div>
   <div id="tweets-{name}" class="subsection active">
     {_off_banner}
+    {digest_bar}
     <div class="batch-actions">
       <button class="batch-delete-btn" onclick="deleteSelected()">🗑️ Delete Selected</button>
       <label><input type="checkbox" onchange="toggleAll(this)"> Select All</label>
@@ -3380,7 +3495,8 @@ async def dashboard(request: Request) -> str:
     keyword_stats = await _fetch_keyword_stats()
     voted_tweets = await _fetch_tweets(voted_only=True, current_user=current_user_id)
     digest = await _fetch_latest_digest()
-    return _build_page(data, accs, stats, top_events, keyword_stats, voted_tweets, nickname, sub, digest, user_id=current_user_id)
+    pinned_tweets = await _fetch_pinned_tweets()
+    return _build_page(data, accs, stats, top_events, keyword_stats, voted_tweets, nickname, sub, digest, user_id=current_user_id, pinned_tweets=pinned_tweets)
 
 
 class VoteRequest(BaseModel):
