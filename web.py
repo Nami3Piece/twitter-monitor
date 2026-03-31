@@ -6813,13 +6813,12 @@ async def digest_by_date(date: str):
 
 @app.post("/api/digest/regen-audio")
 async def regen_digest_audio(request: Request, _: str = Depends(_auth)) -> JSONResponse:
-    """Regenerate TTS audio for today's digest from the current top-8 tweets."""
+    """Regenerate ALL TTS audio for today's digest (news + insight, zh + en)."""
     import datetime, os
-    from digest_runner import _generate_audio, _clean_for_tts
+    from digest_runner import _generate_audio
 
     today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 
-    # Fetch today's digest content
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM digests WHERE date=?", (today,)) as cur:
@@ -6829,34 +6828,48 @@ async def regen_digest_audio(request: Request, _: str = Depends(_auth)) -> JSONR
         return JSONResponse({"ok": False, "error": "No digest for today"}, status_code=404)
 
     digest = dict(row)
-    content_zh = digest.get("content_zh") or ""
-    content_en = digest.get("content_en") or ""
-
-    if not content_zh and not content_en:
-        return JSONResponse({"ok": False, "error": "Digest content empty"}, status_code=400)
-
     audio_dir = os.getenv("AUDIO_DIR", "data/audio")
     os.makedirs(audio_dir, exist_ok=True)
 
     results = {}
-    if content_zh:
-        path_zh = os.path.join(audio_dir, f"digest_{today}_zh.mp3")
-        ok = await _generate_audio(content_zh, "zh-CN-YunyangNeural", path_zh, lang="zh")
-        results["zh"] = f"digest_{today}_zh.mp3" if ok else None
 
-    if content_en:
-        path_en = os.path.join(audio_dir, f"digest_{today}_en.mp3")
-        ok = await _generate_audio(content_en, "en-US-AriaNeural", path_en, lang="en")
-        results["en"] = f"digest_{today}_en.mp3" if ok else None
+    # ── 今日要闻音频 ──────────────────────────────────────────────────────────
+    for lang, field, voice, suffix in [
+        ("zh", "content_zh",         "zh-CN-YunyangNeural", "zh"),
+        ("en", "content_en",         "en-US-AriaNeural",    "en"),
+    ]:
+        text = digest.get(field) or ""
+        if text:
+            path = os.path.join(audio_dir, f"digest_{today}_{suffix}.mp3")
+            ok = await _generate_audio(text, voice, path, lang=lang)
+            results[f"audio_{suffix}"] = f"digest_{today}_{suffix}.mp3" if ok else None
 
-    # Update DB
+    # ── 核心洞察音频（之前被遗漏） ────────────────────────────────────────────
+    for lang, field, voice, suffix in [
+        ("zh", "content_insight_zh", "zh-CN-YunyangNeural", "insight_zh"),
+        ("en", "content_insight_en", "en-US-AriaNeural",    "insight_en"),
+    ]:
+        text = digest.get(field) or ""
+        if text:
+            path = os.path.join(audio_dir, f"digest_{today}_{suffix}.mp3")
+            ok = await _generate_audio(text, voice, path, lang=lang)
+            results[f"audio_{suffix}"] = f"digest_{today}_{suffix}.mp3" if ok else None
+
+    # ── 原子写回 DB ──────────────────────────────────────────────────────────
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "UPDATE digests SET audio_zh=?, audio_en=? WHERE date=?",
-            (results.get("zh"), results.get("en"), today)
+            """UPDATE digests
+               SET audio_zh=?, audio_en=?, audio_insight_zh=?, audio_insight_en=?
+               WHERE date=?""",
+            (
+                results.get("audio_zh"),
+                results.get("audio_en"),
+                results.get("audio_insight_zh"),
+                results.get("audio_insight_en"),
+                today,
+            )
         )
         await db.commit()
-
 
     return JSONResponse({"ok": True, "date": today, "audio": results})
 
