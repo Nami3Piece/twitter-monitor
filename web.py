@@ -788,8 +788,57 @@ function _vidError(el, lang, errMsg) {
     from config import PROJECTS as _PROJ_KEYS
     proj_order = list(_PROJ_KEYS.keys())
 
+    import re as _re_digest
+
+    def _pick_from_digest(proj_name: str) -> dict:
+        """Return the first digest item for this project, matched to top_events by tweet_id."""
+        content_zh = digest.get('content_zh') or ''
+        # Find section for this project (e.g. "🌱 ARKREEN" or "💚 绿色比特币" or "👜 TLAY" or "🤖 AI Renaissance")
+        proj_aliases = {
+            'ARKREEN': ['ARKREEN'],
+            'GREENBTC': ['绿色比特币', 'GREENBTC', 'GreenBTC'],
+            'TLAY': ['TLAY'],
+            'AI_RENAISSANCE': ['AI Renaissance', 'AI_RENAISSANCE'],
+        }
+        aliases = proj_aliases.get(proj_name, [proj_name])
+        section_re = '|'.join(_re_digest.escape(a) for a in aliases)
+        # Find first bullet in that section
+        pattern = _re_digest.compile(
+            rf'(?:{section_re})[^\n]*\n((?:(?!\n[🌱💚👜🤖]).)+)',
+            _re_digest.DOTALL
+        )
+        m = pattern.search(content_zh)
+        if not m:
+            return {}
+        # Get first bullet line
+        for line in m.group(1).splitlines():
+            line = line.strip()
+            if line.startswith('•') or line.startswith('-'):
+                # Extract tweet_id from x.com URL
+                url_m = _re_digest.search(r'x\.com/i/web/status/(\d+)', line)
+                if url_m:
+                    tid = url_m.group(1)
+                    # Look up in top_events
+                    for ev in top_events:
+                        if str(ev.get('tweet_id', '')) == tid:
+                            return ev
+                    # Not in top_events; build minimal dict for display
+                    text_m = _re_digest.match(r'[•\-]\s*(.+?)(?:\s*—\s*\[链接\]|\s*—\s*https?://)', line)
+                    return {
+                        'tweet_id': tid,
+                        'text': text_m.group(1).strip() if text_m else line[2:].strip(),
+                        'url': f'https://x.com/i/web/status/{tid}',
+                        'username': '',
+                        'project': proj_name,
+                    }
+        return {}
+
     def _pick_featured(proj_name):
-        """Return best tweet for project: prefer has media_url, then highest engagement."""
+        """Return best tweet: first try digest top-1, fallback to highest engagement."""
+        digest_pick = _pick_from_digest(proj_name)
+        if digest_pick:
+            return digest_pick
+        # Fallback: highest engagement with image
         candidates = [e for e in top_events if e.get('project') == proj_name]
         with_img = [e for e in candidates if e.get('media_url')]
         pool = with_img if with_img else candidates
@@ -855,7 +904,7 @@ function _vidError(el, lang, errMsg) {
 
 
 def _official_banner_html(rows: list, color: str) -> str:
-    """Render pinned official account banner (no vote buttons)."""
+    """Render pinned official account banner: left=text, right=16:9 image."""
     if not rows:
         return ""
     def _fmt(n):
@@ -864,38 +913,48 @@ def _official_banner_html(rows: list, color: str) -> str:
         return str(n)
     parts = []
     for r in rows[:2]:
-        uname = _esc(r.get("username", ""))
+        uname      = _esc(r.get("username", ""))
         tweet_time = (r.get("created_at") or "")[:16]
-        raw_text = r.get("text", "")
+        raw_text   = r.get("text", "")
         display_text = _esc(raw_text[:200] + ("…" if len(raw_text) > 200 else ""))
-        media_url = r.get("media_url") or ""
-        media_html = (
-            f'<img src="{_esc(media_url)}" alt="media" loading="lazy" '
-            f'style="width:100%;border-radius:6px;margin-top:.5rem;max-height:180px;object-fit:cover">'
-        ) if media_url else ""
-        tweet_url = _esc(r.get("url", "#"))
-        views = r.get("view_count") or 0
-        likes = r.get("like_count") or 0
+        media_url  = r.get("media_url") or ""
+        tweet_url  = _esc(r.get("url", "#"))
+        views  = r.get("view_count") or 0
+        likes  = r.get("like_count") or 0
         eng = ""
         if views or likes:
             ep = []
             if views: ep.append(f"👁 {_fmt(views)}")
             if likes: ep.append(f"❤️ {_fmt(likes)}")
             eng = f'<div style="font-size:.75rem;color:#64748b;margin-top:.35rem">{" &nbsp;·&nbsp; ".join(ep)}</div>'
-        parts.append(
-            f'<div style="background:#0f172a;border:1px solid {color}33;border-radius:8px;'
-            f'padding:.7rem .9rem;margin-bottom:.5rem">'
-            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">'
+
+        # 16:9 image block (right side, ~40% width)
+        img_block = (
+            f'<div style="flex:0 0 42%;max-width:42%;aspect-ratio:16/9;overflow:hidden;border-radius:6px">'
+            f'<img src="{_esc(media_url)}" alt="media" loading="lazy" '
+            f'style="width:100%;height:100%;object-fit:cover"></div>'
+        ) if media_url else ""
+
+        # Left: logo badge + username + text
+        left = (
+            f'<div style="flex:1;min-width:0;padding-right:.75rem">'
+            f'<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'
             f'<a href="https://twitter.com/{uname}" target="_blank" '
             f'style="color:{color};font-weight:700;font-size:.88rem;text-decoration:none">@{uname}</a>'
-            f'<span style="color:#475569;font-size:.75rem">{tweet_time}</span>'
+            f'<span style="color:#475569;font-size:.72rem">{tweet_time}</span>'
             f'</div>'
             f'<div style="color:#cbd5e1;font-size:.84rem;line-height:1.5">{display_text}</div>'
-            f'{media_html}'
             f'{eng}'
             f'<a href="{tweet_url}" target="_blank" '
             f'style="font-size:.75rem;color:#64748b;text-decoration:none;margin-top:.4rem;display:inline-block">'
             f'View Tweet ↗</a>'
+            f'</div>'
+        )
+
+        parts.append(
+            f'<div style="background:#0f172a;border:1px solid {color}33;border-radius:8px;'
+            f'padding:.7rem .9rem;margin-bottom:.5rem;display:flex;align-items:flex-start;gap:.75rem">'
+            f'{left}{img_block}'
             f'</div>'
         )
     return (
