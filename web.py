@@ -79,6 +79,13 @@ _PROJECT_COLOR = {
     name: _PALETTE[i % len(_PALETTE)] for i, name in enumerate(PROJECTS.keys())
 }
 
+_PROJECT_EMOJI = {
+    "ARKREEN":        "🌱",
+    "GREENBTC":       "💚",
+    "TLAY":           "👜",
+    "AI_RENAISSANCE": "🤖",
+}
+
 _OFFICIAL_ACCOUNTS: dict = {
     "ARKREEN":        {"username": "arkreen_network", "pinned_id": "2014700277954445559"},
     "GREENBTC":       {"username": "GreenBTCClub",    "pinned_id": "1874697145451938151"},
