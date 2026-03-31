@@ -818,11 +818,24 @@ function _vidError(el, lang, errMsg) {
                 url_m = _re_digest.search(r'x\.com/i/web/status/(\d+)', line)
                 if url_m:
                     tid = url_m.group(1)
-                    # Look up in top_events
+                    # 1. Look up in top_events (in-memory, fast)
                     for ev in top_events:
                         if str(ev.get('tweet_id', '')) == tid:
                             return ev
-                    # Not in top_events; build minimal dict for display
+                    # 2. Not in top_events — query DB with sync sqlite3 for full data (incl. media_url)
+                    import sqlite3 as _sqlite3
+                    try:
+                        _conn = _sqlite3.connect(DB_PATH)
+                        _conn.row_factory = _sqlite3.Row
+                        _row = _conn.execute(
+                            'SELECT * FROM tweets WHERE tweet_id=?', (tid,)
+                        ).fetchone()
+                        _conn.close()
+                        if _row:
+                            return dict(_row)
+                    except Exception:
+                        pass
+                    # 3. Last resort: minimal dict (no image)
                     text_m = _re_digest.match(r'[•\-]\s*(.+?)(?:\s*—\s*\[链接\]|\s*—\s*https?://)', line)
                     return {
                         'tweet_id': tid,
