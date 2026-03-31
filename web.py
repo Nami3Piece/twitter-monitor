@@ -6650,20 +6650,25 @@ def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: 
 
     if not digest:
         content_block = '<div style="text-align:center;padding:3rem;color:#64748b">该日期暂无播报内容</div>'
+        audio_zh_src = ""
+        audio_en_src = ""
     else:
         content_zh = _esc(digest.get("content_zh") or "").replace("\n", "<br>")
         content_en = _esc(digest.get("content_en") or "").replace("\n", "<br>")
         audio_zh = digest.get("audio_zh") or ""
         audio_en = digest.get("audio_en") or ""
+        audio_zh_src = f"/audio/{_esc(audio_zh)}" if audio_zh else ""
+        audio_en_src = f"/audio/{_esc(audio_en)}" if audio_en else ""
         tweet_id = digest.get("tweet_id") or ""
 
-        audio_zh_block = (
-            f'<audio controls style="width:100%;margin:.5rem 0"><source src="/audio/{_esc(audio_zh)}" type="audio/mpeg">Your browser does not support audio.</audio>'
-            if audio_zh else '<p style="color:#94a3b8;font-size:.85rem">音频生成中...</p>'
-        )
-        audio_en_block = (
-            f'<audio controls style="width:100%;margin:.5rem 0"><source src="/audio/{_esc(audio_en)}" type="audio/mpeg">Your browser does not support audio.</audio>'
-            if audio_en else '<p style="color:#94a3b8;font-size:.85rem">Audio generating...</p>'
+        # ── Replace inline audio with Play button (dpb handles playback) ──────
+        audio_play_btn = (
+            f'<button onclick="dpbToggle()" '
+            f'style="display:inline-flex;align-items:center;gap:.4rem;padding:.35rem .9rem;'
+            f'background:#4f46e5;border:none;border-radius:20px;color:#fff;font-size:.82rem;'
+            f'font-weight:600;cursor:pointer">▶ 收听语音播报</button>'
+            if (audio_zh or audio_en) else
+            '<span style="color:#64748b;font-size:.82rem">音频生成中...</span>'
         )
         tweet_link = (
             f'<a href="https://x.com/i/web/status/{_esc(tweet_id)}" target="_blank" '
@@ -6674,8 +6679,9 @@ def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: 
 
         content_block = f"""
 <div style="background:#1e293b;border-radius:12px;padding:1.5rem;margin-bottom:1.5rem">
-  <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.2rem">
+  <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.2rem;flex-wrap:wrap">
     <span style="background:linear-gradient(135deg,#0f4c75,#1b6ca8);color:#bae6fd;font-size:.75rem;font-weight:700;padding:.25rem .7rem;border-radius:20px">📰 今日要闻</span>
+    {audio_play_btn}
     <div style="display:flex;gap:.5rem;margin-left:auto">
       <button onclick="showDigestTab('zh')" id="tab-zh"
         style="padding:.4rem 1rem;border-radius:6px;border:none;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer;font-size:.85rem">
@@ -6689,20 +6695,12 @@ def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: 
   </div>
 
   <div id="digest-zh">
-    <div style="margin-bottom:1rem">
-      <div style="color:#94a3b8;font-size:.8rem;margin-bottom:.3rem">🎙️ 中文语音</div>
-      {audio_zh_block}
-    </div>
     <div style="background:#0f172a;border-radius:8px;padding:1.2rem;color:#e2e8f0;font-size:.9rem;line-height:1.8;max-height:500px;overflow-y:auto">
       {content_zh}
     </div>
   </div>
 
   <div id="digest-en" style="display:none">
-    <div style="margin-bottom:1rem">
-      <div style="color:#94a3b8;font-size:.8rem;margin-bottom:.3rem">🎙️ English Audio</div>
-      {audio_en_block}
-    </div>
     <div style="background:#0f172a;border-radius:8px;padding:1.2rem;color:#e2e8f0;font-size:.9rem;line-height:1.8;max-height:500px;overflow-y:auto">
       {content_en}
     </div>
@@ -6711,16 +6709,6 @@ def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: 
   {tweet_link}
 </div>
 <div style="font-size:.75rem;color:#64748b;padding:.5rem .2rem">⚠️ 以上内容仅供参考，不构成任何投资建议。投资有风险，决策需谨慎。</div>
-<script>
-function showDigestTab(lang) {{
-  document.getElementById('digest-zh').style.display = lang === 'zh' ? 'block' : 'none';
-  document.getElementById('digest-en').style.display = lang === 'en' ? 'block' : 'none';
-  document.getElementById('tab-zh').style.background = lang === 'zh' ? '#3b82f6' : '#334155';
-  document.getElementById('tab-zh').style.color = lang === 'zh' ? '#fff' : '#94a3b8';
-  document.getElementById('tab-en').style.background = lang === 'en' ? '#3b82f6' : '#334155';
-  document.getElementById('tab-en').style.color = lang === 'en' ? '#fff' : '#94a3b8';
-}}
-</script>
 """
 
     # Build ticker bar HTML
@@ -6757,11 +6745,28 @@ header{{background:#020617;padding:1rem 2rem;display:flex;justify-content:space-
 header h1{{font-size:1.1rem;font-weight:700;color:#f1f5f9}}
 .back-link{{color:#60a5fa;text-decoration:none;font-size:.85rem}}
 .back-link:hover{{text-decoration:underline}}
-main{{max-width:900px;margin:0 auto;padding:1.5rem 1.5rem}}
+main{{max-width:900px;margin:0 auto;padding:1.5rem 1.5rem;padding-bottom:80px}}
 .ticker-wrap{{background:#020617;border-bottom:1px solid #1e293b;overflow:hidden;white-space:nowrap;padding:.45rem 0;position:sticky;top:0;z-index:100}}
 .ticker-label{{display:inline-block;background:#3b82f6;color:#fff;font-size:.7rem;font-weight:700;padding:.2rem .7rem;border-radius:3px;margin-right:.8rem;vertical-align:middle;letter-spacing:.05em}}
 .ticker-track{{display:inline-block;animation:ticker-scroll 60s linear infinite;will-change:transform}}
 .ticker-track:hover{{animation-play-state:paused}}
+#digest-player-bar{{display:none;position:fixed;bottom:0;left:0;right:0;background:#1e1b4b;border-top:1px solid #4338ca;padding:.55rem 1rem;z-index:500;align-items:center;gap:.75rem;flex-wrap:wrap}}
+#digest-player-bar.visible{{display:flex}}
+.dpb-info{{display:flex;flex-direction:column;min-width:0;flex:1}}
+.dpb-title{{color:#e0e7ff;font-weight:700;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.dpb-sub{{color:#a5b4fc;font-size:.72rem}}
+.dpb-controls{{display:flex;align-items:center;gap:.5rem}}
+.dpb-btn{{background:none;border:none;cursor:pointer;color:#e0e7ff;font-size:1.3rem;padding:.2rem;line-height:1}}
+.dpb-play{{background:#4f46e5;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:1rem;border:none;cursor:pointer;color:#fff}}
+.dpb-progress{{flex:1;min-width:80px;max-width:200px;display:flex;flex-direction:column;gap:.2rem}}
+.dpb-range{{-webkit-appearance:none;width:100%;height:3px;border-radius:2px;background:#4338ca;outline:none;cursor:pointer}}
+.dpb-range::-webkit-slider-thumb{{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#818cf8;cursor:pointer}}
+.dpb-time{{color:#94a3b8;font-size:.68rem;text-align:right}}
+.dpb-speed{{background:#312e81;border:1px solid #4338ca;color:#a5b4fc;font-size:.72rem;border-radius:4px;padding:.1rem .3rem;cursor:pointer}}
+.dpb-lang{{display:flex;gap:.3rem}}
+.dpb-lang button{{background:#1e1b4b;border:1px solid #4338ca;color:#a5b4fc;font-size:.7rem;border-radius:4px;padding:.15rem .45rem;cursor:pointer}}
+.dpb-lang button.active{{background:#4338ca;color:#e0e7ff}}
+.dpb-close{{background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;padding:.2rem;margin-left:.5rem}}
 .ticker-item{{display:inline-block;margin-right:3.5rem;font-size:.78rem;vertical-align:middle;color:#cbd5e1}}
 .ticker-item a{{color:#60a5fa;text-decoration:none;font-weight:500}}
 .ticker-item a:hover{{text-decoration:underline}}
@@ -6786,6 +6791,70 @@ select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:
   </div>
   {content_block}
 </main>
+
+<!-- ── Floating Digest Player (历史回放支持) ────────────────────── -->
+<div id="digest-player-bar">
+  <div class="dpb-controls">
+    <button class="dpb-btn" onclick="dpbSkip(-15)" title="后退15秒">⏮</button>
+    <button class="dpb-play" id="dpb-play-btn" onclick="dpbToggle()">▶</button>
+    <button class="dpb-btn" onclick="dpbSkip(15)" title="前进15秒">⏭</button>
+  </div>
+  <div class="dpb-info">
+    <div class="dpb-title">🎙️ {selected_date} 语音播报</div>
+    <div class="dpb-sub" id="dpb-sub">点击播放收听摘要</div>
+  </div>
+  <div class="dpb-progress">
+    <input type="range" class="dpb-range" id="dpb-seek" value="0" min="0" step="0.1">
+    <div class="dpb-time" id="dpb-time">0:00 / 0:00</div>
+  </div>
+  <div class="dpb-lang">
+    <button id="dpb-zh" class="active" onclick="dpbSetLang('zh')">🇨🇳 中</button>
+    <button id="dpb-en" onclick="dpbSetLang('en')">🇺🇸 EN</button>
+  </div>
+  <select class="dpb-speed" onchange="dpbSetSpeed(this.value)">
+    <option value="0.8">0.8x</option><option value="1" selected>1x</option>
+    <option value="1.25">1.25x</option><option value="1.5">1.5x</option>
+    <option value="2">2x</option>
+  </select>
+  <button class="dpb-close" onclick="dpbClose()">✕</button>
+</div>
+<audio id="dpb-audio" preload="none"></audio>
+<script>
+var _dpb={{audio:document.getElementById('dpb-audio'),bar:document.getElementById('digest-player-bar'),
+  playBtn:document.getElementById('dpb-play-btn'),seek:document.getElementById('dpb-seek'),
+  timeEl:document.getElementById('dpb-time'),subEl:document.getElementById('dpb-sub'),
+  lang:'zh',srcs:{{zh:'',en:''}}}};
+function dpbInit(z,e){{_dpb.srcs.zh=z;_dpb.srcs.en=e;if(!z&&!e)return;_dpb.bar.classList.add('visible');dpbSetLang('zh');}}
+function dpbSetLang(l){{_dpb.lang=l;document.getElementById('dpb-zh').className=l==='zh'?'active':'';
+  document.getElementById('dpb-en').className=l==='en'?'active':'';
+  var s=_dpb.srcs[l];if(!s){{_dpb.subEl.textContent='该语言音频暂未生成';return;}}
+  var p=!_dpb.audio.paused;_dpb.audio.src=s;_dpb.audio.currentTime=0;if(p)_dpb.audio.play();}}
+function dpbPlay(){{if(!_dpb.audio.src)dpbSetLang(_dpb.lang);_dpb.audio.play();}}
+function dpbToggle(){{if(_dpb.audio.paused)dpbPlay();else _dpb.audio.pause();}}
+function dpbSkip(s){{_dpb.audio.currentTime=Math.max(0,_dpb.audio.currentTime+s);}}
+function dpbSetSpeed(v){{_dpb.audio.playbackRate=parseFloat(v);}}
+function dpbClose(){{_dpb.audio.pause();_dpb.bar.classList.remove('visible');}}
+function _fmt(s){{s=Math.floor(s||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}}
+_dpb.audio.addEventListener('play',function(){{_dpb.playBtn.textContent='⏸';}});
+_dpb.audio.addEventListener('pause',function(){{_dpb.playBtn.textContent='▶';}});
+_dpb.audio.addEventListener('timeupdate',function(){{
+  var d=_dpb.audio.duration||0,c=_dpb.audio.currentTime||0;
+  _dpb.seek.value=d?(c/d*100):0;_dpb.seek.max=100;
+  _dpb.timeEl.textContent=_fmt(c)+' / '+_fmt(d);
+}});
+_dpb.seek.addEventListener('input',function(){{
+  var d=_dpb.audio.duration||0;_dpb.audio.currentTime=d*(_dpb.seek.value/100);}});
+function showDigestTab(l){{
+  document.getElementById('digest-zh').style.display=l==='zh'?'block':'none';
+  document.getElementById('digest-en').style.display=l==='en'?'block':'none';
+  document.getElementById('tab-zh').style.background=l==='zh'?'#3b82f6':'#334155';
+  document.getElementById('tab-zh').style.color=l==='zh'?'#fff':'#94a3b8';
+  document.getElementById('tab-en').style.background=l==='en'?'#3b82f6':'#334155';
+  document.getElementById('tab-en').style.color=l==='en'?'#fff':'#94a3b8';
+  dpbSetLang(l==='zh'?'zh':'en');
+}}
+window.addEventListener('load',function(){{dpbInit('{audio_zh_src}','{audio_en_src}');}});
+</script>
 </body>
 </html>"""
 
