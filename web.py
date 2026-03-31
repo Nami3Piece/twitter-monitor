@@ -739,8 +739,22 @@ function _vidError(el, lang, errMsg) {
     {listen_btn}
     {dl_zh}{dl_en}
   </div>
-  <div id="ins-zh-body" class="cj-body insight-body">{insight_zh_html}</div>
-  <div id="ins-en-body" class="cj-body insight-body" style="display:none">{insight_en_html}</div>
+  <div id="ins-zh-body" class="cj-body insight-body">{insight_zh_html}
+    <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid #1e293b">
+      <a href="#digest-news" style="display:inline-flex;align-items:center;gap:.4rem;
+         color:#a78bfa;font-size:.82rem;text-decoration:none;font-weight:600;
+         padding:.3rem .75rem;border:1px solid #4c1d95;border-radius:20px;
+         background:rgba(109,40,217,.1)">📰 消息来源 → 今日要闻</a>
+    </div>
+  </div>
+  <div id="ins-en-body" class="cj-body insight-body" style="display:none">{insight_en_html}
+    <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid #1e293b">
+      <a href="#digest-news" style="display:inline-flex;align-items:center;gap:.4rem;
+         color:#a78bfa;font-size:.82rem;text-decoration:none;font-weight:600;
+         padding:.3rem .75rem;border:1px solid #4c1d95;border-radius:20px;
+         background:rgba(109,40,217,.1)">📰 Sources → Today's News</a>
+    </div>
+  </div>
   <div id="cc-insight-wrap" style="margin-top:.9rem;padding:.55rem .9rem;background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.2);border-radius:8px;display:none;align-items:flex-start;gap:.55rem">
     <span style="font-size:.85rem;flex-shrink:0;line-height:1.6">⚡</span>
     <div>
