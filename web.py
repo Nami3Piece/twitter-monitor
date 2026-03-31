@@ -878,7 +878,7 @@ function _vidError(el, lang, errMsg) {
         vote_count = ev.get('vote_count', 0)
         user_voted = ev.get('user_voted', False)
         media_url = ev.get('media_url') or ''
-        media_block = f'<img class="proj-card-img" src="{_esc(media_url)}" alt="media" loading="lazy">' if media_url else ''
+        media_block = f'<img class="proj-card-img" src="{_esc(media_url)}" alt="media" loading="lazy" onerror="this.style.display=\'none\'">' if media_url else ''
         if user_voted:
             vote_btn = f'<button class="vote-btn voted" disabled>✓ Voted ({vote_count})</button>'
         else:
