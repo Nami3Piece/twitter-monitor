@@ -18,11 +18,26 @@ from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
 
+import aiosqlite
+
 from config import PROJECTS
-from db.database import init_db, cleanup_old_tweets, get_daily_usage, get_daily_tweet_count
+from db.database import init_db, cleanup_old_tweets, get_daily_usage, get_daily_tweet_count, DB_PATH
 from monitor.keyword_monitor import monitor_keyword, cleanup_low_follower_accounts, monitor_vip_accounts
 
 SCHEDULE_HOURS = list(range(0, 24, 8))  # every 8 hours: 0, 8, 16
+
+
+async def _log_job_execution(job_id: str, status: str = "success", error: str = None) -> None:
+    """Record a job execution in the job_executions table."""
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT INTO job_executions (job_id, finished_at, status, error) VALUES (?, datetime('now'), ?, ?)",
+                (job_id, status, error),
+            )
+            await db.commit()
+    except Exception as e:
+        logger.error(f"Failed to log job execution for {job_id}: {e}")
 
 
 def _configure_logging() -> None:
@@ -60,9 +75,14 @@ async def run_all_now() -> None:
 
 
 async def _run_cleanup() -> None:
-    n = await cleanup_old_tweets()
-    if n:
-        logger.info(f"Cleanup: removed {n} tweets older than 24h")
+    try:
+        n = await cleanup_old_tweets()
+        if n:
+            logger.info(f"Cleanup: removed {n} tweets older than 24h")
+        await _log_job_execution("cleanup")
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}")
+        await _log_job_execution("cleanup", "error", str(e))
 
 
 async def _send_daily_report() -> None:
@@ -105,6 +125,7 @@ async def _send_daily_report() -> None:
     notifier = TelegramNotifier(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
     await notifier.send_message("\n".join(lines))
     logger.info(f"Daily report sent: twitter={twitter_calls}, claude={claude_calls}, tweets={tweet_count}")
+    await _log_job_execution("daily_report")
 
 
 
@@ -176,8 +197,57 @@ async def _publish_algo_weekly_to_github() -> None:
     try:
         html_url = await asyncio.to_thread(_push)
         logger.info(f"GitHub publish: ✅ {week_str} → {html_url}")
+        await _log_job_execution("algo_weekly_github")
     except Exception as e:
         logger.error(f"GitHub publish error: {e}")
+        await _log_job_execution("algo_weekly_github", "error", str(e))
+
+
+async def _run_cleanup_low_followers() -> None:
+    try:
+        await cleanup_low_follower_accounts()
+        await _log_job_execution("cleanup_low_followers")
+    except Exception as e:
+        logger.error(f"Cleanup low followers failed: {e}")
+        await _log_job_execution("cleanup_low_followers", "error", str(e))
+
+
+async def _run_vip_monitor() -> None:
+    try:
+        await monitor_vip_accounts()
+        await _log_job_execution("vip_monitor")
+    except Exception as e:
+        logger.error(f"VIP monitor failed: {e}")
+        await _log_job_execution("vip_monitor", "error", str(e))
+
+
+async def _run_daily_digest() -> None:
+    from digest_runner import run_daily_digest
+    try:
+        await run_daily_digest()
+        await _log_job_execution("daily_digest")
+    except Exception as e:
+        logger.error(f"Daily digest failed: {e}")
+        await _log_job_execution("daily_digest", "error", str(e))
+
+
+async def _run_algo_weekly() -> None:
+    from ai.algo_weekly import run_algo_weekly
+    try:
+        await run_algo_weekly()
+        await _log_job_execution("algo_weekly")
+    except Exception as e:
+        logger.error(f"Algo weekly failed: {e}")
+        await _log_job_execution("algo_weekly", "error", str(e))
+
+
+async def _run_keyword_monitor(project: str, keyword: str) -> None:
+    try:
+        await monitor_keyword(project, keyword)
+        await _log_job_execution("keyword_monitor")
+    except Exception as e:
+        logger.error(f"Keyword monitor failed ({project}/{keyword}): {e}")
+        await _log_job_execution("keyword_monitor", "error", str(e))
 
 
 def _setup_scheduler() -> AsyncIOScheduler:
@@ -192,7 +262,7 @@ def _setup_scheduler() -> AsyncIOScheduler:
                 for h in SCHEDULE_HOURS
             ])
             scheduler.add_job(
-                monitor_keyword,
+                _run_keyword_monitor,
                 trigger,
                 args=[project, keyword],
                 id=f"monitor_{project}_{keyword.replace(' ', '_')}",
@@ -202,25 +272,23 @@ def _setup_scheduler() -> AsyncIOScheduler:
     total = sum(len(kw) for kw in PROJECTS.values())
     logger.info(f"Scheduled {total} jobs across {len(PROJECTS)} projects every 8 hours")
 
-    # Cleanup old tweets every hour
+    # Cleanup old tweets daily at 03:00 UTC
     scheduler.add_job(_run_cleanup, CronTrigger(hour=3, minute=0, timezone="UTC"), id="cleanup")
 
-    # Unfollow low-follower accounts every 6 hours
-    scheduler.add_job(cleanup_low_follower_accounts, CronTrigger(hour=4, minute=0, timezone="UTC"), id="cleanup_low_followers")
+    # Cleanup low-follower accounts daily at 04:00 UTC
+    scheduler.add_job(_run_cleanup_low_followers, CronTrigger(hour=4, minute=0, timezone="UTC"), id="cleanup_low_followers")
 
     # VIP account monitor — fetch latest from voted/followed accounts every 8h
-    scheduler.add_job(monitor_vip_accounts, CronTrigger(hour="0,8,16", minute=30, timezone="UTC"), id="vip_monitor")
+    scheduler.add_job(_run_vip_monitor, CronTrigger(hour="0,8,16", minute=30, timezone="UTC"), id="vip_monitor")
 
     # Daily API usage report at 23:00 UTC
     scheduler.add_job(_send_daily_report, CronTrigger(hour=23, minute=0), id="daily_report")
 
     # Daily Digest at UTC 0:00 (Beijing 8:00)
-    from digest_runner import run_daily_digest
-    scheduler.add_job(run_daily_digest, CronTrigger(hour=0, minute=0, timezone="UTC"), id="daily_digest")
+    scheduler.add_job(_run_daily_digest, CronTrigger(hour=0, minute=0, timezone="UTC"), id="daily_digest")
 
     # Weekly X Algorithm Report — every Monday at UTC 01:00
-    from ai.algo_weekly import run_algo_weekly
-    scheduler.add_job(run_algo_weekly, CronTrigger(day_of_week="mon", hour=1, minute=0), id="algo_weekly")
+    scheduler.add_job(_run_algo_weekly, CronTrigger(day_of_week="mon", hour=1, minute=0), id="algo_weekly")
 
     # Publish X Algorithm Weekly Report to GitHub — every Monday UTC 0:00 (Beijing 8:00)
     scheduler.add_job(_publish_algo_weekly_to_github, CronTrigger(day_of_week="mon", hour=0, minute=0, timezone="UTC"), id="algo_weekly_github")

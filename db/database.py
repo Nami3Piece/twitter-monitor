@@ -189,12 +189,34 @@ async def init_db() -> None:
                 date        TEXT PRIMARY KEY,
                 content_zh  TEXT,
                 content_en  TEXT,
+                content_insight_zh TEXT,
+                content_insight_en TEXT,
                 audio_zh    TEXT,
                 audio_en    TEXT,
+                audio_insight_zh TEXT,
+                audio_insight_en TEXT,
                 tweet_id    TEXT,
                 created_at  TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Migrate digests: add insight columns if missing
+        async with db.execute("PRAGMA table_info(digests)") as cur:
+            digest_cols = {row[1] for row in await cur.fetchall()}
+        for col in ("content_insight_zh", "content_insight_en", "audio_insight_zh", "audio_insight_en"):
+            if col not in digest_cols:
+                await db.execute(f"ALTER TABLE digests ADD COLUMN {col} TEXT")
+        # Job execution log — track when scheduled tasks run
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS job_executions (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id      TEXT NOT NULL,
+                started_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+                finished_at TEXT,
+                status      TEXT DEFAULT 'success',
+                error       TEXT
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_job_executions_job ON job_executions(job_id, started_at)")
         # Deleted tweets audit — track why tweets were removed
         await db.execute("""
             CREATE TABLE IF NOT EXISTS deleted_tweets (

@@ -7272,13 +7272,26 @@ async def api_get_schedules():
     last_runs = {}
     try:
         async with _sq.connect(DB_PATH) as db:
-            row = await (await db.execute("SELECT date FROM digests ORDER BY date DESC LIMIT 1")).fetchone()
-            if row:
-                last_runs["daily_digest"] = row[0]
-            row = await (await db.execute("SELECT created_at FROM algo_weekly ORDER BY created_at DESC LIMIT 1")).fetchone()
-            if row:
-                last_runs["algo_weekly"] = row[0]
-                last_runs["algo_weekly_github"] = row[0]
+            # Read last execution from job_executions table for all jobs
+            try:
+                rows = await (await db.execute(
+                    "SELECT job_id, MAX(finished_at) FROM job_executions WHERE status='success' GROUP BY job_id"
+                )).fetchall()
+                for row in rows:
+                    last_runs[row[0]] = row[1]
+            except Exception:
+                pass
+            # Fallback: also check digests/algo_weekly tables for backward compat
+            if "daily_digest" not in last_runs:
+                row = await (await db.execute("SELECT date FROM digests ORDER BY date DESC LIMIT 1")).fetchone()
+                if row:
+                    last_runs["daily_digest"] = row[0]
+            if "algo_weekly" not in last_runs:
+                row = await (await db.execute("SELECT created_at FROM algo_weekly ORDER BY created_at DESC LIMIT 1")).fetchone()
+                if row:
+                    last_runs["algo_weekly"] = row[0]
+                    if "algo_weekly_github" not in last_runs:
+                        last_runs["algo_weekly_github"] = row[0]
     except Exception:
         pass
 
