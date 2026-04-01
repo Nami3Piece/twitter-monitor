@@ -1829,6 +1829,8 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Twitter Monitor</title>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-NBFLCR9BGJ"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments)}}gtag('js',new Date());gtag('config','G-NBFLCR9BGJ');</script>
 <style>{{--bg:#f1f5f9;--card:#fff;--border:#e2e8f0;--text:#1e293b;--muted:#64748b;--radius:8px}}
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text)}}
@@ -3994,6 +3996,8 @@ async def keywords_admin(request: Request, admin_user: Optional[str] = Depends(_
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Admin Hub - Twitter Monitor</title>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-NBFLCR9BGJ"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments)}}gtag('js',new Date());gtag('config','G-NBFLCR9BGJ');</script>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}}
