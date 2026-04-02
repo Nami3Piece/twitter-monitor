@@ -19,8 +19,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import aiosqlite
-from fastapi import Body, Depends, FastAPI, HTTPException, Request, status
+from fastapi import Body, Depends, FastAPI, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from loguru import logger
@@ -7388,6 +7389,472 @@ async def api_claude_code_insight():
     except Exception as e:
         return JSONResponse({"insight": "Claude Code 社区动态加载中...", "error": str(e)})
 
+
+
+# ── Podcast API ─────────────────────────────────────────────────────────────
+
+AUDIO_DIR = os.getenv("AUDIO_DIR", "data/audio")
+AVATAR_DIR = os.getenv("AVATAR_DIR", "data/avatars")
+
+# Serve audio/video files
+os.makedirs(AUDIO_DIR, exist_ok=True)
+os.makedirs(AVATAR_DIR, exist_ok=True)
+app.mount("/audio", StaticFiles(directory=AUDIO_DIR), name="audio")
+
+
+@app.post("/api/podcast/briefing")
+async def podcast_briefing(request: Request, date: str = ""):
+    """Step 1: 生成素材简报。"""
+    from podcast_runner import prepare_briefing
+    briefing = await prepare_briefing(date)
+    if not briefing:
+        raise HTTPException(500, "素材简报生成失败，可能没有足够的推文数据")
+    return JSONResponse(briefing)
+
+
+@app.get("/api/podcast/briefing")
+async def get_podcast_briefing(date: str):
+    """获取已有的素材简报。"""
+    import json as _json
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await (await db.execute(
+            "SELECT briefing, status FROM podcasts WHERE date = ?", (date,)
+        )).fetchone()
+    if not row or not row[0]:
+        raise HTTPException(404, "该日期无素材简报")
+    return JSONResponse({"topics": _json.loads(row[0]).get("topics", []), "status": row[1]})
+
+
+@app.post("/api/podcast/avatar")
+async def upload_avatar(file: UploadFile = File(...)):
+    """上传头像图片。"""
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(400, "请上传图片文件")
+
+    ext = os.path.splitext(file.filename or "avatar.png")[1] or ".png"
+    avatar_path = os.path.join(AVATAR_DIR, f"podcast_avatar{ext}")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(400, "图片不能超过 10MB")
+    with open(avatar_path, "wb") as f:
+        f.write(content)
+    return JSONResponse({"path": avatar_path, "size": len(content)})
+
+
+@app.post("/api/podcast/generate")
+async def generate_podcast(request: Request):
+    """Step 2: 用户提交观点，生成脚本 + 音频 + 视频。"""
+    from podcast_runner import create_podcast
+
+    body = await request.json()
+    date = body.get("date", "")
+    opinions_raw = body.get("opinions", {})
+    video_format = body.get("video_format", "square")
+
+    # opinions: {"1": "观点...", "2": "..."} → {1: "...", 2: "..."}
+    user_opinions = {int(k): v for k, v in opinions_raw.items() if v.strip()}
+
+    # 查找头像
+    avatar_path = None
+    for ext in [".png", ".jpg", ".jpeg", ".webp"]:
+        p = os.path.join(AVATAR_DIR, f"podcast_avatar{ext}")
+        if os.path.exists(p):
+            avatar_path = p
+            break
+
+    result = await create_podcast(date, user_opinions, avatar_path, video_format)
+    if not result:
+        raise HTTPException(500, "播客生成失败")
+    return JSONResponse(result)
+
+
+@app.post("/api/podcast/blog")
+async def generate_podcast_blog(request: Request):
+    """Step 3: 从播客脚本生成博客。"""
+    from podcast_runner import create_blog
+    body = await request.json()
+    date = body.get("date", "")
+    blog = await create_blog(date)
+    if not blog:
+        raise HTTPException(500, "博客生成失败")
+    return JSONResponse(blog)
+
+
+@app.get("/api/podcast/list")
+async def list_podcasts():
+    """获取播客历史列表。"""
+    import json as _json
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        rows = await (await db.execute(
+            """SELECT date, status, audio_zh, audio_en, video_zh, video_en,
+                      tweet_text, tweet_id, created_at
+               FROM podcasts ORDER BY date DESC LIMIT 30"""
+        )).fetchall()
+    return JSONResponse([dict(r) for r in rows])
+
+
+@app.get("/api/podcast/{date}")
+async def get_podcast(date: str):
+    """获取单个播客完整数据。"""
+    import json as _json
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        row = await (await db.execute(
+            "SELECT * FROM podcasts WHERE date = ?", (date,)
+        )).fetchone()
+    if not row:
+        raise HTTPException(404, "播客不存在")
+    data = dict(row)
+    if data.get("briefing"):
+        data["briefing"] = _json.loads(data["briefing"])
+    if data.get("user_opinions"):
+        data["user_opinions"] = _json.loads(data["user_opinions"])
+    return JSONResponse(data)
+
+
+@app.get("/podcast", response_class=HTMLResponse)
+async def podcast_page(request: Request):
+    """播客工作台页面。"""
+    return HTMLResponse(_PODCAST_HTML)
+
+
+_PODCAST_HTML = """\
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Podcast Studio — DailyX Digest</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f13; color: #e0e0e0; min-height: 100vh; }
+header { background: linear-gradient(135deg, #1a1a2e, #16213e); padding: 20px 40px; border-bottom: 1px solid #2a2a4a; display: flex; align-items: center; gap: 12px; }
+header h1 { font-size: 1.5rem; font-weight: 700; color: #fff; }
+header a { color: #a5b4fc; text-decoration: none; margin-left: auto; font-size: 0.85rem; }
+.container { max-width: 900px; margin: 0 auto; padding: 30px 20px; }
+.card { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+.card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: #a5b4fc; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: all 0.2s; }
+.btn-primary { background: #4f46e5; color: #fff; }
+.btn-primary:hover { background: #4338ca; }
+.btn-secondary { background: #1e1e3a; color: #a5b4fc; border: 1px solid #333; }
+.btn-success { background: #16a34a; color: #fff; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.topic-card { background: #0f0f1a; border: 1px solid #2a2a4a; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+.topic-card h3 { color: #e2e8f0; font-size: 0.95rem; margin-bottom: 8px; }
+.topic-card .meta { font-size: 0.8rem; color: #666; margin-bottom: 8px; }
+.topic-card .summary { font-size: 0.85rem; color: #ccc; line-height: 1.6; margin-bottom: 8px; }
+.topic-card .debate { font-size: 0.8rem; color: #f59e0b; padding: 8px; background: #1a1a0a; border-radius: 6px; margin-bottom: 10px; }
+.topic-card textarea { width: 100%; min-height: 60px; background: #0a0a12; border: 1px solid #333; border-radius: 6px; padding: 10px; color: #e0e0e0; font-size: 0.85rem; resize: vertical; font-family: inherit; }
+.topic-card textarea::placeholder { color: #555; }
+.output-box { background: #0a0a12; border: 1px solid #2a2a4a; border-radius: 8px; padding: 16px; font-size: 0.85rem; line-height: 1.7; white-space: pre-wrap; max-height: 400px; overflow-y: auto; color: #ccc; }
+.avatar-zone { border: 2px dashed #333; border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 16px; }
+.avatar-zone:hover { border-color: #4f46e5; background: #1e1e3a; }
+.avatar-zone img { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #4f46e5; }
+.avatar-zone .placeholder { width: 80px; height: 80px; border-radius: 50%; background: #2a2a4a; display: flex; align-items: center; justify-content: center; font-size: 2rem; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.tab { padding: 6px 14px; border-radius: 6px; border: 1px solid #333; background: #1a1a2e; color: #888; cursor: pointer; font-size: 0.8rem; }
+.tab.active { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+.hidden { display: none; }
+select { background: #0f0f1a; border: 1px solid #2a2a4a; border-radius: 8px; padding: 8px 12px; color: #e0e0e0; font-size: 0.85rem; }
+.toast { position: fixed; bottom: 24px; right: 24px; background: #1e1e3a; border: 1px solid #22c55e; border-radius: 10px; padding: 12px 20px; font-size: 0.85rem; color: #22c55e; z-index: 999; }
+.loading { color: #888; font-size: 0.85rem; }
+audio, video { width: 100%; margin-top: 10px; border-radius: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Podcast Studio</h1>
+  <a href="/">← Dashboard</a>
+</header>
+<div class="container">
+
+  <!-- Step 1: 素材简报 -->
+  <div class="card">
+    <h2>Step 1 — AI 素材简报</h2>
+    <div class="row" style="margin-bottom:16px">
+      <input type="date" id="podcastDate" style="background:#0f0f1a;border:1px solid #2a2a4a;border-radius:8px;padding:8px 12px;color:#e0e0e0">
+      <button class="btn btn-primary" onclick="generateBriefing()" id="briefingBtn">生成素材简报</button>
+      <button class="btn btn-secondary" onclick="loadBriefing()" id="loadBtn">加载已有简报</button>
+    </div>
+    <div id="topicsArea"></div>
+  </div>
+
+  <!-- 头像上传 -->
+  <div class="card">
+    <h2>头像设置</h2>
+    <div class="avatar-zone" onclick="document.getElementById('avatarInput').click()">
+      <div class="placeholder" id="avatarPreview">📷</div>
+      <div>
+        <p style="font-size:0.9rem;color:#ccc">点击上传头像</p>
+        <p style="font-size:0.75rem;color:#555">用于播客视频封面，建议正方形图片</p>
+      </div>
+    </div>
+    <input type="file" id="avatarInput" accept="image/*" style="display:none" onchange="uploadAvatar(this)">
+  </div>
+
+  <!-- Step 2: 生成播客 -->
+  <div class="card">
+    <h2>Step 2 — 生成播客</h2>
+    <div class="row" style="margin-bottom:16px">
+      <select id="videoFormat">
+        <option value="square">方形视频 (1080x1080)</option>
+        <option value="portrait">竖屏视频 (1080x1920)</option>
+      </select>
+      <button class="btn btn-primary" onclick="generatePodcast()" id="genBtn" disabled>生成脚本 + 音频 + 视频</button>
+    </div>
+    <div id="podcastResult"></div>
+  </div>
+
+  <!-- Step 3: 生成博客 -->
+  <div class="card">
+    <h2>Step 3 — 生成博客</h2>
+    <button class="btn btn-primary" onclick="generateBlog()" id="blogBtn" disabled>从播客脚本生成博客</button>
+    <div id="blogResult" style="margin-top:16px"></div>
+  </div>
+
+  <!-- 历史 -->
+  <div class="card">
+    <h2>历史播客</h2>
+    <div id="historyList"></div>
+  </div>
+
+</div>
+
+<div id="toast" class="toast" style="display:none"></div>
+
+<script>
+let currentTopics = [];
+const dateInput = document.getElementById('podcastDate');
+
+// 默认今天日期
+const today = new Date();
+today.setHours(today.getHours() + 8); // 北京时间
+dateInput.value = today.toISOString().slice(0, 10);
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 3000);
+}
+
+// Step 1: 生成素材简报
+async function generateBriefing() {
+  const btn = document.getElementById('briefingBtn');
+  const area = document.getElementById('topicsArea');
+  btn.disabled = true;
+  btn.textContent = 'AI 分析中...';
+  area.innerHTML = '<p class="loading">正在分析过去 24 小时推文，生成素材简报...</p>';
+
+  try {
+    const res = await fetch('/api/podcast/briefing?date=' + dateInput.value, { method: 'POST' });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    currentTopics = data.topics || [];
+    renderTopics();
+    document.getElementById('genBtn').disabled = false;
+    toast('素材简报生成完成');
+  } catch (e) {
+    area.innerHTML = '<p style="color:#ef4444">' + e.message + '</p>';
+  }
+  btn.disabled = false;
+  btn.textContent = '生成素材简报';
+}
+
+// 加载已有简报
+async function loadBriefing() {
+  const area = document.getElementById('topicsArea');
+  try {
+    const res = await fetch('/api/podcast/briefing?date=' + dateInput.value);
+    if (!res.ok) throw new Error('该日期无简报');
+    const data = await res.json();
+    currentTopics = data.topics || [];
+    renderTopics();
+    document.getElementById('genBtn').disabled = false;
+    toast('简报加载成功');
+  } catch (e) {
+    area.innerHTML = '<p style="color:#ef4444">' + e.message + '</p>';
+  }
+}
+
+function renderTopics() {
+  const area = document.getElementById('topicsArea');
+  if (!currentTopics.length) {
+    area.innerHTML = '<p style="color:#555">暂无话题</p>';
+    return;
+  }
+  area.innerHTML = currentTopics.map(t => `
+    <div class="topic-card">
+      <h3>${t.id}. ${t.title} <span style="color:#4f46e5;font-size:0.75rem">${t.project}</span></h3>
+      <div class="summary">${t.summary}</div>
+      <div class="meta">背景: ${t.context}</div>
+      <div class="debate">💡 ${t.debate}</div>
+      <textarea id="opinion_${t.id}" placeholder="写下你对这个话题的看法（可选，留空则 AI 做简短评论）..."></textarea>
+    </div>
+  `).join('');
+}
+
+// 头像上传
+async function uploadAvatar(input) {
+  if (!input.files.length) return;
+  const file = input.files[0];
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const res = await fetch('/api/podcast/avatar', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(await res.text());
+
+    const preview = document.getElementById('avatarPreview');
+    const url = URL.createObjectURL(file);
+    preview.innerHTML = '';
+    preview.style.background = 'none';
+    const img = document.createElement('img');
+    img.src = url;
+    img.style.cssText = 'width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid #4f46e5';
+    preview.replaceWith(img);
+    img.id = 'avatarPreview';
+    toast('头像上传成功');
+  } catch (e) {
+    toast('上传失败: ' + e.message);
+  }
+}
+
+// Step 2: 生成播客
+async function generatePodcast() {
+  const btn = document.getElementById('genBtn');
+  const result = document.getElementById('podcastResult');
+  btn.disabled = true;
+  btn.textContent = '生成中（约 1-2 分钟）...';
+  result.innerHTML = '<p class="loading">正在生成脚本 → TTS 音频 → 视频...</p>';
+
+  const opinions = {};
+  currentTopics.forEach(t => {
+    const el = document.getElementById('opinion_' + t.id);
+    if (el && el.value.trim()) opinions[t.id] = el.value.trim();
+  });
+
+  try {
+    const res = await fetch('/api/podcast/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: dateInput.value,
+        opinions,
+        video_format: document.getElementById('videoFormat').value,
+      }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+
+    let html = '<div class="tabs"><span class="tab active" onclick="showTab(this,\\'zh\\')">中文</span><span class="tab" onclick="showTab(this,\\'en\\')">English</span></div>';
+
+    html += '<div id="tab_zh">';
+    html += '<h3 style="color:#a5b4fc;font-size:0.85rem;margin-bottom:8px">脚本</h3>';
+    html += '<div class="output-box">' + (data.script_zh || '') + '</div>';
+    if (data.audio_zh) html += '<audio controls src="/audio/' + data.audio_zh + '"></audio>';
+    if (data.video_zh) html += '<video controls src="/audio/' + data.video_zh + '" style="margin-top:8px"></video><a href="/audio/' + data.video_zh + '" class="btn btn-success" style="margin-top:8px" download>下载视频</a>';
+    html += '</div>';
+
+    html += '<div id="tab_en" class="hidden">';
+    html += '<h3 style="color:#a5b4fc;font-size:0.85rem;margin-bottom:8px">Script</h3>';
+    html += '<div class="output-box">' + (data.script_en || '') + '</div>';
+    if (data.audio_en) html += '<audio controls src="/audio/' + data.audio_en + '"></audio>';
+    if (data.video_en) html += '<video controls src="/audio/' + data.video_en + '" style="margin-top:8px"></video><a href="/audio/' + data.video_en + '" class="btn btn-success" style="margin-top:8px" download>下载视频</a>';
+    html += '</div>';
+
+    if (data.tweet_text) {
+      html += '<div style="margin-top:16px;padding:12px;background:#0f0f1a;border:1px solid #2a2a4a;border-radius:8px">';
+      html += '<p style="font-size:0.8rem;color:#888;margin-bottom:6px">推文文案</p>';
+      html += '<p style="font-size:0.9rem;color:#e0e0e0">' + data.tweet_text + '</p>';
+      html += '<button class="btn btn-secondary" style="margin-top:8px" onclick="navigator.clipboard.writeText(`' + data.tweet_text.replace(/`/g, '') + '`);toast(\\'已复制\\')">复制文案</button>';
+      html += '</div>';
+    }
+
+    result.innerHTML = html;
+    document.getElementById('blogBtn').disabled = false;
+    toast('播客生成完成！');
+  } catch (e) {
+    result.innerHTML = '<p style="color:#ef4444">' + e.message + '</p>';
+  }
+  btn.disabled = false;
+  btn.textContent = '生成脚本 + 音频 + 视频';
+}
+
+function showTab(el, lang) {
+  el.parentElement.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab_zh').classList.toggle('hidden', lang !== 'zh');
+  document.getElementById('tab_en').classList.toggle('hidden', lang !== 'en');
+}
+
+// Step 3: 生成博客
+async function generateBlog() {
+  const btn = document.getElementById('blogBtn');
+  const result = document.getElementById('blogResult');
+  btn.disabled = true;
+  btn.textContent = '生成博客中...';
+
+  try {
+    const res = await fetch('/api/podcast/blog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: dateInput.value }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+
+    result.innerHTML = `
+      <div class="tabs"><span class="tab active" onclick="showBlogTab(this,'zh')">中文</span><span class="tab" onclick="showBlogTab(this,'en')">English</span></div>
+      <div id="blog_zh"><div class="output-box">${data.blog_zh || ''}</div>
+        <button class="btn btn-secondary" style="margin-top:8px" onclick="copyBlog('zh')">复制中文博客</button></div>
+      <div id="blog_en" class="hidden"><div class="output-box">${data.blog_en || ''}</div>
+        <button class="btn btn-secondary" style="margin-top:8px" onclick="copyBlog('en')">复制英文博客</button></div>`;
+    toast('博客生成完成');
+  } catch (e) {
+    result.innerHTML = '<p style="color:#ef4444">' + e.message + '</p>';
+  }
+  btn.disabled = false;
+  btn.textContent = '从播客脚本生成博客';
+}
+
+function showBlogTab(el, lang) {
+  el.parentElement.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('blog_zh').classList.toggle('hidden', lang !== 'zh');
+  document.getElementById('blog_en').classList.toggle('hidden', lang !== 'en');
+}
+
+function copyBlog(lang) {
+  const box = document.querySelector('#blog_' + lang + ' .output-box');
+  if (box) { navigator.clipboard.writeText(box.textContent); toast('已复制'); }
+}
+
+// 加载历史
+async function loadHistory() {
+  try {
+    const res = await fetch('/api/podcast/list');
+    const data = await res.json();
+    const el = document.getElementById('historyList');
+    if (!data.length) { el.innerHTML = '<p style="color:#555">暂无历史</p>'; return; }
+    el.innerHTML = data.map(p => `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1e1e3a">
+        <span style="color:#a5b4fc;font-size:0.9rem;min-width:100px">${p.date}</span>
+        <span style="font-size:0.8rem;color:#888">${p.status}</span>
+        ${p.video_zh ? '<a href="/audio/' + p.video_zh + '" class="btn btn-success" style="font-size:0.75rem;padding:4px 10px" download>下载视频</a>' : ''}
+        ${p.audio_zh ? '<a href="/audio/' + p.audio_zh + '" class="btn btn-secondary" style="font-size:0.75rem;padding:4px 10px" download>下载音频</a>' : ''}
+      </div>`).join('');
+  } catch (e) {}
+}
+
+loadHistory();
+</script>
+</body>
+</html>
+"""
 
 
 if __name__ == "__main__":

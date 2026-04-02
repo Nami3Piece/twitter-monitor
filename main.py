@@ -241,6 +241,16 @@ async def _run_algo_weekly() -> None:
         await _log_job_execution("algo_weekly", "error", str(e))
 
 
+async def _run_podcast_briefing() -> None:
+    from podcast_runner import prepare_briefing
+    try:
+        await prepare_briefing()
+        await _log_job_execution("podcast_briefing")
+    except Exception as e:
+        logger.error(f"Podcast briefing failed: {e}")
+        await _log_job_execution("podcast_briefing", "error", str(e))
+
+
 async def _run_keyword_monitor(project: str, keyword: str) -> None:
     try:
         await monitor_keyword(project, keyword)
@@ -286,6 +296,9 @@ def _setup_scheduler() -> AsyncIOScheduler:
 
     # Daily Digest at UTC 0:00 (Beijing 8:00)
     scheduler.add_job(_run_daily_digest, CronTrigger(hour=0, minute=0, timezone="UTC"), id="daily_digest")
+
+    # Daily Podcast briefing at UTC 1:00 (Beijing 9:00) — auto-prepare briefing for user
+    scheduler.add_job(_run_podcast_briefing, CronTrigger(hour=1, minute=0, timezone="UTC"), id="podcast_briefing")
 
     # Weekly X Algorithm Report — every Monday at UTC 01:00
     scheduler.add_job(_run_algo_weekly, CronTrigger(day_of_week="mon", hour=1, minute=0), id="algo_weekly")
