@@ -7750,11 +7750,8 @@ audio, video { width: 100%; margin-top: 10px; border-radius: 8px; }
     <div id="blogResult" style="margin-top:16px"></div>
   </div>
 
-  <!-- 历史 -->
-  <div class="card">
-    <h2>历史播客</h2>
-    <div id="historyList"></div>
-  </div>
+  <!-- 历史（隐藏，数据用于页面初始化） -->
+  <div id="historySection" style="display:none"></div>
 
 </div>
 
@@ -8210,9 +8207,7 @@ async function loadHistory() {
   } catch (e) {}
 }
 
-loadHistory();
-
-// 页面加载时检查：如果当天播客已 ready，启用博客按钮
+// 页面加载时检查：如果当天播客已 ready，直接显示结果
 (async function checkReady() {
   try {
     const res = await fetch('/api/podcast/' + dateInput.value);
@@ -8220,10 +8215,40 @@ loadHistory();
     const data = await res.json();
     if (data.status === 'ready' || data.script_zh) {
       document.getElementById('blogBtn').disabled = false;
-      document.getElementById('genBtn').disabled = false;
+      showExistingPodcast(data);
     }
   } catch(e) {}
 })();
+
+function showExistingPodcast(data) {
+  const result = document.getElementById('podcastResult');
+  const genRow = document.getElementById('genBtn').parentElement;
+  genRow.innerHTML = '<span style="color:#22c55e;font-size:0.9rem">✅ 播客已生成</span> <button class="btn btn-secondary btn-sm" onclick="location.reload()" style="margin-left:8px">重新生成</button>';
+
+  let html = '<div class="tabs"><span class="tab active" onclick="showTab(this,\\'zh\\')">中文</span><span class="tab" onclick="showTab(this,\\'en\\')">English</span></div>';
+
+  html += '<div id="tab_zh">';
+  if (data.script_zh) html += '<h3 style="color:#a5b4fc;font-size:0.85rem;margin-bottom:8px">脚本</h3><div class="output-box">' + data.script_zh + '</div>';
+  if (data.audio_zh) html += '<audio controls src="/api/podcast/download/' + data.audio_zh + '"></audio>';
+  if (data.video_zh) html += '<video controls src="/api/podcast/download/' + data.video_zh + '" style="margin-top:8px"></video><div style="margin-top:8px;display:flex;gap:8px"><a href="/api/podcast/download/' + data.video_zh + '" class="btn btn-success" download>下载视频</a><a href="/api/podcast/download/' + data.audio_zh + '" class="btn btn-secondary" download>下载音频</a></div>';
+  html += '</div>';
+
+  html += '<div id="tab_en" class="hidden">';
+  if (data.script_en) html += '<h3 style="color:#a5b4fc;font-size:0.85rem;margin-bottom:8px">Script</h3><div class="output-box">' + data.script_en + '</div>';
+  if (data.audio_en) html += '<audio controls src="/api/podcast/download/' + data.audio_en + '"></audio>';
+  if (data.video_en) html += '<video controls src="/api/podcast/download/' + data.video_en + '" style="margin-top:8px"></video><div style="margin-top:8px;display:flex;gap:8px"><a href="/api/podcast/download/' + data.video_en + '" class="btn btn-success" download>下载视频</a><a href="/api/podcast/download/' + data.audio_en + '" class="btn btn-secondary" download>下载音频</a></div>';
+  html += '</div>';
+
+  if (data.tweet_text) {
+    html += '<div style="margin-top:16px;padding:12px;background:#0f0f1a;border:1px solid #2a2a4a;border-radius:8px">';
+    html += '<p style="font-size:0.8rem;color:#888;margin-bottom:6px">推文文案</p>';
+    html += '<p style="font-size:0.9rem;color:#e0e0e0">' + data.tweet_text + '</p>';
+    html += '<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="navigator.clipboard.writeText(document.querySelector(\\'.tweet-text\\').textContent);toast(\\'已复制\\')">复制文案</button>';
+    html += '</div>';
+  }
+
+  result.innerHTML = html;
+}
 </script>
 </body>
 </html>
