@@ -7595,12 +7595,11 @@ async def get_podcast(date: str):
     return JSONResponse(data)
 
 
-@app.get("/audio/download/{filename}")
+@app.get("/api/podcast/download/{filename}")
 async def download_audio_file(filename: str):
     """下载音频/视频文件。"""
     import re
     from fastapi.responses import FileResponse
-    # 安全检查：只允许字母数字、连字符、下划线、点号
     if not re.match(r'^[\w\-\.]+$', filename):
         raise HTTPException(400, "Invalid filename")
     file_path = os.path.join(AUDIO_DIR, filename)
@@ -8102,14 +8101,14 @@ async function generatePodcast() {
     html += '<h3 style="color:#a5b4fc;font-size:0.85rem;margin-bottom:8px">脚本</h3>';
     html += '<div class="output-box">' + (data.script_zh || '') + '</div>';
     if (data.audio_zh) html += '<audio controls src="/audio/' + data.audio_zh + '"></audio>';
-    if (data.video_zh) html += '<video controls src="/audio/download/' + data.video_zh + '" style="margin-top:8px"></video><a href="/audio/download/' + data.video_zh + '" class="btn btn-success" style="margin-top:8px" download>下载视频</a>';
+    if (data.video_zh) html += '<video controls src="/api/podcast/download/' + data.video_zh + '" style="margin-top:8px"></video><a href="/api/podcast/download/' + data.video_zh + '" class="btn btn-success" style="margin-top:8px" download>下载视频</a>';
     html += '</div>';
 
     html += '<div id="tab_en" class="hidden">';
     html += '<h3 style="color:#a5b4fc;font-size:0.85rem;margin-bottom:8px">Script</h3>';
     html += '<div class="output-box">' + (data.script_en || '') + '</div>';
     if (data.audio_en) html += '<audio controls src="/audio/' + data.audio_en + '"></audio>';
-    if (data.video_en) html += '<video controls src="/audio/download/' + data.video_en + '" style="margin-top:8px"></video><a href="/audio/download/' + data.video_en + '" class="btn btn-success" style="margin-top:8px" download>下载视频</a>';
+    if (data.video_en) html += '<video controls src="/api/podcast/download/' + data.video_en + '" style="margin-top:8px"></video><a href="/api/podcast/download/' + data.video_en + '" class="btn btn-success" style="margin-top:8px" download>下载视频</a>';
     html += '</div>';
 
     if (data.tweet_text) {
@@ -8205,8 +8204,8 @@ async function loadHistory() {
       <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1e1e3a">
         <span style="color:#a5b4fc;font-size:0.9rem;min-width:100px">${p.date}</span>
         <span style="font-size:0.8rem;color:#888">${p.status}</span>
-        ${p.video_zh ? '<a href="/audio/download/' + p.video_zh + '" class="btn btn-success btn-sm" download>下载视频</a>' : ''}
-        ${p.audio_zh ? '<a href="/audio/download/' + p.audio_zh + '" class="btn btn-secondary btn-sm" download>下载音频</a>' : ''}
+        ${p.video_zh ? '<a href="/api/podcast/download/' + p.video_zh + '" class="btn btn-success btn-sm" download>下载视频</a>' : ''}
+        ${p.audio_zh ? '<a href="/api/podcast/download/' + p.audio_zh + '" class="btn btn-secondary btn-sm" download>下载音频</a>' : ''}
       </div>`).join('');
   } catch (e) {}
 }
