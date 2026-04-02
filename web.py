@@ -7449,12 +7449,16 @@ _podcast_jobs: dict = {}  # job_id -> {status, progress, message, result, error}
 
 
 async def _run_podcast_job(job_id: str, date: str, user_opinions: dict, avatar_path, video_format: str):
-    from podcast_runner import create_podcast
+    from podcast_runner import create_podcast_with_progress
     job = _podcast_jobs[job_id]
     try:
-        job["progress"] = 10
-        job["message"] = "生成播客脚本..."
-        result = await create_podcast(date, user_opinions, avatar_path, video_format)
+        def on_progress(pct, msg):
+            job["progress"] = pct
+            job["message"] = msg
+
+        result = await create_podcast_with_progress(
+            date, user_opinions, avatar_path, video_format, on_progress
+        )
         if result:
             job["status"] = "done"
             job["progress"] = 100
@@ -8193,6 +8197,19 @@ async function loadHistory() {
 }
 
 loadHistory();
+
+// 页面加载时检查：如果当天播客已 ready，启用博客按钮
+(async function checkReady() {
+  try {
+    const res = await fetch('/api/podcast/' + dateInput.value);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.status === 'ready' || data.script_zh) {
+      document.getElementById('blogBtn').disabled = false;
+      document.getElementById('genBtn').disabled = false;
+    }
+  } catch(e) {}
+})();
 </script>
 </body>
 </html>

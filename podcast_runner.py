@@ -117,28 +117,48 @@ async def prepare_briefing(date: str = "") -> Dict:
 # ── Step 2: 生成脚本 + 音频 + 视频 ─────────────────────────
 
 
+async def create_podcast_with_progress(
+    date: str,
+    user_opinions: Dict[int, str],
+    avatar_path: Optional[str] = None,
+    video_format: str = "square",
+    on_progress=None,
+) -> Dict:
+    """带进度回调的 create_podcast。"""
+    def _p(pct, msg):
+        if on_progress:
+            on_progress(pct, msg)
+
+    return await _create_podcast_impl(date, user_opinions, avatar_path, video_format, _p)
+
+
 async def create_podcast(
     date: str,
     user_opinions: Dict[int, str],
     avatar_path: Optional[str] = None,
     video_format: str = "square",
 ) -> Dict:
-    """
-    融合用户观点，生成脚本 → TTS 音频 → 视频。
+    """无进度回调版本。"""
+    return await _create_podcast_impl(date, user_opinions, avatar_path, video_format, lambda p, m: None)
 
-    参数：
-      date           — 日期
-      user_opinions  — {topic_id: "观点文字"}
-      avatar_path    — 头像图片路径（可选）
-      video_format   — "square" (1080x1080) 或 "portrait" (1080x1920)
 
-    返回：{script_zh, script_en, audio_zh, audio_en, video_zh, video_en, tweet_text}
-    """
+async def _create_podcast_impl(
+    date: str,
+    user_opinions: Dict[int, str],
+    avatar_path: Optional[str] = None,
+    video_format: str = "square",
+    _p=None,
+) -> Dict:
+    """核心实现，带进度回调。"""
     from ai.podcast_generator import generate_script
     from services.tts_service import synthesize_openai, normalize_audio
     from services.video_generator import generate_podcast_video
 
+    if not _p:
+        _p = lambda pct, msg: None
+
     logger.info(f"=== Creating podcast for {date} ===")
+    _p(5, "读取素材简报...")
 
     # 读取 briefing
     await _ensure_podcast_table()
@@ -155,6 +175,7 @@ async def create_podcast(
     topics = briefing.get("topics", [])
 
     # 生成脚本
+    _p(10, "AI 生成播客脚本...")
     script = await generate_script(topics, user_opinions, date)
     if not script:
         return {}
@@ -164,17 +185,20 @@ async def create_podcast(
     tweet_text = script.get("tweet_text", "")
 
     # TTS 音频
+    _p(30, "生成中文语音...")
     os.makedirs(AUDIO_DIR, exist_ok=True)
     audio_zh_path = os.path.join(AUDIO_DIR, f"podcast_{date}_zh.mp3")
     audio_en_path = os.path.join(AUDIO_DIR, f"podcast_{date}_en.mp3")
 
     zh_ok = await synthesize_openai(script_zh, audio_zh_path, lang="zh")
+    _p(40, "生成英文语音...")
     en_ok = await synthesize_openai(script_en, audio_en_path, lang="en")
 
     audio_zh = f"podcast_{date}_zh.mp3" if zh_ok else None
     audio_en = f"podcast_{date}_en.mp3" if en_ok else None
 
     # 响度标准化
+    _p(50, "音频标准化处理...")
     for ap in [audio_zh_path, audio_en_path]:
         if os.path.exists(ap):
             norm_path = ap.replace(".mp3", "_norm.mp3")
@@ -182,6 +206,7 @@ async def create_podcast(
                 os.replace(norm_path, ap)
 
     # 生成视频
+    _p(60, "生成中文视频（约 1-2 分钟）...")
     video_zh = None
     video_en = None
 
@@ -193,6 +218,7 @@ async def create_podcast(
         if video_zh_path:
             video_zh = os.path.basename(video_zh_path)
 
+    _p(80, "生成英文视频...")
     if en_ok:
         video_en_path = await generate_podcast_video(
             audio_en_path, script_en,
