@@ -8323,7 +8323,7 @@ async function loadHistory() {
 function showExistingPodcast(data) {
   const result = document.getElementById('podcastResult');
   const genRow = document.getElementById('genBtn').parentElement;
-  genRow.innerHTML = '<span style="color:#22c55e;font-size:0.9rem">✅ 播客已生成</span> <button class="btn btn-secondary btn-sm" onclick="location.reload()" style="margin-left:8px">重新生成</button>';
+  genRow.innerHTML = '<span style="color:#22c55e;font-size:0.9rem">✅ 播客已生成</span> <button class="btn btn-secondary btn-sm" onclick="startRegenerate()" style="margin-left:8px">重新生成</button>';
 
   let html = '<div class="tabs"><span class="tab active" onclick="showTab(this,\\'zh\\')">中文</span><span class="tab" onclick="showTab(this,\\'en\\')">English</span></div>';
 
@@ -8348,6 +8348,16 @@ function showExistingPodcast(data) {
   }
 
   result.innerHTML = html;
+}
+
+function startRegenerate() {
+  // 恢复生成按钮，让用户重新走生成流程
+  const result = document.getElementById('podcastResult');
+  result.innerHTML = '';
+  const genRow = result.previousElementSibling;
+  if (genRow) {
+    genRow.innerHTML = '<select id="videoFormat"><option value="square">方形视频 (1080x1080)</option><option value="portrait">竖屏视频 (1080x1920)</option></select> <button class="btn btn-primary" onclick="generatePodcast()" id="genBtn">重新生成脚本 + 音频 + 视频</button>';
+  }
 }
 </script>
 </body>
