@@ -7427,11 +7427,29 @@ async def get_podcast_briefing(date: str):
     return JSONResponse({"topics": _json.loads(row[0]).get("topics", []), "status": row[1]})
 
 
+@app.get("/api/podcast/avatar")
+async def get_avatar():
+    """获取已上传的头像。"""
+    from fastapi.responses import FileResponse
+    for ext in [".png", ".jpg", ".jpeg", ".webp"]:
+        p = os.path.join(AVATAR_DIR, f"podcast_avatar{ext}")
+        if os.path.exists(p):
+            media = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}
+            return FileResponse(p, media_type=media.get(ext.lstrip("."), "image/png"))
+    raise HTTPException(404, "无头像")
+
+
 @app.post("/api/podcast/avatar")
 async def upload_avatar(file: UploadFile = File(...)):
     """上传头像图片。"""
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(400, "请上传图片文件")
+
+    # 清除旧头像
+    for ext in [".png", ".jpg", ".jpeg", ".webp"]:
+        old = os.path.join(AVATAR_DIR, f"podcast_avatar{ext}")
+        if os.path.exists(old):
+            os.unlink(old)
 
     ext = os.path.splitext(file.filename or "avatar.png")[1] or ".png"
     avatar_path = os.path.join(AVATAR_DIR, f"podcast_avatar{ext}")
@@ -8270,6 +8288,23 @@ async function loadHistory() {
 
 // 页面加载：恢复草稿 + 检查已有播客
 (async function initPage() {
+  // 0. 加载已有头像
+  try {
+    const avatarRes = await fetch('/api/podcast/avatar');
+    if (avatarRes.ok) {
+      const blob = await avatarRes.blob();
+      const url = URL.createObjectURL(blob);
+      const preview = document.getElementById('avatarPreview');
+      if (preview) {
+        const img = document.createElement('img');
+        img.src = url;
+        img.style.cssText = 'width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid #4f46e5';
+        img.id = 'avatarPreview';
+        preview.replaceWith(img);
+      }
+    }
+  } catch(e) {}
+
   // 1. 先恢复草稿（话题卡片 + 观点）
   await loadDraft();
 
