@@ -7443,20 +7443,42 @@ async def upload_avatar(file: UploadFile = File(...)):
     return JSONResponse({"path": avatar_path, "size": len(content)})
 
 
+import asyncio as _asyncio
+
+_podcast_jobs: dict = {}  # job_id -> {status, progress, message, result, error}
+
+
+async def _run_podcast_job(job_id: str, date: str, user_opinions: dict, avatar_path, video_format: str):
+    from podcast_runner import create_podcast
+    job = _podcast_jobs[job_id]
+    try:
+        job["progress"] = 10
+        job["message"] = "生成播客脚本..."
+        result = await create_podcast(date, user_opinions, avatar_path, video_format)
+        if result:
+            job["status"] = "done"
+            job["progress"] = 100
+            job["result"] = result
+        else:
+            job["status"] = "error"
+            job["error"] = "生成失败"
+    except Exception as e:
+        job["status"] = "error"
+        job["error"] = str(e)
+        logger.error(f"Podcast job {job_id} failed: {e}")
+
+
 @app.post("/api/podcast/generate")
 async def generate_podcast(request: Request):
-    """Step 2: 用户提交观点，生成脚本 + 音频 + 视频。"""
-    from podcast_runner import create_podcast
-
+    """Step 2: 异步生成播客，返回 job_id。"""
+    import uuid
     body = await request.json()
     date = body.get("date", "")
     opinions_raw = body.get("opinions", {})
     video_format = body.get("video_format", "square")
 
-    # opinions: {"1": "观点...", "2": "..."} → {1: "...", 2: "..."}
     user_opinions = {int(k): v for k, v in opinions_raw.items() if v.strip()}
 
-    # 查找头像
     avatar_path = None
     for ext in [".png", ".jpg", ".jpeg", ".webp"]:
         p = os.path.join(AVATAR_DIR, f"podcast_avatar{ext}")
@@ -7464,22 +7486,72 @@ async def generate_podcast(request: Request):
             avatar_path = p
             break
 
-    result = await create_podcast(date, user_opinions, avatar_path, video_format)
-    if not result:
-        raise HTTPException(500, "播客生成失败")
-    return JSONResponse(result)
+    job_id = str(uuid.uuid4())[:8]
+    _podcast_jobs[job_id] = {"status": "running", "progress": 0, "message": "启动中...", "result": None, "error": None}
+    _asyncio.create_task(_run_podcast_job(job_id, date, user_opinions, avatar_path, video_format))
+    return JSONResponse({"job_id": job_id})
+
+
+@app.get("/api/podcast/generate/status/{job_id}")
+async def podcast_job_status(job_id: str):
+    """轮询播客生成进度。"""
+    job = _podcast_jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "任务不存在")
+    resp = {"status": job["status"], "progress": job["progress"], "message": job.get("message", "")}
+    if job["status"] == "done":
+        resp["result"] = job["result"]
+        _podcast_jobs.pop(job_id, None)
+    elif job["status"] == "error":
+        resp["error"] = job["error"]
+        _podcast_jobs.pop(job_id, None)
+    return JSONResponse(resp)
+
+
+_blog_jobs: dict = {}
+
+
+async def _run_blog_job(job_id: str, date: str):
+    from podcast_runner import create_blog
+    job = _blog_jobs[job_id]
+    try:
+        blog = await create_blog(date)
+        if blog:
+            job["status"] = "done"
+            job["result"] = blog
+        else:
+            job["status"] = "error"
+            job["error"] = "博客生成失败"
+    except Exception as e:
+        job["status"] = "error"
+        job["error"] = str(e)
 
 
 @app.post("/api/podcast/blog")
 async def generate_podcast_blog(request: Request):
-    """Step 3: 从播客脚本生成博客。"""
-    from podcast_runner import create_blog
+    """Step 3: 异步生成博客。"""
+    import uuid
     body = await request.json()
     date = body.get("date", "")
-    blog = await create_blog(date)
-    if not blog:
-        raise HTTPException(500, "博客生成失败")
-    return JSONResponse(blog)
+    job_id = str(uuid.uuid4())[:8]
+    _blog_jobs[job_id] = {"status": "running", "result": None, "error": None}
+    _asyncio.create_task(_run_blog_job(job_id, date))
+    return JSONResponse({"job_id": job_id})
+
+
+@app.get("/api/podcast/blog/status/{job_id}")
+async def blog_job_status(job_id: str):
+    job = _blog_jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "任务不存在")
+    resp = {"status": job["status"]}
+    if job["status"] == "done":
+        resp["result"] = job["result"]
+        _blog_jobs.pop(job_id, None)
+    elif job["status"] == "error":
+        resp["error"] = job["error"]
+        _blog_jobs.pop(job_id, None)
+    return JSONResponse(resp)
 
 
 @app.get("/api/podcast/list")
@@ -7997,7 +8069,13 @@ async function generatePodcast() {
       }),
     });
     if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
+    const { job_id } = await res.json();
+
+    // 轮询进度
+    result.innerHTML = '<p class="loading">⏳ 正在生成脚本...</p>';
+    const data = await pollJob('/api/podcast/generate/status/' + job_id, (info) => {
+      result.innerHTML = '<p class="loading">⏳ ' + (info.message || '处理中...') + ' (' + (info.progress || 0) + '%)</p>';
+    });
 
     let html = '<div class="tabs"><span class="tab active" onclick="showTab(this,\\'zh\\')">中文</span><span class="tab" onclick="showTab(this,\\'en\\')">English</span></div>';
 
@@ -8033,6 +8111,18 @@ async function generatePodcast() {
   btn.textContent = '生成脚本 + 音频 + 视频';
 }
 
+// 通用轮询函数
+async function pollJob(url, onProgress) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 3000));
+    const res = await fetch(url);
+    const info = await res.json();
+    if (info.status === 'done') return info.result;
+    if (info.status === 'error') throw new Error(info.error || '生成失败');
+    if (onProgress) onProgress(info);
+  }
+}
+
 function showTab(el, lang) {
   el.parentElement.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
@@ -8054,7 +8144,10 @@ async function generateBlog() {
       body: JSON.stringify({ date: dateInput.value }),
     });
     if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
+    const { job_id } = await res.json();
+
+    result.innerHTML = '<p class="loading">⏳ 生成博客中...</p>';
+    const data = await pollJob('/api/podcast/blog/status/' + job_id, () => {});
 
     result.innerHTML =
       '<div class="tabs"><span class="tab active" onclick="showBlogTab(this,\\'zh\\')">中文</span><span class="tab" onclick="showBlogTab(this,\\'en\\')">English</span></div>' +
