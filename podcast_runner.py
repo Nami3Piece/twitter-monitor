@@ -123,13 +123,14 @@ async def create_podcast_with_progress(
     avatar_path: Optional[str] = None,
     video_format: str = "square",
     on_progress=None,
+    lang: str = "zh",
 ) -> Dict:
     """带进度回调的 create_podcast。"""
     def _p(pct, msg):
         if on_progress:
             on_progress(pct, msg)
 
-    return await _create_podcast_impl(date, user_opinions, avatar_path, video_format, _p)
+    return await _create_podcast_impl(date, user_opinions, avatar_path, video_format, _p, lang)
 
 
 async def create_podcast(
@@ -137,9 +138,10 @@ async def create_podcast(
     user_opinions: Dict[int, str],
     avatar_path: Optional[str] = None,
     video_format: str = "square",
+    lang: str = "zh",
 ) -> Dict:
     """无进度回调版本。"""
-    return await _create_podcast_impl(date, user_opinions, avatar_path, video_format, lambda p, m: None)
+    return await _create_podcast_impl(date, user_opinions, avatar_path, video_format, lambda p, m: None, lang)
 
 
 async def _create_podcast_impl(
@@ -148,8 +150,12 @@ async def _create_podcast_impl(
     avatar_path: Optional[str] = None,
     video_format: str = "square",
     _p=None,
+    lang: str = "zh",
 ) -> Dict:
-    """核心实现，带进度回调。"""
+    """
+    核心实现，带进度回调。
+    lang: "zh" 只生成中文, "en" 只生成英文, "both" 生成中英文
+    """
     from ai.podcast_generator import generate_script
     from services.tts_service import synthesize_openai, normalize_audio
     from services.video_generator import generate_podcast_video
@@ -157,7 +163,7 @@ async def _create_podcast_impl(
     if not _p:
         _p = lambda pct, msg: None
 
-    logger.info(f"=== Creating podcast for {date} ===")
+    logger.info(f"=== Creating podcast for {date} (lang={lang}) ===")
     _p(5, "读取素材简报...")
 
     # 读取 briefing
@@ -184,48 +190,48 @@ async def _create_podcast_impl(
     script_en = script["script_en"]
     tweet_text = script.get("tweet_text", "")
 
-    # TTS 音频
-    _p(30, "生成中文语音...")
+    # TTS 音频 + 视频（按语言生成）
     os.makedirs(AUDIO_DIR, exist_ok=True)
-    audio_zh_path = os.path.join(AUDIO_DIR, f"podcast_{date}_zh.mp3")
-    audio_en_path = os.path.join(AUDIO_DIR, f"podcast_{date}_en.mp3")
-
-    zh_ok = await synthesize_openai(script_zh, audio_zh_path, lang="zh")
-    _p(40, "生成英文语音...")
-    en_ok = await synthesize_openai(script_en, audio_en_path, lang="en")
-
-    audio_zh = f"podcast_{date}_zh.mp3" if zh_ok else None
-    audio_en = f"podcast_{date}_en.mp3" if en_ok else None
-
-    # 响度标准化
-    _p(50, "音频标准化处理...")
-    for ap in [audio_zh_path, audio_en_path]:
-        if os.path.exists(ap):
-            norm_path = ap.replace(".mp3", "_norm.mp3")
-            if await normalize_audio(ap, norm_path):
-                os.replace(norm_path, ap)
-
-    # 生成视频
-    _p(60, "生成中文视频（约 1-2 分钟）...")
+    audio_zh = None
+    audio_en = None
     video_zh = None
     video_en = None
 
-    if zh_ok:
-        video_zh_path = await generate_podcast_video(
-            audio_zh_path, script_zh,
-            avatar_path=avatar_path, date=date, lang="zh", format=video_format,
-        )
-        if video_zh_path:
-            video_zh = os.path.basename(video_zh_path)
+    if lang in ("zh", "both"):
+        _p(20, "生成中文语音...")
+        audio_zh_path = os.path.join(AUDIO_DIR, f"podcast_{date}_zh.mp3")
+        zh_ok = await synthesize_openai(script_zh, audio_zh_path, lang="zh")
+        audio_zh = f"podcast_{date}_zh.mp3" if zh_ok else None
+        if zh_ok:
+            _p(40, "音频标准化...")
+            norm_path = audio_zh_path.replace(".mp3", "_norm.mp3")
+            if await normalize_audio(audio_zh_path, norm_path):
+                os.replace(norm_path, audio_zh_path)
+            _p(50, "生成中文视频...")
+            video_zh_path = await generate_podcast_video(
+                audio_zh_path, script_zh,
+                avatar_path=avatar_path, date=date, lang="zh", format=video_format,
+            )
+            if video_zh_path:
+                video_zh = os.path.basename(video_zh_path)
 
-    _p(80, "生成英文视频...")
-    if en_ok:
-        video_en_path = await generate_podcast_video(
-            audio_en_path, script_en,
-            avatar_path=avatar_path, date=date, lang="en", format=video_format,
-        )
-        if video_en_path:
-            video_en = os.path.basename(video_en_path)
+    if lang in ("en", "both"):
+        _p(60 if lang == "both" else 20, "生成英文语音...")
+        audio_en_path = os.path.join(AUDIO_DIR, f"podcast_{date}_en.mp3")
+        en_ok = await synthesize_openai(script_en, audio_en_path, lang="en")
+        audio_en = f"podcast_{date}_en.mp3" if en_ok else None
+        if en_ok:
+            _p(80 if lang == "both" else 50, "音频标准化...")
+            norm_path = audio_en_path.replace(".mp3", "_norm.mp3")
+            if await normalize_audio(audio_en_path, norm_path):
+                os.replace(norm_path, audio_en_path)
+            _p(85 if lang == "both" else 60, "生成英文视频...")
+            video_en_path = await generate_podcast_video(
+                audio_en_path, script_en,
+                avatar_path=avatar_path, date=date, lang="en", format=video_format,
+            )
+            if video_en_path:
+                video_en = os.path.basename(video_en_path)
 
     # 更新 DB
     async with aiosqlite.connect(DB_PATH) as db:

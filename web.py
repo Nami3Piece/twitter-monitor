@@ -7466,7 +7466,7 @@ import asyncio as _asyncio
 _podcast_jobs: dict = {}  # job_id -> {status, progress, message, result, error}
 
 
-async def _run_podcast_job(job_id: str, date: str, user_opinions: dict, avatar_path, video_format: str):
+async def _run_podcast_job(job_id: str, date: str, user_opinions: dict, avatar_path, video_format: str, lang: str = "zh"):
     from podcast_runner import create_podcast_with_progress
     job = _podcast_jobs[job_id]
     try:
@@ -7475,7 +7475,7 @@ async def _run_podcast_job(job_id: str, date: str, user_opinions: dict, avatar_p
             job["message"] = msg
 
         result = await create_podcast_with_progress(
-            date, user_opinions, avatar_path, video_format, on_progress
+            date, user_opinions, avatar_path, video_format, on_progress, lang
         )
         if result:
             job["status"] = "done"
@@ -7510,7 +7510,8 @@ async def generate_podcast(request: Request):
 
     job_id = str(uuid.uuid4())[:8]
     _podcast_jobs[job_id] = {"status": "running", "progress": 0, "message": "启动中...", "result": None, "error": None}
-    _asyncio.create_task(_run_podcast_job(job_id, date, user_opinions, avatar_path, video_format))
+    lang = body.get("lang", "zh")
+    _asyncio.create_task(_run_podcast_job(job_id, date, user_opinions, avatar_path, video_format, lang))
     return JSONResponse({"job_id": job_id})
 
 
@@ -7797,12 +7798,13 @@ audio, video { width: 100%; margin-top: 10px; border-radius: 8px; }
   <!-- Step 2: 生成播客 -->
   <div class="card">
     <h2>Step 2 — 生成播客</h2>
-    <div class="row" style="margin-bottom:16px">
+    <div class="row" style="margin-bottom:16px" id="genRow">
       <select id="videoFormat">
         <option value="square">方形视频 (1080x1080)</option>
         <option value="portrait">竖屏视频 (1080x1920)</option>
       </select>
-      <button class="btn btn-primary" onclick="generatePodcast()" id="genBtn" disabled>生成脚本 + 音频 + 视频</button>
+      <button class="btn btn-primary" onclick="generatePodcast('zh')" id="genBtn" disabled>生成中文播客</button>
+      <button class="btn btn-secondary" onclick="generatePodcast('en')" id="genBtnEn" disabled>生成英文播客</button>
     </div>
     <div id="podcastResult"></div>
   </div>
@@ -7973,6 +7975,8 @@ function renderTopics() {
   document.getElementById('topicCount').textContent = currentTopics.length + ' 个话题';
   const genBtn = document.getElementById('genBtn');
   if (genBtn) genBtn.disabled = false;
+  const genBtnEn = document.getElementById('genBtnEn');
+  if (genBtnEn) genBtnEn.disabled = false;
 
   area.innerHTML = currentTopics.map(t => `
     <div class="topic-card" data-topic-id="${t.id}">
@@ -8131,11 +8135,11 @@ async function uploadAvatar(input) {
 }
 
 // ── Step 2: 生成播客 ──
-async function generatePodcast() {
-  const btn = document.getElementById('genBtn');
+async function generatePodcast(lang) {
+  lang = lang || 'zh';
+  const btn = document.getElementById(lang === 'en' ? 'genBtnEn' : 'genBtn');
   const result = document.getElementById('podcastResult');
-  btn.disabled = true;
-  btn.textContent = '生成中（约 1-2 分钟）...';
+  if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
   result.innerHTML = '<p class="loading">正在生成脚本 → TTS 音频 → 视频...</p>';
 
   // 只包含未排除的话题
@@ -8160,6 +8164,7 @@ async function generatePodcast() {
         date: dateInput.value,
         opinions,
         video_format: document.getElementById('videoFormat').value,
+        lang: lang,
       }),
     });
     if (!res.ok) throw new Error(await res.text());
@@ -8171,27 +8176,24 @@ async function generatePodcast() {
       result.innerHTML = '<p class="loading">⏳ ' + (info.message || '处理中...') + ' (' + (info.progress || 0) + '%)</p>';
     });
 
-    let html = '<div class="tabs"><span class="tab active" onclick="showTab(this,\\'zh\\')">中文</span><span class="tab" onclick="showTab(this,\\'en\\')">English</span></div>';
-
-    html += '<div id="tab_zh">';
-    html += '<h3 style="color:#a5b4fc;font-size:0.85rem;margin-bottom:8px">脚本</h3>';
-    html += '<div class="output-box">' + (data.script_zh || '') + '</div>';
-    if (data.audio_zh) html += '<audio controls src="/audio/' + data.audio_zh + '"></audio>';
-    if (data.video_zh) html += '<video controls src="/api/podcast/download/' + data.video_zh + '" style="margin-top:8px"></video><a href="/api/podcast/download/' + data.video_zh + '" class="btn btn-success" style="margin-top:8px" download>下载视频</a>';
-    html += '</div>';
-
-    html += '<div id="tab_en" class="hidden">';
-    html += '<h3 style="color:#a5b4fc;font-size:0.85rem;margin-bottom:8px">Script</h3>';
-    html += '<div class="output-box">' + (data.script_en || '') + '</div>';
-    if (data.audio_en) html += '<audio controls src="/audio/' + data.audio_en + '"></audio>';
-    if (data.video_en) html += '<video controls src="/api/podcast/download/' + data.video_en + '" style="margin-top:8px"></video><a href="/api/podcast/download/' + data.video_en + '" class="btn btn-success" style="margin-top:8px" download>下载视频</a>';
-    html += '</div>';
-
+    let html = '';
+    if (data.script_zh) {
+      html += '<h3 style="color:#a5b4fc;font-size:0.85rem;margin:12px 0 8px">中文脚本</h3>';
+      html += '<div class="output-box">' + data.script_zh + '</div>';
+      if (data.audio_zh) html += '<audio controls src="/api/podcast/download/' + data.audio_zh + '"></audio>';
+      if (data.video_zh) html += '<video controls src="/api/podcast/download/' + data.video_zh + '" style="margin-top:8px"></video><div style="margin-top:8px"><a href="/api/podcast/download/' + data.video_zh + '" class="btn btn-success" download>下载中文视频</a></div>';
+    }
+    if (data.script_en) {
+      html += '<h3 style="color:#a5b4fc;font-size:0.85rem;margin:16px 0 8px">English Script</h3>';
+      html += '<div class="output-box">' + data.script_en + '</div>';
+      if (data.audio_en) html += '<audio controls src="/api/podcast/download/' + data.audio_en + '"></audio>';
+      if (data.video_en) html += '<video controls src="/api/podcast/download/' + data.video_en + '" style="margin-top:8px"></video><div style="margin-top:8px"><a href="/api/podcast/download/' + data.video_en + '" class="btn btn-success" download>下载英文视频</a></div>';
+    }
     if (data.tweet_text) {
       html += '<div style="margin-top:16px;padding:12px;background:#0f0f1a;border:1px solid #2a2a4a;border-radius:8px">';
       html += '<p style="font-size:0.8rem;color:#888;margin-bottom:6px">推文文案</p>';
       html += '<p style="font-size:0.9rem;color:#e0e0e0">' + data.tweet_text + '</p>';
-      html += '<button class="btn btn-secondary" style="margin-top:8px" onclick="navigator.clipboard.writeText(`' + data.tweet_text.replace(/`/g, '') + '`);toast(\\'已复制\\')">复制文案</button>';
+      html += '<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent);toast(\\'已复制\\')">复制文案</button>';
       html += '</div>';
     }
 
@@ -8201,8 +8203,7 @@ async function generatePodcast() {
   } catch (e) {
     result.innerHTML = '<p style="color:#ef4444">' + e.message + '</p>';
   }
-  btn.disabled = false;
-  btn.textContent = '生成脚本 + 音频 + 视频';
+  if (btn) { btn.disabled = false; btn.textContent = lang === 'en' ? '生成英文播客' : '生成中文播客'; }
 }
 
 // 通用轮询函数
@@ -8351,12 +8352,11 @@ function showExistingPodcast(data) {
 }
 
 function startRegenerate() {
-  // 恢复生成按钮，让用户重新走生成流程
   const result = document.getElementById('podcastResult');
   result.innerHTML = '';
-  const genRow = result.previousElementSibling;
+  const genRow = document.getElementById('genRow');
   if (genRow) {
-    genRow.innerHTML = '<select id="videoFormat"><option value="square">方形视频 (1080x1080)</option><option value="portrait">竖屏视频 (1080x1920)</option></select> <button class="btn btn-primary" onclick="generatePodcast()" id="genBtn">重新生成脚本 + 音频 + 视频</button>';
+    genRow.innerHTML = '<select id="videoFormat"><option value="square">方形视频 (1080x1080)</option><option value="portrait">竖屏视频 (1080x1920)</option></select> <button class="btn btn-primary" onclick="generatePodcast(\\'zh\\')" id="genBtn">生成中文播客</button> <button class="btn btn-secondary" onclick="generatePodcast(\\'en\\')" id="genBtnEn">生成英文播客</button>';
   }
 }
 </script>
