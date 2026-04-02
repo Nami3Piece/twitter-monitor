@@ -7609,6 +7609,52 @@ async def download_audio_file(filename: str):
     return FileResponse(file_path, media_type=media_type, filename=filename)
 
 
+@app.post("/api/podcast/draft")
+async def save_podcast_draft(request: Request):
+    """保存草稿到服务端。"""
+    import json as _json
+    from podcast_runner import _ensure_podcast_table
+    await _ensure_podcast_table()
+    body = await request.json()
+    date = body.get("date", "")
+    if not date:
+        raise HTTPException(400, "缺少日期")
+    draft_json = _json.dumps(body, ensure_ascii=False)
+    async with aiosqlite.connect(DB_PATH) as db:
+        # 检查是否已有记录
+        row = await (await db.execute("SELECT id FROM podcasts WHERE date = ?", (date,))).fetchone()
+        if row:
+            await db.execute(
+                "UPDATE podcasts SET user_opinions = ?, briefing = ?, updated_at = datetime('now') WHERE date = ?",
+                (draft_json, _json.dumps({"topics": body.get("topics", [])}, ensure_ascii=False), date),
+            )
+        else:
+            await db.execute(
+                "INSERT INTO podcasts (date, briefing, user_opinions, status) VALUES (?, ?, ?, 'draft')",
+                (date, _json.dumps({"topics": body.get("topics", [])}, ensure_ascii=False), draft_json),
+            )
+        await db.commit()
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/podcast/draft")
+async def get_podcast_draft(date: str):
+    """获取服务端草稿。"""
+    import json as _json
+    from podcast_runner import _ensure_podcast_table
+    await _ensure_podcast_table()
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await (await db.execute(
+            "SELECT user_opinions FROM podcasts WHERE date = ?", (date,)
+        )).fetchone()
+    if not row or not row[0]:
+        raise HTTPException(404, "无草稿")
+    try:
+        return JSONResponse(_json.loads(row[0]))
+    except Exception:
+        raise HTTPException(404, "无草稿")
+
+
 @app.get("/api/podcast/available-tweets")
 async def available_tweets(hours: int = 48):
     """获取可用于添加话题的近期推文。"""
@@ -7790,8 +7836,8 @@ function toast(msg) {
   setTimeout(() => el.style.display = 'none', 3000);
 }
 
-// ── 草稿功能 ──
-function saveDraft() {
+// ── 草稿功能（服务端 + localStorage 双存储）──
+async function saveDraft() {
   const opinions = {};
   currentTopics.forEach(t => {
     const el = document.getElementById('opinion_' + t.id);
@@ -7804,28 +7850,50 @@ function saveDraft() {
     savedAt: new Date().toISOString()
   };
   localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  // 同步到服务端
+  try {
+    await fetch('/api/podcast/draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft),
+    });
+  } catch(e) {}
   document.getElementById('draftStatus').innerHTML = '<span class="draft-saved">草稿已保存 ' + new Date().toLocaleTimeString() + '</span>';
-  toast('草稿已保存');
 }
 
-function loadDraft() {
+async function loadDraft() {
+  // 先试 localStorage
+  let draft = null;
   const raw = localStorage.getItem(DRAFT_KEY);
-  if (!raw) return false;
-  try {
-    const draft = JSON.parse(raw);
-    if (draft.date !== dateInput.value) return false;
-    currentTopics = draft.topics || [];
-    renderTopics();
-    // 恢复观点
-    setTimeout(() => {
-      Object.entries(draft.opinions || {}).forEach(([id, val]) => {
-        const el = document.getElementById('opinion_' + id);
-        if (el) el.value = val;
-      });
-    }, 50);
-    document.getElementById('draftStatus').innerHTML = '<span class="draft-saved">草稿已恢复 (' + new Date(draft.savedAt).toLocaleTimeString() + ')</span>';
-    return true;
-  } catch(e) { return false; }
+  if (raw) {
+    try { draft = JSON.parse(raw); } catch(e) {}
+  }
+  // 再试服务端（如果 localStorage 没有或日期不对）
+  if (!draft || draft.date !== dateInput.value) {
+    try {
+      const res = await fetch('/api/podcast/draft?date=' + dateInput.value);
+      if (res.ok) {
+        const serverDraft = await res.json();
+        if (serverDraft && serverDraft.topics && serverDraft.topics.length > 0) {
+          draft = serverDraft;
+        }
+      }
+    } catch(e) {}
+  }
+  if (!draft || draft.date !== dateInput.value || !draft.topics || draft.topics.length === 0) return false;
+
+  currentTopics = draft.topics;
+  renderTopics();
+  // 恢复观点（等 DOM 渲染完）
+  requestAnimationFrame(() => {
+    Object.entries(draft.opinions || {}).forEach(([id, val]) => {
+      const el = document.getElementById('opinion_' + id);
+      if (el && val) el.value = val;
+    });
+  });
+  const savedTime = draft.savedAt ? new Date(draft.savedAt).toLocaleTimeString() : '';
+  document.getElementById('draftStatus').innerHTML = '<span class="draft-saved">草稿已恢复 ' + savedTime + '</span>';
+  return true;
 }
 
 function clearDraft() {
@@ -7835,10 +7903,7 @@ function clearDraft() {
 
 // 自动保存草稿（每30秒）
 setInterval(() => {
-  if (currentTopics.length > 0) {
-    saveDraft();
-    document.getElementById('draftStatus').innerHTML = '<span class="draft-saved">自动保存</span>';
-  }
+  if (currentTopics.length > 0) saveDraft();
 }, 30000);
 
 // ── 话题管理 ──
@@ -8206,7 +8271,7 @@ async function loadHistory() {
 // 页面加载：恢复草稿 + 检查已有播客
 (async function initPage() {
   // 1. 先恢复草稿（话题卡片 + 观点）
-  loadDraft();
+  await loadDraft();
 
   // 2. 检查当天播客是否已生成
   try {
