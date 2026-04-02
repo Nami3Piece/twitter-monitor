@@ -7416,6 +7416,8 @@ async def podcast_briefing(request: Request, date: str = ""):
 async def get_podcast_briefing(date: str):
     """获取已有的素材简报。"""
     import json as _json
+    from podcast_runner import _ensure_podcast_table
+    await _ensure_podcast_table()
     async with aiosqlite.connect(DB_PATH) as db:
         row = await (await db.execute(
             "SELECT briefing, status FROM podcasts WHERE date = ?", (date,)
@@ -7484,6 +7486,8 @@ async def generate_podcast_blog(request: Request):
 async def list_podcasts():
     """获取播客历史列表。"""
     import json as _json
+    from podcast_runner import _ensure_podcast_table
+    await _ensure_podcast_table()
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         rows = await (await db.execute(
@@ -7498,6 +7502,8 @@ async def list_podcasts():
 async def get_podcast(date: str):
     """获取单个播客完整数据。"""
     import json as _json
+    from podcast_runner import _ensure_podcast_table
+    await _ensure_podcast_table()
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         row = await (await db.execute(
