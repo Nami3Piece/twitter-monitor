@@ -1,13 +1,16 @@
 """
-services/tts_service.py — OpenAI TTS 语音合成，edge-tts 作为 fallback。
+services/tts_service.py — TTS 语音合成。
+优先级：MiniMax > OpenAI > edge-tts
 """
 
 import asyncio
+import base64
 import os
 import re
 import tempfile
 from typing import Optional
 from loguru import logger
+import httpx
 
 
 def _clean_for_tts(text: str, lang: str = "en") -> str:
@@ -58,12 +61,137 @@ def _split_text(text: str, max_chars: int = 4000) -> list[str]:
     return chunks if chunks else [text]
 
 
+# ── MiniMax TTS（首选）──────────────────────────────────────
+
+
+async def synthesize_minimax(text: str, output_path: str, lang: str = "zh") -> bool:
+    """使用 MiniMax TTS 生成音频。"""
+    api_key = os.getenv("MINIMAX_API_KEY")
+    group_id = os.getenv("MINIMAX_GROUP_ID")
+    if not api_key or not group_id:
+        logger.warning("MINIMAX_API_KEY or MINIMAX_GROUP_ID not set")
+        return False
+
+    clean_text = _clean_for_tts(text, lang)
+    base_url = os.getenv("MINIMAX_BASE_URL", "https://api.minimaxi.chat")
+
+    # 中文用 presenter_male，英文用 English_male
+    voice_zh = os.getenv("MINIMAX_VOICE_ZH", "presenter_male")
+    voice_en = os.getenv("MINIMAX_VOICE_EN", "English_male")
+    voice_id = voice_zh if lang == "zh" else voice_en
+    model = os.getenv("MINIMAX_TTS_MODEL", "speech-02-hd")
+
+    chunks = _split_text(clean_text)
+
+    try:
+        if len(chunks) == 1:
+            audio_data = await _minimax_tts_call(
+                base_url, api_key, group_id, model, voice_id, chunks[0]
+            )
+            if audio_data:
+                with open(output_path, "wb") as f:
+                    f.write(audio_data)
+        else:
+            tmp_files = []
+            for i, chunk in enumerate(chunks):
+                audio_data = await _minimax_tts_call(
+                    base_url, api_key, group_id, model, voice_id, chunk
+                )
+                if not audio_data:
+                    raise RuntimeError(f"MiniMax TTS failed for chunk {i}")
+                tmp_path = os.path.join(
+                    tempfile.gettempdir(), f"minimax_chunk_{i}_{os.getpid()}.mp3"
+                )
+                with open(tmp_path, "wb") as f:
+                    f.write(audio_data)
+                tmp_files.append(tmp_path)
+
+            await _concat_audio(tmp_files, output_path)
+            for f in tmp_files:
+                if os.path.exists(f):
+                    os.unlink(f)
+
+        logger.info(f"MiniMax TTS saved: {output_path} ({len(chunks)} chunk(s))")
+        return True
+
+    except Exception as e:
+        logger.error(f"MiniMax TTS error: {e}")
+        return False
+
+
+async def _minimax_tts_call(
+    base_url: str, api_key: str, group_id: str,
+    model: str, voice_id: str, text: str,
+) -> Optional[bytes]:
+    """调用 MiniMax T2A v2 API，返回音频 bytes。"""
+    url = f"{base_url}/v1/t2a_v2?GroupId={group_id}"
+    payload = {
+        "model": model,
+        "text": text,
+        "voice_setting": {
+            "voice_id": voice_id,
+            "speed": 1.0,
+            "vol": 1.0,
+            "pitch": 0,
+        },
+        "audio_setting": {
+            "sample_rate": 32000,
+            "bitrate": 128000,
+            "format": "mp3",
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            url,
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    if data.get("base_resp", {}).get("status_code", 0) != 0:
+        error_msg = data.get("base_resp", {}).get("status_msg", "unknown error")
+        raise RuntimeError(f"MiniMax API error: {error_msg}")
+
+    audio_hex = data.get("data", {}).get("audio", "")
+    if not audio_hex:
+        raise RuntimeError("MiniMax returned empty audio")
+
+    return bytes.fromhex(audio_hex)
+
+
+# ── 统一入口 ────────────────────────────────────────────────
+
+
+async def synthesize(text: str, output_path: str, lang: str = "zh") -> bool:
+    """统一 TTS 入口：MiniMax > OpenAI > edge-tts。"""
+    # 1. 尝试 MiniMax
+    if os.getenv("MINIMAX_API_KEY"):
+        ok = await synthesize_minimax(text, output_path, lang)
+        if ok:
+            return True
+        logger.warning("MiniMax TTS failed, trying next...")
+
+    # 2. 尝试 OpenAI
+    if os.getenv("OPENAI_API_KEY"):
+        ok = await synthesize_openai(text, output_path, lang)
+        if ok:
+            return True
+        logger.warning("OpenAI TTS failed, trying next...")
+
+    # 3. fallback: edge-tts
+    return await synthesize_edge_tts(text, output_path, lang)
+
+
 async def synthesize_openai(text: str, output_path: str, lang: str = "zh") -> bool:
-    """使用 OpenAI TTS 生成音频。长文本自动分片拼接。"""
+    """使用 OpenAI TTS 生成音频。"""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        logger.warning("OPENAI_API_KEY not set, falling back to edge-tts")
-        return await synthesize_edge_tts(text, output_path, lang)
+        return False
 
     clean_text = _clean_for_tts(text, lang)
     model = os.getenv("OPENAI_TTS_MODEL", "tts-1")
@@ -85,7 +213,6 @@ async def synthesize_openai(text: str, output_path: str, lang: str = "zh") -> bo
             with open(output_path, "wb") as f:
                 f.write(content)
         else:
-            # 多片：分别生成，ffmpeg 拼接
             tmp_files = []
             for i, chunk in enumerate(chunks):
                 tmp_path = os.path.join(
@@ -100,7 +227,6 @@ async def synthesize_openai(text: str, output_path: str, lang: str = "zh") -> bo
                 tmp_files.append(tmp_path)
 
             await _concat_audio(tmp_files, output_path)
-
             for f in tmp_files:
                 if os.path.exists(f):
                     os.unlink(f)
@@ -109,8 +235,8 @@ async def synthesize_openai(text: str, output_path: str, lang: str = "zh") -> bo
         return True
 
     except Exception as e:
-        logger.error(f"OpenAI TTS error: {e}, falling back to edge-tts")
-        return await synthesize_edge_tts(text, output_path, lang)
+        logger.error(f"OpenAI TTS error: {e}")
+        return False
 
 
 async def synthesize_edge_tts(text: str, output_path: str, lang: str = "zh") -> bool:

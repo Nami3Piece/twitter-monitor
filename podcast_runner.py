@@ -157,7 +157,7 @@ async def _create_podcast_impl(
     lang: "zh" 只生成中文, "en" 只生成英文, "both" 生成中英文
     """
     from ai.podcast_generator import generate_script
-    from services.tts_service import synthesize_openai, normalize_audio
+    from services.tts_service import synthesize, normalize_audio
     from services.video_generator import generate_podcast_video
 
     if not _p:
@@ -200,7 +200,7 @@ async def _create_podcast_impl(
     if lang in ("zh", "both"):
         _p(20, "生成中文语音...")
         audio_zh_path = os.path.join(AUDIO_DIR, f"podcast_{date}_zh.mp3")
-        zh_ok = await synthesize_openai(script_zh, audio_zh_path, lang="zh")
+        zh_ok = await synthesize(script_zh, audio_zh_path, lang="zh")
         audio_zh = f"podcast_{date}_zh.mp3" if zh_ok else None
         if zh_ok:
             _p(40, "音频标准化...")
@@ -218,7 +218,7 @@ async def _create_podcast_impl(
     if lang in ("en", "both"):
         _p(60 if lang == "both" else 20, "生成英文语音...")
         audio_en_path = os.path.join(AUDIO_DIR, f"podcast_{date}_en.mp3")
-        en_ok = await synthesize_openai(script_en, audio_en_path, lang="en")
+        en_ok = await synthesize(script_en, audio_en_path, lang="en")
         audio_en = f"podcast_{date}_en.mp3" if en_ok else None
         if en_ok:
             _p(80 if lang == "both" else 50, "音频标准化...")
