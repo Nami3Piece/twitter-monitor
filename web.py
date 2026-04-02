@@ -7888,7 +7888,8 @@ function renderTopics() {
   toolbar.style.display = 'flex';
   saveBtn.style.display = 'inline-flex';
   document.getElementById('topicCount').textContent = currentTopics.length + ' 个话题';
-  document.getElementById('genBtn').disabled = false;
+  const genBtn = document.getElementById('genBtn');
+  if (genBtn) genBtn.disabled = false;
 
   area.innerHTML = currentTopics.map(t => `
     <div class="topic-card" data-topic-id="${t.id}">
@@ -8010,11 +8011,6 @@ async function generateBriefing() {
 }
 
 async function loadBriefing() {
-  // 先试草稿
-  if (loadDraft()) {
-    toast('草稿已恢复');
-    return;
-  }
   const area = document.getElementById('topicsArea');
   try {
     const res = await fetch('/api/podcast/briefing?date=' + dateInput.value);
@@ -8207,8 +8203,12 @@ async function loadHistory() {
   } catch (e) {}
 }
 
-// 页面加载时检查：如果当天播客已 ready，直接显示结果
-(async function checkReady() {
+// 页面加载：恢复草稿 + 检查已有播客
+(async function initPage() {
+  // 1. 先恢复草稿（话题卡片 + 观点）
+  loadDraft();
+
+  // 2. 检查当天播客是否已生成
   try {
     const res = await fetch('/api/podcast/' + dateInput.value);
     if (!res.ok) return;
