@@ -7519,6 +7519,23 @@ async def get_podcast(date: str):
     return JSONResponse(data)
 
 
+@app.get("/api/podcast/available-tweets")
+async def available_tweets(hours: int = 48):
+    """获取可用于添加话题的近期推文。"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        rows = await (await db.execute(
+            """SELECT tweet_id, project, username, text, like_count, retweet_count
+               FROM tweets
+               WHERE created_at_iso >= datetime('now', ?)
+                 AND created_at_iso IS NOT NULL
+               ORDER BY (COALESCE(like_count,0) + COALESCE(retweet_count,0)*2) DESC
+               LIMIT 50""",
+            (f"-{hours} hours",),
+        )).fetchall()
+    return JSONResponse([dict(r) for r in rows])
+
+
 @app.get("/podcast", response_class=HTMLResponse)
 async def podcast_page(request: Request):
     """播客工作台页面。"""
@@ -7546,14 +7563,20 @@ header a { color: #a5b4fc; text-decoration: none; margin-left: auto; font-size: 
 .btn-primary:hover { background: #4338ca; }
 .btn-secondary { background: #1e1e3a; color: #a5b4fc; border: 1px solid #333; }
 .btn-success { background: #16a34a; color: #fff; }
+.btn-danger { background: #7f1d1d; color: #fca5a5; }
+.btn-danger:hover { background: #991b1b; }
+.btn-warning { background: #854d0e; color: #fde68a; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.topic-card { background: #0f0f1a; border: 1px solid #2a2a4a; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-.topic-card h3 { color: #e2e8f0; font-size: 0.95rem; margin-bottom: 8px; }
+.btn-sm { padding: 5px 12px; font-size: 0.78rem; }
+.topic-card { background: #0f0f1a; border: 1px solid #2a2a4a; border-radius: 8px; padding: 16px; margin-bottom: 12px; position: relative; }
+.topic-card.excluded { opacity: 0.4; }
+.topic-card h3 { color: #e2e8f0; font-size: 0.95rem; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
 .topic-card .meta { font-size: 0.8rem; color: #666; margin-bottom: 8px; }
 .topic-card .summary { font-size: 0.85rem; color: #ccc; line-height: 1.6; margin-bottom: 8px; }
 .topic-card .debate { font-size: 0.8rem; color: #f59e0b; padding: 8px; background: #1a1a0a; border-radius: 6px; margin-bottom: 10px; }
 .topic-card textarea { width: 100%; min-height: 60px; background: #0a0a12; border: 1px solid #333; border-radius: 6px; padding: 10px; color: #e0e0e0; font-size: 0.85rem; resize: vertical; font-family: inherit; }
 .topic-card textarea::placeholder { color: #555; }
+.topic-actions { display: flex; gap: 6px; margin-bottom: 10px; }
 .output-box { background: #0a0a12; border: 1px solid #2a2a4a; border-radius: 8px; padding: 16px; font-size: 0.85rem; line-height: 1.7; white-space: pre-wrap; max-height: 400px; overflow-y: auto; color: #ccc; }
 .avatar-zone { border: 2px dashed #333; border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 16px; }
 .avatar-zone:hover { border-color: #4f46e5; background: #1e1e3a; }
@@ -7568,6 +7591,16 @@ select { background: #0f0f1a; border: 1px solid #2a2a4a; border-radius: 8px; pad
 .toast { position: fixed; bottom: 24px; right: 24px; background: #1e1e3a; border: 1px solid #22c55e; border-radius: 10px; padding: 12px 20px; font-size: 0.85rem; color: #22c55e; z-index: 999; }
 .loading { color: #888; font-size: 0.85rem; }
 audio, video { width: 100%; margin-top: 10px; border-radius: 8px; }
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 100; display: flex; align-items: center; justify-content: center; }
+.modal { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 12px; padding: 24px; width: 90%; max-width: 700px; max-height: 80vh; overflow-y: auto; }
+.modal h3 { color: #a5b4fc; margin-bottom: 16px; }
+.tweet-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid #2a2a4a; border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s; }
+.tweet-item:hover { border-color: #4f46e5; background: #0f0f1a; }
+.tweet-item.selected { border-color: #22c55e; background: #0a1a0a; }
+.tweet-item .project-tag { font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; background: #4f46e5; color: #fff; white-space: nowrap; }
+.tweet-item .text { font-size: 0.82rem; color: #ccc; line-height: 1.5; flex: 1; }
+.tweet-item .stats { font-size: 0.7rem; color: #666; white-space: nowrap; }
+.draft-saved { color: #22c55e; font-size: 0.8rem; margin-left: 8px; }
 </style>
 </head>
 <body>
@@ -7584,8 +7617,14 @@ audio, video { width: 100%; margin-top: 10px; border-radius: 8px; }
       <input type="date" id="podcastDate" style="background:#0f0f1a;border:1px solid #2a2a4a;border-radius:8px;padding:8px 12px;color:#e0e0e0">
       <button class="btn btn-primary" onclick="generateBriefing()" id="briefingBtn">生成素材简报</button>
       <button class="btn btn-secondary" onclick="loadBriefing()" id="loadBtn">加载已有简报</button>
+      <button class="btn btn-warning" onclick="saveDraft()" id="saveDraftBtn" style="display:none">保存草稿</button>
+      <span id="draftStatus"></span>
     </div>
     <div id="topicsArea"></div>
+    <div id="topicToolbar" style="display:none;margin-top:12px" class="row">
+      <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ 添加话题</button>
+      <span style="font-size:0.8rem;color:#666" id="topicCount"></span>
+    </div>
   </div>
 
   <!-- 头像上传 -->
@@ -7629,15 +7668,32 @@ audio, video { width: 100%; margin-top: 10px; border-radius: 8px; }
 
 </div>
 
+<!-- 添加话题弹窗 -->
+<div id="addModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeAddModal()">
+  <div class="modal">
+    <h3>从推文中添加话题</h3>
+    <div style="margin-bottom:12px">
+      <input type="text" id="tweetSearch" placeholder="搜索推文..." style="width:100%;background:#0f0f1a;border:1px solid #2a2a4a;border-radius:8px;padding:10px;color:#e0e0e0;font-size:0.85rem" oninput="filterTweets()">
+    </div>
+    <div id="tweetList" style="max-height:50vh;overflow-y:auto"></div>
+    <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="closeAddModal()">取消</button>
+      <button class="btn btn-primary" onclick="addSelectedTweets()">添加选中的推文</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast" style="display:none"></div>
 
 <script>
 let currentTopics = [];
+let availableTweets = [];
+let selectedTweetIds = new Set();
 const dateInput = document.getElementById('podcastDate');
+const DRAFT_KEY = 'podcast_draft';
 
-// 默认今天日期
 const today = new Date();
-today.setHours(today.getHours() + 8); // 北京时间
+today.setHours(today.getHours() + 8);
 dateInput.value = today.toISOString().slice(0, 10);
 
 function toast(msg) {
@@ -7647,7 +7703,203 @@ function toast(msg) {
   setTimeout(() => el.style.display = 'none', 3000);
 }
 
-// Step 1: 生成素材简报
+// ── 草稿功能 ──
+function saveDraft() {
+  const opinions = {};
+  currentTopics.forEach(t => {
+    const el = document.getElementById('opinion_' + t.id);
+    if (el) opinions[t.id] = el.value;
+  });
+  const draft = {
+    date: dateInput.value,
+    topics: currentTopics,
+    opinions,
+    savedAt: new Date().toISOString()
+  };
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  document.getElementById('draftStatus').innerHTML = '<span class="draft-saved">草稿已保存 ' + new Date().toLocaleTimeString() + '</span>';
+  toast('草稿已保存');
+}
+
+function loadDraft() {
+  const raw = localStorage.getItem(DRAFT_KEY);
+  if (!raw) return false;
+  try {
+    const draft = JSON.parse(raw);
+    if (draft.date !== dateInput.value) return false;
+    currentTopics = draft.topics || [];
+    renderTopics();
+    // 恢复观点
+    setTimeout(() => {
+      Object.entries(draft.opinions || {}).forEach(([id, val]) => {
+        const el = document.getElementById('opinion_' + id);
+        if (el) el.value = val;
+      });
+    }, 50);
+    document.getElementById('draftStatus').innerHTML = '<span class="draft-saved">草稿已恢复 (' + new Date(draft.savedAt).toLocaleTimeString() + ')</span>';
+    return true;
+  } catch(e) { return false; }
+}
+
+function clearDraft() {
+  localStorage.removeItem(DRAFT_KEY);
+  document.getElementById('draftStatus').innerHTML = '';
+}
+
+// 自动保存草稿（每30秒）
+setInterval(() => {
+  if (currentTopics.length > 0) {
+    saveDraft();
+    document.getElementById('draftStatus').innerHTML = '<span class="draft-saved">自动保存</span>';
+  }
+}, 30000);
+
+// ── 话题管理 ──
+function removeTopic(id) {
+  currentTopics = currentTopics.filter(t => t.id !== id);
+  reindexTopics();
+  renderTopics();
+  toast('话题已移除');
+}
+
+function toggleTopic(id) {
+  const card = document.querySelector('[data-topic-id="' + id + '"]');
+  if (!card) return;
+  card.classList.toggle('excluded');
+}
+
+function reindexTopics() {
+  currentTopics.forEach((t, i) => { t.id = i + 1; });
+}
+
+function moveTopicUp(id) {
+  const idx = currentTopics.findIndex(t => t.id === id);
+  if (idx <= 0) return;
+  [currentTopics[idx - 1], currentTopics[idx]] = [currentTopics[idx], currentTopics[idx - 1]];
+  reindexTopics();
+  renderTopics();
+}
+
+function moveTopicDown(id) {
+  const idx = currentTopics.findIndex(t => t.id === id);
+  if (idx < 0 || idx >= currentTopics.length - 1) return;
+  [currentTopics[idx], currentTopics[idx + 1]] = [currentTopics[idx + 1], currentTopics[idx]];
+  reindexTopics();
+  renderTopics();
+}
+
+function renderTopics() {
+  const area = document.getElementById('topicsArea');
+  const toolbar = document.getElementById('topicToolbar');
+  const saveBtn = document.getElementById('saveDraftBtn');
+  if (!currentTopics.length) {
+    area.innerHTML = '<p style="color:#555">暂无话题</p>';
+    toolbar.style.display = 'none';
+    saveBtn.style.display = 'none';
+    return;
+  }
+  toolbar.style.display = 'flex';
+  saveBtn.style.display = 'inline-flex';
+  document.getElementById('topicCount').textContent = currentTopics.length + ' 个话题';
+  document.getElementById('genBtn').disabled = false;
+
+  area.innerHTML = currentTopics.map(t => `
+    <div class="topic-card" data-topic-id="${t.id}">
+      <div class="topic-actions">
+        <button class="btn btn-sm btn-secondary" onclick="moveTopicUp(${t.id})" title="上移">↑</button>
+        <button class="btn btn-sm btn-secondary" onclick="moveTopicDown(${t.id})" title="下移">↓</button>
+        <button class="btn btn-sm btn-danger" onclick="removeTopic(${t.id})" title="删除">✕ 移除</button>
+      </div>
+      <h3>${t.id}. ${t.title} <span style="color:#4f46e5;font-size:0.75rem">${t.project}</span></h3>
+      <div class="summary">${t.summary}</div>
+      <div class="meta">背景: ${t.context}</div>
+      <div class="debate">💡 ${t.debate}</div>
+      <textarea id="opinion_${t.id}" placeholder="写下你对这个话题的看法（可选，留空则 AI 做简短评论）..."></textarea>
+    </div>
+  `).join('');
+}
+
+// ── 添加话题弹窗 ──
+async function openAddModal() {
+  document.getElementById('addModal').style.display = 'flex';
+  selectedTweetIds.clear();
+  document.getElementById('tweetSearch').value = '';
+
+  if (availableTweets.length === 0) {
+    document.getElementById('tweetList').innerHTML = '<p class="loading">加载推文中...</p>';
+    try {
+      const res = await fetch('/api/podcast/available-tweets?hours=48');
+      availableTweets = await res.json();
+    } catch(e) {
+      document.getElementById('tweetList').innerHTML = '<p style="color:#ef4444">加载失败</p>';
+      return;
+    }
+  }
+  renderTweetList(availableTweets);
+}
+
+function closeAddModal() {
+  document.getElementById('addModal').style.display = 'none';
+}
+
+function filterTweets() {
+  const q = document.getElementById('tweetSearch').value.toLowerCase();
+  const filtered = q ? availableTweets.filter(t =>
+    (t.text || '').toLowerCase().includes(q) ||
+    (t.project || '').toLowerCase().includes(q) ||
+    (t.username || '').toLowerCase().includes(q)
+  ) : availableTweets;
+  renderTweetList(filtered);
+}
+
+function renderTweetList(tweets) {
+  document.getElementById('tweetList').innerHTML = tweets.map(t => `
+    <div class="tweet-item ${selectedTweetIds.has(t.tweet_id) ? 'selected' : ''}"
+         onclick="toggleTweetSelect('${t.tweet_id}', this)">
+      <span class="project-tag">${t.project}</span>
+      <span class="text">@${t.username}: ${(t.text || '').substring(0, 120)}${(t.text || '').length > 120 ? '...' : ''}</span>
+      <span class="stats">♥${t.like_count || 0} ↺${t.retweet_count || 0}</span>
+    </div>
+  `).join('') || '<p style="color:#555">无匹配推文</p>';
+}
+
+function toggleTweetSelect(tweetId, el) {
+  if (selectedTweetIds.has(tweetId)) {
+    selectedTweetIds.delete(tweetId);
+    el.classList.remove('selected');
+  } else {
+    selectedTweetIds.add(tweetId);
+    el.classList.add('selected');
+  }
+}
+
+function addSelectedTweets() {
+  if (selectedTweetIds.size === 0) { toast('请先选择推文'); return; }
+  const nextId = currentTopics.length > 0 ? Math.max(...currentTopics.map(t => t.id)) + 1 : 1;
+
+  let addedCount = 0;
+  selectedTweetIds.forEach(tid => {
+    const tweet = availableTweets.find(t => t.tweet_id === tid);
+    if (!tweet) return;
+    currentTopics.push({
+      id: nextId + addedCount,
+      title: (tweet.text || '').substring(0, 15) + '...',
+      project: tweet.project,
+      summary: '@' + tweet.username + ': ' + (tweet.text || '').substring(0, 150),
+      context: tweet.project + ' 社区讨论',
+      debate: '你对此有什么看法？',
+      sources: ['@' + tweet.username + ': ' + (tweet.text || '').substring(0, 80)]
+    });
+    addedCount++;
+  });
+
+  reindexTopics();
+  renderTopics();
+  closeAddModal();
+  toast('已添加 ' + addedCount + ' 个话题');
+}
+
+// ── Step 1 ──
 async function generateBriefing() {
   const btn = document.getElementById('briefingBtn');
   const area = document.getElementById('topicsArea');
@@ -7661,7 +7913,7 @@ async function generateBriefing() {
     const data = await res.json();
     currentTopics = data.topics || [];
     renderTopics();
-    document.getElementById('genBtn').disabled = false;
+    clearDraft();
     toast('素材简报生成完成');
   } catch (e) {
     area.innerHTML = '<p style="color:#ef4444">' + e.message + '</p>';
@@ -7670,8 +7922,12 @@ async function generateBriefing() {
   btn.textContent = '生成素材简报';
 }
 
-// 加载已有简报
 async function loadBriefing() {
+  // 先试草稿
+  if (loadDraft()) {
+    toast('草稿已恢复');
+    return;
+  }
   const area = document.getElementById('topicsArea');
   try {
     const res = await fetch('/api/podcast/briefing?date=' + dateInput.value);
@@ -7679,31 +7935,13 @@ async function loadBriefing() {
     const data = await res.json();
     currentTopics = data.topics || [];
     renderTopics();
-    document.getElementById('genBtn').disabled = false;
     toast('简报加载成功');
   } catch (e) {
     area.innerHTML = '<p style="color:#ef4444">' + e.message + '</p>';
   }
 }
 
-function renderTopics() {
-  const area = document.getElementById('topicsArea');
-  if (!currentTopics.length) {
-    area.innerHTML = '<p style="color:#555">暂无话题</p>';
-    return;
-  }
-  area.innerHTML = currentTopics.map(t => `
-    <div class="topic-card">
-      <h3>${t.id}. ${t.title} <span style="color:#4f46e5;font-size:0.75rem">${t.project}</span></h3>
-      <div class="summary">${t.summary}</div>
-      <div class="meta">背景: ${t.context}</div>
-      <div class="debate">💡 ${t.debate}</div>
-      <textarea id="opinion_${t.id}" placeholder="写下你对这个话题的看法（可选，留空则 AI 做简短评论）..."></textarea>
-    </div>
-  `).join('');
-}
-
-// 头像上传
+// ── 头像上传 ──
 async function uploadAvatar(input) {
   if (!input.files.length) return;
   const file = input.files[0];
@@ -7713,7 +7951,6 @@ async function uploadAvatar(input) {
   try {
     const res = await fetch('/api/podcast/avatar', { method: 'POST', body: fd });
     if (!res.ok) throw new Error(await res.text());
-
     const preview = document.getElementById('avatarPreview');
     const url = URL.createObjectURL(file);
     preview.innerHTML = '';
@@ -7724,12 +7961,10 @@ async function uploadAvatar(input) {
     preview.replaceWith(img);
     img.id = 'avatarPreview';
     toast('头像上传成功');
-  } catch (e) {
-    toast('上传失败: ' + e.message);
-  }
+  } catch (e) { toast('上传失败: ' + e.message); }
 }
 
-// Step 2: 生成播客
+// ── Step 2: 生成播客 ──
 async function generatePodcast() {
   const btn = document.getElementById('genBtn');
   const result = document.getElementById('podcastResult');
@@ -7737,11 +7972,19 @@ async function generatePodcast() {
   btn.textContent = '生成中（约 1-2 分钟）...';
   result.innerHTML = '<p class="loading">正在生成脚本 → TTS 音频 → 视频...</p>';
 
+  // 只包含未排除的话题
+  const activeTopics = currentTopics.filter((t, i) => {
+    const card = document.querySelector('[data-topic-id="' + t.id + '"]');
+    return card && !card.classList.contains('excluded');
+  });
+
   const opinions = {};
-  currentTopics.forEach(t => {
+  activeTopics.forEach(t => {
     const el = document.getElementById('opinion_' + t.id);
     if (el && el.value.trim()) opinions[t.id] = el.value.trim();
   });
+
+  saveDraft(); // 生成前自动保存
 
   try {
     const res = await fetch('/api/podcast/generate', {
@@ -7797,7 +8040,7 @@ function showTab(el, lang) {
   document.getElementById('tab_en').classList.toggle('hidden', lang !== 'en');
 }
 
-// Step 3: 生成博客
+// ── Step 3: 博客 ──
 async function generateBlog() {
   const btn = document.getElementById('blogBtn');
   const result = document.getElementById('blogResult');
@@ -7813,12 +8056,12 @@ async function generateBlog() {
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
 
-    result.innerHTML = `
-      <div class="tabs"><span class="tab active" onclick="showBlogTab(this,'zh')">中文</span><span class="tab" onclick="showBlogTab(this,'en')">English</span></div>
-      <div id="blog_zh"><div class="output-box">${data.blog_zh || ''}</div>
-        <button class="btn btn-secondary" style="margin-top:8px" onclick="copyBlog('zh')">复制中文博客</button></div>
-      <div id="blog_en" class="hidden"><div class="output-box">${data.blog_en || ''}</div>
-        <button class="btn btn-secondary" style="margin-top:8px" onclick="copyBlog('en')">复制英文博客</button></div>`;
+    result.innerHTML =
+      '<div class="tabs"><span class="tab active" onclick="showBlogTab(this,\\'zh\\')">中文</span><span class="tab" onclick="showBlogTab(this,\\'en\\')">English</span></div>' +
+      '<div id="blog_zh"><div class="output-box">' + (data.blog_zh || '') + '</div>' +
+      '<button class="btn btn-secondary" style="margin-top:8px" onclick="copyBlog(\\'zh\\')">复制中文博客</button></div>' +
+      '<div id="blog_en" class="hidden"><div class="output-box">' + (data.blog_en || '') + '</div>' +
+      '<button class="btn btn-secondary" style="margin-top:8px" onclick="copyBlog(\\'en\\')">复制英文博客</button></div>';
     toast('博客生成完成');
   } catch (e) {
     result.innerHTML = '<p style="color:#ef4444">' + e.message + '</p>';
@@ -7839,7 +8082,7 @@ function copyBlog(lang) {
   if (box) { navigator.clipboard.writeText(box.textContent); toast('已复制'); }
 }
 
-// 加载历史
+// ── 历史 ──
 async function loadHistory() {
   try {
     const res = await fetch('/api/podcast/list');
@@ -7850,8 +8093,8 @@ async function loadHistory() {
       <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1e1e3a">
         <span style="color:#a5b4fc;font-size:0.9rem;min-width:100px">${p.date}</span>
         <span style="font-size:0.8rem;color:#888">${p.status}</span>
-        ${p.video_zh ? '<a href="/audio/' + p.video_zh + '" class="btn btn-success" style="font-size:0.75rem;padding:4px 10px" download>下载视频</a>' : ''}
-        ${p.audio_zh ? '<a href="/audio/' + p.audio_zh + '" class="btn btn-secondary" style="font-size:0.75rem;padding:4px 10px" download>下载音频</a>' : ''}
+        ${p.video_zh ? '<a href="/audio/' + p.video_zh + '" class="btn btn-success btn-sm" download>下载视频</a>' : ''}
+        ${p.audio_zh ? '<a href="/audio/' + p.audio_zh + '" class="btn btn-secondary btn-sm" download>下载音频</a>' : ''}
       </div>`).join('');
   } catch (e) {}
 }
