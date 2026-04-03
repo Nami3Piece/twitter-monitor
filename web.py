@@ -242,8 +242,8 @@ async def _fetch_tweets(project: Optional[str] = None, voted_only: bool = False,
     # Add vote information for each tweet
     for row in all_rows:
         tweet_id = row.get("tweet_id", "")
-        if tweet_id and current_user:
-            vote_count, user_voted = await get_tweet_votes(tweet_id, current_user)
+        if tweet_id:
+            vote_count, user_voted = await get_tweet_votes(tweet_id, current_user or "")
             row["vote_count"] = vote_count
             row["user_voted"] = user_voted
         else:
@@ -358,8 +358,8 @@ async def _fetch_top_events(current_user: Optional[str] = None) -> List[Dict]:
         # Add vote information for each tweet
         for row in top:
             tweet_id = row.get("tweet_id", "")
-            if tweet_id and current_user:
-                vote_count, user_voted = await get_tweet_votes(tweet_id, current_user)
+            if tweet_id:
+                vote_count, user_voted = await get_tweet_votes(tweet_id, current_user or "")
                 row["vote_count"] = vote_count
                 row["user_voted"] = user_voted
             else:
