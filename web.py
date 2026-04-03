@@ -1590,8 +1590,8 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
 }})();
 </script>"""
 
-    # Search box
-    search_html = '<div class="search-wrap"><input id="search-box" type="text" placeholder="搜索Keyword、账号、Tweet…" oninput="filterTable()"></div>'
+    # Search box removed
+    search_html = ''
 
     # All-projects tweet table
     all_section = (
