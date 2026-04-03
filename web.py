@@ -530,7 +530,7 @@ def _build_top_events_html(events: List[Dict]) -> str:
   </div>
   <div class="event-footer">
     {vote_btn}
-    <span style="color:#64748b;font-size:.75rem;display:inline-flex;gap:.5rem">
+    <span style="color:#888880;font-size:.75rem;display:inline-flex;gap:.5rem">
       <span>❤️ {likes}</span><span>🔁 {retweets}</span><span>💬 {replies}</span>
     </span>
     <a class="event-link" href="{url}" target="_blank">View Tweet ↗</a>
@@ -544,7 +544,7 @@ def _build_top_events_html(events: List[Dict]) -> str:
 def _render_digest_html(text: str, add_anchors: bool = False) -> str:
     """Convert plain-text digest to styled HTML. Handles markdown links [text](url)."""
     if not text:
-        return '<p style="color:#64748b;font-size:.9rem">暂无今日要闻，将于北京时间每日 08:00 自动生成。</p>'
+        return '<p style="color:#888880;font-size:.9rem">暂无今日要闻，将于北京时间每日 08:00 自动生成。</p>'
     import re
 
     def _with_md_links(s: str) -> str:
@@ -651,7 +651,7 @@ def _build_homepage_section(digest: dict, top_events: List[Dict], user_tier: str
     listen_btn = (
         '<button id="cj-listen-btn" class="cj-listen-btn" onclick="cjListen()">🎙️ Audio Brief</button>'
         if has_insight_audio else
-        '<span style="color:#64748b;font-size:.75rem">音频生成中...</span>'
+        '<span style="color:#888880;font-size:.75rem">音频生成中...</span>'
     )
     # 下载按钮：basic=当天, pro=近7天, admin=全部 → 生成 MP4
     _can_dl = user_tier in ("basic", "pro", "admin")
@@ -958,7 +958,7 @@ function _vidError(el, lang, errMsg) {
   {media_block}
   <div class="proj-card-footer">
     {vote_btn}
-    <span style="color:#64748b;font-size:.75rem;display:inline-flex;gap:.6rem;margin-left:.3rem">
+    <span style="color:#888880;font-size:.75rem;display:inline-flex;gap:.6rem;margin-left:.3rem">
       <span>❤️ {likes}</span><span>🔁 {retweets}</span><span>💬 {replies}</span>{f'<span>👁 {views}</span>' if views else ''}
     </span>
     <a class="top10-link" href="{url}" target="_blank">查看原文 ↗</a>
@@ -966,7 +966,7 @@ function _vidError(el, lang, errMsg) {
   </div>
 </div>""")
 
-    proj_grid_html = '\n'.join(proj_cards) if proj_cards else '<p style="color:#64748b;padding:2rem;text-align:center">暂无推文数据</p>'
+    proj_grid_html = '\n'.join(proj_cards) if proj_cards else '<p style="color:#888880;padding:2rem;text-align:center">暂无推文数据</p>'
 
     top10_block = f"""
 <div class="top10-section">
@@ -1009,7 +1009,7 @@ def _official_banner_html(pinned_row: dict, latest_row: dict, color: str,
             ep = []
             if views: ep.append(f"👁 {_fmt(views)}")
             if likes: ep.append(f"❤️ {_fmt(likes)}")
-            eng = f'<div style="font-size:.72rem;color:#64748b;margin-top:.3rem">{" · ".join(ep)}</div>'
+            eng = f'<div style="font-size:.72rem;color:#888880;margin-top:.3rem">{" · ".join(ep)}</div>'
         img_block = (
             f'<div style="margin-top:.5rem;aspect-ratio:16/9;overflow:hidden;border-radius:6px">'
             f'<img src="{_esc(media_url)}" loading="lazy" '
@@ -1025,12 +1025,12 @@ def _official_banner_html(pinned_row: dict, latest_row: dict, color: str,
             f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem">'
             f'<a href="https://twitter.com/{uname}" target="_blank" '
             f'style="color:{color};font-weight:700;font-size:.85rem;text-decoration:none">@{uname}</a>'
-            f'<span style="color:#475569;font-size:.72rem">{tweet_time}</span>'
+            f'<span style="color:#888880;font-size:.72rem">{tweet_time}</span>'
             f'</div>'
             f'<div style="color:#cbd5e1;font-size:.84rem;line-height:1.5">{display_text}</div>'
             f'{img_block}{eng}'
             f'<a href="{tweet_url}" target="_blank" '
-            f'style="font-size:.74rem;color:#64748b;text-decoration:none;'
+            f'style="font-size:.74rem;color:#888880;text-decoration:none;'
             f'margin-top:.4rem;display:inline-block">View Tweet ↗</a>'
             f'</div>'
         )
@@ -1047,7 +1047,7 @@ def _official_banner_html(pinned_row: dict, latest_row: dict, color: str,
         f'<a href="https://x.com/{_esc(username)}" target="_blank" '
         f'style="color:{color};font-weight:700;font-size:.9rem;text-decoration:none">'
         f'@{_esc(username)}</a>'
-        f'<span style="color:#334155;font-size:.75rem">·</span>'
+        f'<span style="color:rgba(255,255,255,0.25);font-size:.75rem">·</span>'
         f'<a href="https://x.com/{_esc(username)}" target="_blank" '
         f'style="color:#60a5fa;font-size:.72rem;text-decoration:none">X主页 ↗</a>'
         f'<span style="font-size:.68rem;font-weight:700;color:{color};background:{color}1a;'
@@ -1259,7 +1259,7 @@ def _build_keyword_stats_table(keyword_stats: List[Dict]) -> str:
 <div style="background:var(--card);border-radius:0;border-left:3px solid {c};box-shadow:none;overflow:hidden">
   <div style="background:{c}11;padding:.6rem .8rem;border-bottom:2px solid {c}">
     <div style="font-weight:700;color:{c};font-size:.9rem">{project}</div>
-    <div style="font-size:.75rem;color:#64748b;margin-top:.2rem">{len(stats)}  keywords · {sum(s["count"] for s in stats)}  tweets</div>
+    <div style="font-size:.75rem;color:#888880;margin-top:.2rem">{len(stats)}  keywords · {sum(s["count"] for s in stats)}  tweets</div>
   </div>
   <div style="max-height:300px;overflow-y:auto">
     {''.join(kw_rows)}
@@ -1285,10 +1285,10 @@ def _build_room_section(keyword_stats: List[Dict], nickname: str = "monitor") ->
 
     return f"""
 <div id="sec-room" class="section">
-  <div style="background:linear-gradient(135deg,#faf5ff,#f0fdf4);border:2px solid #8b5cf6;border-radius:16px;padding:2rem;margin-bottom:2rem;text-align:center;box-shadow:0 4px 12px rgba(139,92,246,.2)">
+  <div style="background:rgba(139,92,246,0.08);border:2px solid #8b5cf6;border-radius:16px;padding:2rem;margin-bottom:2rem;text-align:center;box-shadow:0 4px 12px rgba(139,92,246,.2)">
     <div style="font-size:2rem;margin-bottom:.8rem">✨🔮✨</div>
     <h2 style="color:#8b5cf6;font-size:1.5rem;margin-bottom:.8rem;font-weight:700">Contribution Hub</h2>
-    <p style="color:#1e293b;font-size:1.05rem;line-height:1.6;max-width:800px;margin:0 auto">
+    <p style="color:#F5F5F0;font-size:1.05rem;line-height:1.6;max-width:800px;margin:0 auto">
       <strong>Want to expand our keyword coverage?</strong><br>
       Share links or suggest keywords to help us discover trending content!
     </p>
@@ -1298,12 +1298,12 @@ def _build_room_section(keyword_stats: List[Dict], nickname: str = "monitor") ->
     <h3 style="color:#8b5cf6;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem">
       🔗 Share Content
     </h3>
-    <p style="color:#64748b;font-size:.85rem;margin-bottom:1rem">
+    <p style="color:#888880;font-size:.85rem;margin-bottom:1rem">
       Supports X links, Truth Social, news links, or keywords
     </p>
     <div style="display:flex;gap:.5rem;margin-bottom:1rem">
       <input type="text" id="room-url-input" placeholder="Paste link or enter keywords..."
-             style="flex:1;padding:.8rem 1rem;border:1px solid #e2e8f0;border-radius:8px;font-size:.9rem">
+             style="flex:1;padding:.8rem 1rem;border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:.9rem;background:#1e293b;color:#f1f5f9">
       <button onclick="analyzeContent()" id="room-analyze-btn"
               style="padding:.8rem 1.5rem;background:#8b5cf6;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;white-space:nowrap">
         🔍 AI Analyze
@@ -1311,9 +1311,9 @@ def _build_room_section(keyword_stats: List[Dict], nickname: str = "monitor") ->
     </div>
     <div style="text-align:center;color:#94a3b8;font-size:.8rem;margin:.5rem 0">or</div>
     <div style="background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.15);border-radius:0;padding:1rem">
-      <h4 style="color:#64748b;font-size:.9rem;margin-bottom:.8rem">💚 Manual Add Keywords</h4>
+      <h4 style="color:#888880;font-size:.9rem;margin-bottom:.8rem">💚 Manual Add Keywords</h4>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.8rem">
-        <select id="manual-project" style="padding:.6rem;border:1px solid #e2e8f0;border-radius:6px;font-size:.85rem">
+        <select id="manual-project" style="padding:.6rem;border:1px solid rgba(255,255,255,0.08);border-radius:6px;font-size:.85rem;background:#1e293b;color:#f1f5f9">
           <option value="">Select project...</option>
           <option value="ARKREEN">ARKREEN - Energy DePIN</option>
           <option value="GREENBTC">GREENBTC - Green Bitcoin</option>
@@ -1321,7 +1321,7 @@ def _build_room_section(keyword_stats: List[Dict], nickname: str = "monitor") ->
           <option value="AI_RENAISSANCE">AI_RENAISSANCE - AI Tools</option>
         </select>
         <input type="text" id="manual-keyword" placeholder="输入Keyword..."
-               style="padding:.6rem;border:1px solid #e2e8f0;border-radius:6px;font-size:.85rem">
+               style="padding:.6rem;border:1px solid rgba(255,255,255,0.08);border-radius:6px;font-size:.85rem;background:#1e293b;color:#f1f5f9">
       </div>
       <button onclick="addManualKeyword()" id="manual-add-btn"
               style="width:100%;padding:.6rem;background:#22c55e;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:.85rem">
@@ -1370,7 +1370,7 @@ async function analyzeContent() {{
     }}
 
     // Display suggestions
-    let html = '<div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:1rem;margin-top:1rem">';
+    let html = '<div style="background:rgba(139,92,246,0.08);border:1px solid rgba(168,85,247,0.3);border-radius:8px;padding:1rem;margin-top:1rem">';
     html += '<h4 style="color:#8b5cf6;margin-bottom:1rem">💡 AI 推荐的Keyword</h4>';
 
     data.suggestions.forEach((s, i) => {{
@@ -1380,7 +1380,7 @@ async function analyzeContent() {{
             <span style="font-weight:600;color:#7c3aed">${{s.keyword}}</span>
             <span style="font-size:.8rem;color:#888880;background:rgba(255,255,255,0.06);padding:.2rem .6rem;border-radius:4px">${{s.project}}</span>
           </div>
-          <p style="font-size:.85rem;color:#64748b;margin-bottom:.6rem">${{s.reason}}</p>
+          <p style="font-size:.85rem;color:#888880;margin-bottom:.6rem">${{s.reason}}</p>
           <button onclick="addSuggestedKeyword('${{s.project}}', '${{s.keyword}}', ${{i}})"
                   class="suggest-add-btn-${{i}}"
                   style="padding:.4rem 1rem;background:#22c55e;color:#fff;border:none;border-radius:6px;font-size:.85rem;font-weight:600;cursor:pointer">
@@ -1439,7 +1439,7 @@ async function addManualKeyword() {{
         <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a1a2e;padding:2rem;border-radius:0;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;max-width:500px;text-align:center">
           <div style="font-size:3rem;margin-bottom:1rem">🎉✨</div>
           <h3 style="color:#8b5cf6;font-size:1.3rem;margin-bottom:1rem">Thank You for Your Contribution!</h3>
-          <p style="color:#1e293b;line-height:1.8;margin-bottom:1.5rem">
+          <p style="color:#F5F5F0;line-height:1.8;margin-bottom:1.5rem">
             Thank you for sharing and contributing the keyword <strong style="color:#8b5cf6">"${{keyword}}"</strong> to help us discover new content!
             <br><br>
             Please come back in <strong>8 hours</strong> to see news related to this keyword.
@@ -1761,7 +1761,7 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
         _contract_btn = (
             '<button onclick="alert(\'Contract generation is a Pro feature. Upgrade to Pro to access.\')"'
             ' style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #475569;'
-            'background:transparent;color:#475569;font-size:.82rem;font-weight:600;cursor:pointer;'
+            'background:transparent;color:#888880;font-size:.82rem;font-weight:600;cursor:pointer;'
             'white-space:nowrap">🔒 Contract</button>'
         )
 
@@ -1779,7 +1779,7 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
             'border-radius:10px;padding:.5rem;min-width:200px;z-index:200;'
             'box-shadow:0 10px 30px rgba(0,0,0,.5)">'
             '<div style="padding:.4rem .6rem .6rem;border-bottom:1px solid #334155;margin-bottom:.4rem">'
-            '<div style="font-size:.7rem;color:#64748b">Signed in as</div>'
+            '<div style="font-size:.7rem;color:#888880">Signed in as</div>'
             f'<div style="font-size:.82rem;color:#f1f5f9;font-weight:600">{nickname}</div></div>'
             '<a href="/settings" style="display:block;width:100%;text-align:left;padding:.5rem .6rem;'
             'background:none;border:none;color:#cbd5e1;font-size:.82rem;text-decoration:none;border-radius:6px"'
@@ -1816,7 +1816,7 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
             replies = row.get("reply_count") or 0
             likes = row.get("like_count") or 0
             hot = " 🔥" if replies >= 3 else ""
-            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
+            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#888880;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
         items_html = "".join(_ticker_text(r) for r in (_ti or []))
         # Duplicate for seamless loop
         ticker_bar = f'''<div class="ticker-wrap">
@@ -1887,24 +1887,24 @@ tr.hidden{{display:none}}
 .like-count{{color:#e11d48;font-size:.82rem;white-space:nowrap}}
 .tweet-card-cell{{min-width:280px;max-width:360px}}
 .tweet-card{{border:1px solid var(--border);border-radius:12px;padding:.75rem 1rem;background:#141414;font-size:.84rem;line-height:1.5}}
-.tweet-card.hot{{border-color:#f97316;box-shadow:0 0 0 2px #fff7ed}}
-.tweet-card.my-voted{{border-color:#3b82f6;box-shadow:0 0 0 2px #dbeafe;background:#f0f9ff}}
-.hot-badge{{display:inline-block;padding:.1rem .4rem;background:rgba(194,65,12,0.15);color:#c2410c;border-radius:4px;font-size:.68rem;font-weight:700;margin-left:.4rem;vertical-align:middle}}
-.my-vote-badge{{display:inline-block;padding:.1rem .4rem;background:#dbeafe;color:#1e40af;border-radius:4px;font-size:.68rem;font-weight:700;margin-left:.4rem;vertical-align:middle}}
+.tweet-card.hot{{border-color:#f97316;box-shadow:0 0 0 2px rgba(194,65,12,0.15)}}
+.tweet-card.my-voted{{border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,0.15);background:rgba(59,130,246,0.08)}}
+.hot-badge{{display:inline-block;padding:.1rem .4rem;background:rgba(194,65,12,0.15);color:#f97316;border-radius:4px;font-size:.68rem;font-weight:700;margin-left:.4rem;vertical-align:middle}}
+.my-vote-badge{{display:inline-block;padding:.1rem .4rem;background:rgba(59,130,246,0.15);color:#3b82f6;border-radius:4px;font-size:.68rem;font-weight:700;margin-left:.4rem;vertical-align:middle}}
 .tc-header{{display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}}
 .tc-avatar{{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:.95rem;flex-shrink:0}}
 .tc-meta{{display:flex;flex-direction:column;gap:.05rem}}
 .tc-name{{font-weight:600;text-decoration:none;font-size:.85rem}}
 .tc-name:hover{{text-decoration:underline}}
 .tc-time{{font-size:.72rem;color:var(--muted)}}
-.tc-acc-stats{{font-size:.72rem;color:#64748b;margin-left:.5rem}}
-.tc-eng{{font-size:.76rem;color:#64748b;padding:.35rem 0 .15rem;border-top:1px solid #1e293b;margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.5rem}}
+.tc-acc-stats{{font-size:.72rem;color:#888880;margin-left:.5rem}}
+.tc-eng{{font-size:.76rem;color:#888880;padding:.35rem 0 .15rem;border-top:1px solid #1e293b;margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.5rem}}
 .tc-body{{color:var(--text);word-break:break-word;margin-bottom:.6rem}}
 .tc-footer{{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:.45rem;margin-top:.2rem;gap:.8rem;flex-wrap:wrap}}
 .tc-stat{{font-size:.75rem;color:var(--muted);white-space:nowrap}}
 .followers-cell{{color:#7c3aed;font-size:.82rem;white-space:nowrap}}
 .tc-quoted{{background:rgba(255,255,255,0.03);border-left:3px solid #94a3b8;border-radius:0 6px 6px 0;padding:.4rem .6rem;margin-bottom:.5rem;font-size:.8rem;color:var(--muted)}}
-.tc-quoted-user{{font-weight:600;color:#475569;margin-right:.4rem}}
+.tc-quoted-user{{font-weight:600;color:#888880;margin-right:.4rem}}
 .tc-quoted-text{{word-break:break-word}}
 .tc-media{{margin:.5rem 0;border-radius:8px;overflow:hidden}}
 .tc-media img{{width:100%;max-height:200px;object-fit:cover;display:block;border-radius:8px}}
@@ -1914,10 +1914,10 @@ tr.hidden{{display:none}}
 a.go{{display:inline-block;padding:.2rem .5rem;border-radius:4px;background:rgba(255,255,255,0.06);color:#888880;text-decoration:none;font-size:.8rem}}
 a.go:hover{{background:#0f172a;color:#fff}}
 .empty{{padding:2rem;text-align:center;color:var(--muted)}}
-.vote-bar-wrap{{width:80px;height:6px;background:#e2e8f0;border-radius:3px;display:inline-block;vertical-align:middle;margin-right:.4rem}}
+.vote-bar-wrap{{width:80px;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;display:inline-block;vertical-align:middle;margin-right:.4rem}}
 .vote-bar{{height:6px;background:#3b82f6;border-radius:3px;transition:.3s}}
 .vc{{font-size:.78rem;color:var(--muted)}}
-.badge-followed{{display:inline-block;padding:.15rem .5rem;border-radius:4px;background:#dcfce7;color:#166534;font-size:.75rem;font-weight:600}}
+.badge-followed{{display:inline-block;padding:.15rem .5rem;border-radius:4px;background:rgba(34,197,94,0.15);color:#22c55e;font-size:.75rem;font-weight:600}}
 .badge-tracking{{display:inline-block;padding:.15rem .5rem;border-radius:4px;background:rgba(255,255,255,0.06);color:var(--muted);font-size:.75rem}}
 .toast{{position:fixed;bottom:1.5rem;right:1.5rem;padding:.7rem 1.2rem;border-radius:8px;font-size:.85rem;font-weight:500;color:#fff;background:#0f172a;box-shadow:0 4px 12px rgba(0,0,0,.2);opacity:0;transform:translateY(8px);transition:.3s;pointer-events:none;z-index:999}}
 .toast.show{{opacity:1;transform:translateY(0)}}
@@ -1931,7 +1931,7 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .proj-card-name{{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em}}
 .proj-card-user{{font-size:.78rem;color:#94a3b8;text-decoration:none}}
 .proj-card-user:hover{{color:#e2e8f0}}
-.proj-card-time{{font-size:.72rem;color:#64748b;margin-left:auto}}
+.proj-card-time{{font-size:.72rem;color:#888880;margin-left:auto}}
 .proj-card-text{{font-size:.85rem;color:#cbd5e1;line-height:1.5;flex:1}}
 .proj-card-img{{width:100%;max-height:200px;object-fit:cover;border-radius:8px}}
 .proj-card-footer{{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:.2rem}}
@@ -1939,17 +1939,17 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 /* ── 今日核心判断 ─────────────────────────────────────────────────────── */
 .core-judgment{{background:linear-gradient(135deg,#0d1b2a 0%,#1a1f35 100%);border:1px solid #2d3a5a;border-radius:14px;padding:1.5rem 1.8rem;margin:1.2rem 0 1rem}}
 .cj-header{{display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem}}
-.cj-badge{{background:linear-gradient(135deg,#6d28d9,#4338ca);color:#e9d5ff;font-size:.75rem;font-weight:700;padding:.25rem .7rem;border-radius:20px;white-space:nowrap}}
-.cj-date{{font-size:.8rem;color:#64748b}}
+.cj-badge{{background:linear-gradient(135deg,#6d28d9,#4338ca);color:#c4b5fd;font-size:.75rem;font-weight:700;padding:.25rem .7rem;border-radius:20px;white-space:nowrap}}
+.cj-date{{font-size:.8rem;color:#888880}}
 .cj-title{{font-size:1.25rem;font-weight:700;color:#e2e8f0;margin-bottom:1rem}}
 .cj-body{{display:flex;flex-direction:column;gap:.5rem;margin-bottom:1rem}}
 .digest-proj-header{{font-size:.9rem;font-weight:700;color:#94a3b8;margin-top:.8rem;margin-bottom:.2rem;padding-left:.2rem}}
 .digest-bullet{{display:flex;align-items:flex-start;gap:.6rem;font-size:.9rem;color:#cbd5e1;line-height:1.6}}
 .digest-dot{{width:5px;height:5px;border-radius:50%;background:#6d28d9;flex-shrink:0;margin-top:.55rem}}
-.digest-link{{font-size:.78rem;color:#6d28d9;text-decoration:none;margin-left:1.1rem}}
+.digest-link{{font-size:.78rem;color:#8b5cf6;text-decoration:none;margin-left:1.1rem}}
 .digest-link:hover{{text-decoration:underline}}
 .digest-misc{{font-size:.85rem;color:#94a3b8;padding-left:.2rem}}
-.cj-disclaimer{{font-size:.75rem;color:#64748b;padding-top:.8rem;border-top:1px solid #1e2d45}}
+.cj-disclaimer{{font-size:.75rem;color:#888880;padding-top:.8rem;border-top:1px solid #1e2d45}}
 .news-block{{margin-top:.4rem;border-color:#1e2d45}}
 .news-badge{{background:linear-gradient(135deg,#0f4c75,#1b6ca8)}}
 .insight-body{{font-size:.92rem;line-height:1.85;color:#cbd5e1}}
@@ -1982,7 +1982,7 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .dpb-lang{{display:flex;gap:.3rem}}
 .dpb-lang button{{background:#1e1b4b;border:1px solid #4338ca;color:#a5b4fc;font-size:.7rem;border-radius:4px;padding:.15rem .45rem;cursor:pointer;transition:all .15s}}
 .dpb-lang button.active{{background:#4338ca;color:#e0e7ff}}
-.dpb-close{{background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;padding:.2rem;margin-left:.5rem}}
+.dpb-close{{background:none;border:none;color:#888880;cursor:pointer;font-size:1rem;padding:.2rem;margin-left:.5rem}}
 .dpb-close:hover{{color:#94a3b8}}
 
 /* ── Listen button in 今日要闻 ───────────────────────────────────────────── */
@@ -2004,7 +2004,7 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .top10-header{{display:flex;align-items:center;gap:.7rem;margin-bottom:1rem;padding:0 .2rem}}
 .top10-icon{{font-size:1.3rem}}
 .top10-title{{font-size:1.1rem;font-weight:700;color:#e2e8f0}}
-.top10-sub{{font-size:.78rem;color:#64748b}}
+.top10-sub{{font-size:.78rem;color:#888880}}
 .top10-list{{display:flex;flex-direction:column;gap:.7rem}}
 .top10-card{{display:flex;gap:1rem;background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:1rem 1.2rem;transition:border-color .15s}}
 .top10-card:hover{{border-color:#334155}}
@@ -2014,12 +2014,12 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .top10-proj{{font-size:.75rem;font-weight:700;background:rgba(99,102,241,.15);padding:.15rem .5rem;border-radius:4px}}
 .top10-user{{font-size:.82rem;font-weight:600;text-decoration:none}}
 .top10-user:hover{{text-decoration:underline}}
-.top10-time{{font-size:.75rem;color:#64748b;margin-left:auto}}
+.top10-time{{font-size:.75rem;color:#888880;margin-left:auto}}
 .top10-text{{font-size:.88rem;color:#cbd5e1;line-height:1.55;margin-bottom:.5rem}}
 .top10-img{{max-width:100%;max-height:180px;border-radius:6px;margin-bottom:.5rem;object-fit:cover}}
 .top10-footer{{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}}
-.top10-stat{{font-size:.78rem;color:#64748b}}
-.top10-link{{font-size:.78rem;color:#6d28d9;text-decoration:none;margin-left:auto}}
+.top10-stat{{font-size:.78rem;color:#888880}}
+.top10-link{{font-size:.78rem;color:#8b5cf6;text-decoration:none;margin-left:auto}}
 .top10-link:hover{{text-decoration:underline}}
 }}
 .section-title{{color:#f1f5f9;font-size:1rem;font-weight:700;margin-bottom:.8rem;display:flex;align-items:center;gap:.5rem}}
@@ -2034,7 +2034,7 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .event-tweet{{background:#0f172a;border-radius:8px;padding:.6rem .8rem}}
 .event-user{{font-weight:600;font-size:.82rem;text-decoration:none}}
 .event-user:hover{{text-decoration:underline}}
-.event-time{{font-size:.7rem;color:#64748b;margin-left:.4rem}}
+.event-time{{font-size:.7rem;color:#888880;margin-left:.4rem}}
 .event-text{{color:#cbd5e1;font-size:.82rem;line-height:1.5;margin-top:.3rem;word-break:break-word}}
 .event-media{{margin-top:.5rem;border-radius:6px;overflow:hidden;max-width:100%}}
 .event-media img{{width:100%;height:auto;display:block;max-height:300px;object-fit:cover}}
@@ -2054,23 +2054,23 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 #ai-retweet-modal.show,#ai-reply-modal.show{{display:flex}}
 .ai-modal-content{{background:#1a1a2e;border-radius:0;border:0.5px solid rgba(255,255,255,0.08);padding:2rem;max-width:600px;width:90%;max-height:80vh;overflow-y:auto}}
 .ai-modal-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem}}
-.ai-modal-title{{font-size:1.3rem;font-weight:700;color:#0f172a}}
-.ai-modal-close{{background:transparent;border:none;font-size:1.5rem;cursor:pointer;color:#64748b;padding:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:6px}}
+.ai-modal-title{{font-size:1.3rem;font-weight:700;color:#F5F5F0}}
+.ai-modal-close{{background:transparent;border:none;font-size:1.5rem;cursor:pointer;color:#888880;padding:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:6px}}
 .ai-modal-close:hover{{background:rgba(255,255,255,0.1)}}
-.ai-style-tabs{{display:flex;gap:.5rem;margin-bottom:1.5rem;border-bottom:2px solid #e2e8f0;padding-bottom:.5rem}}
-.ai-style-tab{{padding:.5rem 1rem;border:none;background:transparent;color:#64748b;font-size:.9rem;font-weight:600;cursor:pointer;border-radius:6px 6px 0 0;transition:.2s}}
+.ai-style-tabs{{display:flex;gap:.5rem;margin-bottom:1.5rem;border-bottom:2px solid rgba(255,255,255,0.08);padding-bottom:.5rem}}
+.ai-style-tab{{padding:.5rem 1rem;border:none;background:transparent;color:#888880;font-size:.9rem;font-weight:600;cursor:pointer;border-radius:6px 6px 0 0;transition:.2s}}
 .ai-style-tab:hover{{background:rgba(255,255,255,0.05);color:#F5F5F0}}
 .ai-style-tab.active{{background:#8b5cf6;color:#fff}}
 .ai-draft-box{{background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.08);border-radius:0;padding:1rem;margin-bottom:1rem;min-height:100px;display:none}}
 .ai-draft-box.active{{display:block}}
-.ai-draft-text{{color:#1e293b;line-height:1.6;font-size:.95rem;white-space:pre-wrap;word-break:break-word}}
-.ai-draft-loading{{text-align:center;color:#64748b;padding:2rem}}
-.ai-draft-error{{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:1rem;border-radius:8px;font-size:.9rem}}
+.ai-draft-text{{color:#F5F5F0;line-height:1.6;font-size:.95rem;white-space:pre-wrap;word-break:break-word}}
+.ai-draft-loading{{text-align:center;color:#888880;padding:2rem}}
+.ai-draft-error{{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#f87171;padding:1rem;border-radius:8px;font-size:.9rem}}
 .ai-modal-actions{{display:flex;gap:.5rem;justify-content:flex-end}}
 .ai-copy-btn{{background:#22c55e;color:#fff;border:none;padding:.6rem 1.2rem;border-radius:6px;font-size:.9rem;font-weight:600;cursor:pointer;transition:.2s}}
 .ai-copy-btn:hover{{background:#16a34a}}
 .ai-copy-btn:disabled{{opacity:.5;cursor:not-allowed}}
-.ai-char-count{{font-size:.75rem;color:#64748b;margin-top:.5rem;text-align:right}}
+.ai-char-count{{font-size:.75rem;color:#888880;margin-top:.5rem;text-align:right}}
 
 .keyword-stats-section{{padding:1rem 2rem;background:var(--card);border-bottom:1px solid var(--border)}}
 .keyword-stats-table{{margin-top:.8rem}}
@@ -2260,8 +2260,8 @@ async function copyAIDraft(modalType) {{
   <h1>🐱 Daily <span style="color:#D4FF00">X</span> Digest</h1>
   <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
     <div class="meta">Updated: {updated} &nbsp;|&nbsp; Showing last 24h tweets</div>
-    <div id="hdr-btc" style="display:flex;flex-direction:column;align-items:center;line-height:1.2;flex-shrink:0"><span id="hdr-btc-price" style="color:#f59e0b;font-size:.82rem;font-weight:700">—</span><span style="color:#64748b;font-size:.65rem">₿ BTC/USD</span></div>
-    <div id="hdr-akre" style="display:flex;flex-direction:column;align-items:center;line-height:1.2;flex-shrink:0"><span id="hdr-akre-price" style="color:#22d3ee;font-size:.82rem;font-weight:700">—</span><span style="color:#64748b;font-size:.65rem">🌱 AKRE/USD</span></div>
+    <div id="hdr-btc" style="display:flex;flex-direction:column;align-items:center;line-height:1.2;flex-shrink:0"><span id="hdr-btc-price" style="color:#f59e0b;font-size:.82rem;font-weight:700">—</span><span style="color:#888880;font-size:.65rem">₿ BTC/USD</span></div>
+    <div id="hdr-akre" style="display:flex;flex-direction:column;align-items:center;line-height:1.2;flex-shrink:0"><span id="hdr-akre-price" style="color:#22d3ee;font-size:.82rem;font-weight:700">—</span><span style="color:#888880;font-size:.65rem">🌱 AKRE/USD</span></div>
     <a href="#page-bottom" style="padding:.35rem .75rem;border-radius:0;border:0.5px solid rgba(255,255,255,0.15);background:transparent;color:#888880;font-size:.78rem;cursor:pointer;white-space:nowrap;flex-shrink:0;text-decoration:none;display:inline-block" title="Jump to bottom">↓ Bottom</a>
     <a href="/digest" style="padding:.4rem .9rem;border-radius:0;background:#D4FF00;color:#0A0A0A;font-size:.82rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;letter-spacing:.01em"><span style="font-size:1rem">🎙️</span> Daily Digest</a>
     <a href="https://seo.dailyxdigest.uk" target="_blank" style="padding:.4rem .9rem;border-radius:0;border:0.5px solid rgba(255,255,255,0.15);background:transparent;color:#888880;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block">🔍 SEO</a>
@@ -2276,7 +2276,7 @@ async function copyAIDraft(modalType) {{
 <!-- Announcement Modal -->
 <div id="announcement-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center">
   <div style="background:#1e293b;border-radius:16px;padding:2.5rem;max-width:560px;width:calc(100% - 2rem);box-shadow:0 25px 60px rgba(0,0,0,.6);position:relative">
-    <button onclick="closeAnnouncement()" style="position:absolute;top:1.2rem;right:1.2rem;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#64748b">✕</button>
+    <button onclick="closeAnnouncement()" style="position:absolute;top:1.2rem;right:1.2rem;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#888880">✕</button>
     <div style="text-align:center;margin-bottom:1.5rem">
       <div style="font-size:3rem;margin-bottom:.5rem">📰</div>
       <h2 style="font-size:1.5rem;color:#f1f5f9;margin-bottom:.5rem">新功能上线 / New Feature</h2>
@@ -2297,16 +2297,16 @@ async function copyAIDraft(modalType) {{
       </div>
     </div>
     <a href="/digest" style="display:block;width:100%;padding:.8rem;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;text-align:center;text-decoration:none">立即体验 / Try it now 🎙️</a>
-    <button onclick="closeAnnouncement()" style="width:100%;padding:.6rem;background:transparent;color:#64748b;border:none;border-radius:8px;font-size:.9rem;cursor:pointer;margin-top:.5rem">稍后再说 / Maybe later</button>
+    <button onclick="closeAnnouncement()" style="width:100%;padding:.6rem;background:transparent;color:#888880;border:none;border-radius:8px;font-size:.9rem;cursor:pointer;margin-top:.5rem">稍后再说 / Maybe later</button>
   </div>
 </div>
 
 <!-- Contract Modal -->
 <div id="contract-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center">
   <div style="background:#1e293b;border-radius:16px;padding:2rem;max-width:560px;width:calc(100% - 2rem);box-shadow:0 25px 60px rgba(0,0,0,.6);position:relative;max-height:90vh;overflow-y:auto">
-    <button onclick="closeContractModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#64748b">✕</button>
+    <button onclick="closeContractModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#888880">✕</button>
     <h2 style="color:#f1f5f9;font-size:1.3rem;margin-bottom:.3rem">📄 合同生成 / Contract Generator</h2>
-    <p style="color:#64748b;font-size:.82rem;margin-bottom:1.2rem">填写采购方信息，生成销售合同</p>
+    <p style="color:#888880;font-size:.82rem;margin-bottom:1.2rem">填写采购方信息，生成销售合同</p>
 
     <div style="display:grid;gap:.8rem">
       <div>
@@ -2344,12 +2344,12 @@ async function copyAIDraft(modalType) {{
         </select>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
           <div>
-            <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">运费/件 USD</label>
+            <label style="font-size:.75rem;color:#888880;display:block;margin-bottom:.2rem">运费/件 USD</label>
             <input id="ct-shipping" type="number" value="50" min="0"
               style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
           </div>
           <div>
-            <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">运输方式 / Method</label>
+            <label style="font-size:.75rem;color:#888880;display:block;margin-bottom:.2rem">运输方式 / Method</label>
             <input id="ct-shipping-method" type="text" value="DHL/FedEx"
               style="width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.9rem;outline:none">
           </div>
@@ -2385,40 +2385,40 @@ async function copyAIDraft(modalType) {{
         <div id="ct-terms-area" style="display:none;padding:.8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;margin-top:.4rem;display:none">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.6rem">
             <div>
-              <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">付款期限 / Payment Days</label>
+              <label style="font-size:.75rem;color:#888880;display:block;margin-bottom:.2rem">付款期限 / Payment Days</label>
               <div style="display:flex;align-items:center;gap:.4rem">
                 <input id="ct-payment-days" type="number" value="7" min="1"
                   style="flex:1;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.85rem;outline:none">
-                <span style="color:#64748b;font-size:.8rem;white-space:nowrap">工作日</span>
+                <span style="color:#888880;font-size:.8rem;white-space:nowrap">工作日</span>
               </div>
             </div>
             <div>
-              <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">发货时间 / Shipping Days</label>
+              <label style="font-size:.75rem;color:#888880;display:block;margin-bottom:.2rem">发货时间 / Shipping Days</label>
               <div style="display:flex;align-items:center;gap:.4rem">
                 <input id="ct-shipping-days" type="number" value="15" min="1"
                   style="flex:1;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.85rem;outline:none">
-                <span style="color:#64748b;font-size:.8rem;white-space:nowrap">工作日</span>
+                <span style="color:#888880;font-size:.8rem;white-space:nowrap">工作日</span>
               </div>
             </div>
             <div>
-              <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">质保期 / Warranty</label>
+              <label style="font-size:.75rem;color:#888880;display:block;margin-bottom:.2rem">质保期 / Warranty</label>
               <div style="display:flex;align-items:center;gap:.4rem">
                 <input id="ct-warranty-months" type="number" value="12" min="1"
                   style="flex:1;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.85rem;outline:none">
-                <span style="color:#64748b;font-size:.8rem;white-space:nowrap">个月</span>
+                <span style="color:#888880;font-size:.8rem;white-space:nowrap">个月</span>
               </div>
             </div>
             <div>
-              <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">违约金 / Penalty</label>
+              <label style="font-size:.75rem;color:#888880;display:block;margin-bottom:.2rem">违约金 / Penalty</label>
               <div style="display:flex;align-items:center;gap:.4rem">
                 <input id="ct-penalty-pct" type="number" value="10" min="0" max="100" step="0.1"
                   style="flex:1;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.85rem;outline:none">
-                <span style="color:#64748b;font-size:.8rem">%</span>
+                <span style="color:#888880;font-size:.8rem">%</span>
               </div>
             </div>
           </div>
           <div>
-            <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.2rem">争议解决条款 / Dispute Clause（留空使用默认）</label>
+            <label style="font-size:.75rem;color:#888880;display:block;margin-bottom:.2rem">争议解决条款 / Dispute Clause（留空使用默认）</label>
             <textarea id="ct-dispute-clause" placeholder="留空使用默认条款..."
               style="width:100%;padding:.5rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.82rem;outline:none;resize:vertical;min-height:60px"></textarea>
           </div>
@@ -2458,7 +2458,7 @@ async function copyAIDraft(modalType) {{
 <div id="nickname-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1001;align-items:center;justify-content:center">
   <div style="background:#1e293b;border-radius:16px;padding:2rem;max-width:360px;width:calc(100% - 2rem);box-shadow:0 20px 60px rgba(0,0,0,.5)">
     <h3 style="color:#f1f5f9;margin-bottom:.5rem">Edit Nickname</h3>
-    <p style="color:#64748b;font-size:.82rem;margin-bottom:1.2rem">This name will appear on your votes and contributions.</p>
+    <p style="color:#888880;font-size:.82rem;margin-bottom:1.2rem">This name will appear on your votes and contributions.</p>
     <input id="nickname-input" type="text" maxlength="40" placeholder="Enter nickname..."
       style="width:100%;padding:.75rem 1rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.95rem;margin-bottom:1rem;outline:none"/>
     <div style="display:flex;gap:.75rem">
@@ -2474,7 +2474,7 @@ async function copyAIDraft(modalType) {{
   <div style="background:#1a1a2e;border-radius:0;padding:2rem;border:0.5px solid rgba(255,255,255,0.08);max-width:520px;width:calc(100% - 2rem);box-shadow:0 20px 60px rgba(0,0,0,.3);position:relative;max-height:90vh;overflow-y:auto">
     <button onclick="closeDonate()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;font-size:1.3rem;cursor:pointer;color:#94a3b8">✕</button>
     <h2 style="font-size:1.2rem;font-weight:700;margin-bottom:.3rem">💛 Support Twitter Monitor</h2>
-    <p style="font-size:.83rem;color:#64748b;margin-bottom:.8rem">Your donation helps us keep tracking and curating the best Web3 content.</p>
+    <p style="font-size:.83rem;color:#888880;margin-bottom:.8rem">Your donation helps us keep tracking and curating the best Web3 content.</p>
 
     <!-- Live donation stats -->
     <div id="donate-stats" style="background:linear-gradient(135deg,#0f172a,#1e293b);border-radius:10px;padding:.8rem 1rem;margin-bottom:1.2rem;display:flex;gap:.8rem;flex-wrap:wrap;align-items:center">
@@ -2482,21 +2482,21 @@ async function copyAIDraft(modalType) {{
       <div class="dstat-item" id="dstat-btc" style="flex:1;min-width:100px;background:#1e293b;border-radius:8px;padding:.5rem .7rem;border:1px solid #334155">
         <div style="font-size:.68rem;color:#fbbf24;font-weight:700">₿ BTC</div>
         <div id="dstat-btc-val" style="font-size:1rem;font-weight:700;color:#fef3c7;font-family:monospace">—</div>
-        <div id="dstat-btc-txs" style="font-size:.68rem;color:#64748b">— txs</div>
+        <div id="dstat-btc-txs" style="font-size:.68rem;color:#888880">— txs</div>
       </div>
       <div class="dstat-item" id="dstat-usdt" style="flex:1;min-width:100px;background:#1e293b;border-radius:8px;padding:.5rem .7rem;border:1px solid #334155">
         <div style="font-size:.68rem;color:#22c55e;font-weight:700">💵 USDT</div>
         <div id="dstat-usdt-val" style="font-size:1rem;font-weight:700;color:#dcfce7;font-family:monospace">—</div>
-        <div id="dstat-usdt-txs" style="font-size:.68rem;color:#64748b">— txs</div>
+        <div id="dstat-usdt-txs" style="font-size:.68rem;color:#888880">— txs</div>
       </div>
       <div class="dstat-item" id="dstat-akre" style="flex:1;min-width:100px;background:#1e293b;border-radius:8px;padding:.5rem .7rem;border:1px solid #334155">
         <div style="font-size:.68rem;color:#60a5fa;font-weight:700">🌱 AKRE</div>
         <div id="dstat-akre-val" style="font-size:1rem;font-weight:700;color:#dbeafe;font-family:monospace">—</div>
-        <div id="dstat-akre-txs" style="font-size:.68rem;color:#64748b">— txs</div>
+        <div id="dstat-akre-txs" style="font-size:.68rem;color:#888880">— txs</div>
       </div>
       <div style="width:100%;text-align:right">
-        <span id="dstat-updated" style="font-size:.65rem;color:#475569">Loading...</span>
-        <button onclick="refreshDonateStats()" style="margin-left:.5rem;background:none;border:none;color:#64748b;cursor:pointer;font-size:.72rem">↻ Refresh</button>
+        <span id="dstat-updated" style="font-size:.65rem;color:#888880">Loading...</span>
+        <button onclick="refreshDonateStats()" style="margin-left:.5rem;background:none;border:none;color:#888880;cursor:pointer;font-size:.72rem">↻ Refresh</button>
       </div>
     </div>
 
@@ -2505,18 +2505,18 @@ async function copyAIDraft(modalType) {{
 <!-- Donate Modal -->
     <div style="display:flex;gap:.5rem;margin-bottom:1.5rem">
       <button onclick="switchDonateTab('btc')" id="dtab-btc" class="dtab active-dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #f59e0b;background:rgba(245,158,11,0.15);color:#f59e0b;font-weight:600;cursor:pointer;font-size:.83rem">₿ Bitcoin</button>
-      <button onclick="switchDonateTab('akre')" id="dtab-akre" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #e2e8f0;background:transparent;color:#888880;font-weight:600;cursor:pointer;font-size:.83rem">🌱 $AKRE</button>
-      <button onclick="switchDonateTab('agent')" id="dtab-agent" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #e2e8f0;background:transparent;color:#888880;font-weight:600;cursor:pointer;font-size:.83rem">🤖 AI Agent</button>
+      <button onclick="switchDonateTab('akre')" id="dtab-akre" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid rgba(255,255,255,0.08);background:transparent;color:#888880;font-weight:600;cursor:pointer;font-size:.83rem">🌱 $AKRE</button>
+      <button onclick="switchDonateTab('agent')" id="dtab-agent" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid rgba(255,255,255,0.08);background:transparent;color:#888880;font-weight:600;cursor:pointer;font-size:.83rem">🤖 AI Agent</button>
     </div>
 
     <!-- BTC panel -->
     <div id="dpanel-btc">
       <div style="text-align:center;margin-bottom:1rem">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=bitcoin:bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3" alt="BTC QR" style="border-radius:8px;border:4px solid #fef3c7">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=bitcoin:bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3" alt="BTC QR" style="border-radius:8px;border:4px solid rgba(245,158,11,0.3)">
       </div>
       <div style="background:rgba(245,158,11,0.1);border:0.5px solid rgba(245,158,11,0.3);border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem">
-        <div style="font-size:.72rem;color:#92400e;font-weight:600;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">Bitcoin Address (BTC, Native SegWit)</div>
-        <div style="font-family:monospace;font-size:.78rem;word-break:break-all;color:#1e293b;margin-bottom:.6rem">bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3</div>
+        <div style="font-size:.72rem;color:#f59e0b;font-weight:600;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">Bitcoin Address (BTC, Native SegWit)</div>
+        <div style="font-family:monospace;font-size:.78rem;word-break:break-all;color:#F5F5F0;margin-bottom:.6rem">bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3</div>
         <button onclick="copyAddr('bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3','btc-copy')" id="btc-copy" style="padding:.3rem .9rem;border-radius:6px;border:1.5px solid #f59e0b;background:transparent;color:#f59e0b;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy</button>
       </div>
     </div>
@@ -2524,16 +2524,16 @@ async function copyAIDraft(modalType) {{
     <!-- AKRE panel -->
     <div id="dpanel-akre" style="display:none">
       <div style="text-align:center;margin-bottom:1rem">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=ethereum:0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7" alt="EVM QR" style="border-radius:8px;border:4px solid #dcfce7">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=ethereum:0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7" alt="EVM QR" style="border-radius:8px;border:4px solid rgba(34,197,94,0.3)">
       </div>
-      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem">
-        <div style="font-size:.72rem;color:#166534;font-weight:600;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">$AKRE — EVM Address (Ethereum / Polygon)</div>
-        <div style="font-family:monospace;font-size:.78rem;word-break:break-all;color:#1e293b;margin-bottom:.6rem">0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7</div>
+      <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem">
+        <div style="font-size:.72rem;color:#22c55e;font-weight:600;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">$AKRE — EVM Address (Ethereum / Polygon)</div>
+        <div style="font-family:monospace;font-size:.78rem;word-break:break-all;color:#F5F5F0;margin-bottom:.6rem">0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7</div>
         <button onclick="copyAddr('0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7','akre-copy')" id="akre-copy" style="padding:.3rem .9rem;border-radius:6px;border:1.5px solid #22c55e;background:transparent;color:#22c55e;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy</button>
       </div>
       <div style="font-size:.78rem;color:#888880;background:rgba(255,255,255,0.03);border-radius:6px;padding:.6rem .8rem">
         💡 $AKRE contract on Polygon: <a href="https://polygonscan.com/token/0xE9c21De62C5C5d0cEAcCe2762bF655AfDcEB7ab3" target="_blank" style="color:#22c55e;font-family:monospace">0xE9c2...ab3</a>
-        &nbsp;|&nbsp; <a href="https://docs.arkreen.com/token/what-is-akre" target="_blank" style="color:#64748b">Docs ↗</a>
+        &nbsp;|&nbsp; <a href="https://docs.arkreen.com/token/what-is-akre" target="_blank" style="color:#888880">Docs ↗</a>
       </div>
     </div>
 
@@ -2545,16 +2545,16 @@ async function copyAIDraft(modalType) {{
         <div style="color:#94a3b8;margin-top:.4rem"># Response 402 — accepts 2 options:</div>
         <div style="color:#fbbf24;margin-top:.3rem">Option 1 · 🌱 AKRE (preferred)</div>
         <div style="padding-left:1rem;color:#a5f3fc">"network": "polygon",</div>
-        <div style="padding-left:1rem;color:#a5f3fc">"asset": "AKRE",  <span style="color:#64748b">// 0xE9c2...ab3</span></div>
+        <div style="padding-left:1rem;color:#a5f3fc">"asset": "AKRE",  <span style="color:#888880">// 0xE9c2...ab3</span></div>
         <div style="padding-left:1rem;color:#a5f3fc">"minAmount": "10 AKRE"</div>
         <div style="color:#fbbf24;margin-top:.3rem">Option 2 · 💵 USDT (fallback)</div>
         <div style="padding-left:1rem;color:#a5f3fc">"network": "polygon",</div>
-        <div style="padding-left:1rem;color:#a5f3fc">"asset": "USDT",  <span style="color:#64748b">// 0xc213...8F</span></div>
+        <div style="padding-left:1rem;color:#a5f3fc">"asset": "USDT",  <span style="color:#888880">// 0xc213...8F</span></div>
         <div style="padding-left:1rem;color:#a5f3fc">"minAmount": "$0.10 USDT"</div>
         <div style="padding-left:1rem;color:#a5f3fc">"payTo": "0xBa20...0A7"</div>
       </div>
-      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem;font-size:.8rem;color:#0369a1">
-        <strong>How it works:</strong> Your AI agent sends a request to <code style="background:#e0f2fe;padding:.1rem .3rem;border-radius:3px">/api/donate</code>, receives a 402 with payment options on Polygon, pays with AKRE or USDT automatically, then retries with the payment proof in <code style="background:#e0f2fe;padding:.1rem .3rem;border-radius:3px">X-Payment</code> header.
+      <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem;font-size:.8rem;color:#93c5fd">
+        <strong>How it works:</strong> Your AI agent sends a request to <code style="background:rgba(59,130,246,0.15);padding:.1rem .3rem;border-radius:3px">/api/donate</code>, receives a 402 with payment options on Polygon, pays with AKRE or USDT automatically, then retries with the payment proof in <code style="background:rgba(59,130,246,0.15);padding:.1rem .3rem;border-radius:3px">X-Payment</code> header.
       </div>
       <div style="display:flex;gap:.6rem">
         <button onclick="copyAddr('https://monitor.dailyxdigest.uk/api/donate','agent-copy')" id="agent-copy" style="flex:1;padding:.4rem;border-radius:6px;border:1.5px solid #3b82f6;background:transparent;color:#3b82f6;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy Endpoint</button>
@@ -2685,10 +2685,10 @@ async function copyAIDraft(modalType) {{
     <h2 style="font-size:1.1rem;font-weight:700;color:#fff;margin:0">⏰ 定时任务一览</h2>
     <button onclick="loadSchedules()" style="padding:.35rem .9rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:.8rem;cursor:pointer">↻ 刷新</button>
   </div>
-  <div id="schedules-loading" style="color:#64748b;padding:2rem;text-align:center">加载中...</div>
+  <div id="schedules-loading" style="color:#888880;padding:2rem;text-align:center">加载中...</div>
   <div id="schedules-table-wrap" style="overflow-x:auto;display:none"></div>
-  <div style="margin-top:1.2rem;padding:.8rem 1rem;background:#1e293b;border:1px solid #334155;border-radius:8px;font-size:.8rem;color:#64748b">
-    调度器：APScheduler (AsyncIOScheduler) &nbsp;·&nbsp; 部署：supervisord &nbsp;·&nbsp; <span id="schedules-server-time" style="color:#475569"></span>
+  <div style="margin-top:1.2rem;padding:.8rem 1rem;background:#1e293b;border:1px solid #334155;border-radius:8px;font-size:.8rem;color:#888880">
+    调度器：APScheduler (AsyncIOScheduler) &nbsp;·&nbsp; 部署：supervisord &nbsp;·&nbsp; <span id="schedules-server-time" style="color:#888880"></span>
   </div>
 </div>
 
@@ -2697,7 +2697,7 @@ async function copyAIDraft(modalType) {{
 <footer>
   <a href="#page-top" style="display:inline-flex;align-items:center;gap:.4rem;margin-bottom:.8rem;padding:.45rem 1.1rem;border-radius:20px;border:1.5px solid #334155;background:#1e293b;color:#94a3b8;font-size:.82rem;font-weight:600;cursor:pointer;transition:all .2s;text-decoration:none" onmouseover="this.style.borderColor='#3b82f6';this.style.color='#60a5fa'" onmouseout="this.style.borderColor='#334155';this.style.color='#94a3b8'">↑ Back to Top</a><br>
   Twitter Monitor &middot; {total}  tweets &middot; {len(data)}  projects &middot; Auto-fetch every 8 hours
-  <a href="/admin/login" style="color:#334155;text-decoration:none;font-size:.75rem;font-weight:500" title="Admin Hub">⚙️ Admin</a>
+  <a href="/admin/login" style="color:rgba(255,255,255,0.25);text-decoration:none;font-size:.75rem;font-weight:500" title="Admin Hub">⚙️ Admin</a>
 <span id="page-bottom"></span>
 </footer>
 
@@ -2769,12 +2769,12 @@ function switchDonateTab(tab) {{
     var btn = document.getElementById('dtab-' + t);
     if (t === tab) {{
       btn.style.borderColor = t === 'btc' ? '#f59e0b' : t === 'akre' ? '#22c55e' : '#3b82f6';
-      btn.style.background  = t === 'btc' ? '#fffbeb' : t === 'akre' ? '#f0fdf4' : '#eff6ff';
-      btn.style.color       = t === 'btc' ? '#92400e' : t === 'akre' ? '#166534' : '#1d4ed8';
+      btn.style.background  = t === 'btc' ? 'rgba(245,158,11,0.15)' : t === 'akre' ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)';
+      btn.style.color       = t === 'btc' ? '#f59e0b' : t === 'akre' ? '#22c55e' : '#3b82f6';
     }} else {{
-      btn.style.borderColor = '#e2e8f0';
-      btn.style.background = '#fff';
-      btn.style.color = '#64748b';
+      btn.style.borderColor = 'rgba(255,255,255,0.08)';
+      btn.style.background = 'transparent';
+      btn.style.color = '#888880';
     }}
   }});
 }}
@@ -3134,7 +3134,7 @@ function addProductRow() {{
       <textarea data-field="spec_text" placeholder="规格说明文字 / Spec text (>20字时自动生成规格章节)"
         style="width:100%;padding:.4rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:.8rem;outline:none;resize:vertical;min-height:60px"></textarea>
       <div style="margin-top:.4rem">
-        <label style="font-size:.75rem;color:#64748b">图片 / Images (≤3张, ≤2MB each)</label>
+        <label style="font-size:.75rem;color:#888880">图片 / Images (≤3张, ≤2MB each)</label>
         <input type="file" accept="image/*" multiple onchange="handleSpecImages(this)"
           style="display:block;margin-top:.3rem;font-size:.78rem;color:#94a3b8">
         <div class="spec-img-preview" style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem"></div>
@@ -4009,7 +4009,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 .topbar a:hover{{color:#fff}}
 .topbar .title{{color:#fff;font-weight:700;font-size:1.1rem;margin-left:.5rem}}
 .tabs{{display:flex;gap:0;background:#1e293b;border-bottom:1px solid #334155;padding:0 2rem}}
-.tab{{padding:.9rem 1.5rem;cursor:pointer;font-size:.9rem;font-weight:600;color:#64748b;border-bottom:3px solid transparent;transition:.2s;white-space:nowrap}}
+.tab{{padding:.9rem 1.5rem;cursor:pointer;font-size:.9rem;font-weight:600;color:#888880;border-bottom:3px solid transparent;transition:.2s;white-space:nowrap}}
 .tab:hover{{color:#94a3b8}}
 .tab.active{{color:#fff;border-bottom-color:#3b82f6}}
 .tab-content{{display:none;padding:2rem;max-width:1200px;margin:0 auto}}
@@ -4019,7 +4019,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 .stats-row{{display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}}
 .stat-card{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1rem 1.5rem;flex:1;min-width:140px}}
 .stat-card .val{{font-size:1.8rem;font-weight:700;color:#fff}}
-.stat-card .lbl{{font-size:.8rem;color:#64748b;margin-top:.2rem}}
+.stat-card .lbl{{font-size:.8rem;color:#888880;margin-top:.2rem}}
 .stat-card.red .val{{color:#f87171}}
 .stat-card.yellow .val{{color:#fbbf24}}
 .stat-card.green .val{{color:#34d399}}
@@ -4041,7 +4041,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 
 /* AI analysis */
 .ai-box{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1.5rem;white-space:pre-wrap;font-size:.88rem;line-height:1.7;color:#cbd5e1;min-height:80px}}
-.ai-box.loading{{color:#64748b;font-style:italic}}
+.ai-box.loading{{color:#888880;font-style:italic}}
 .section-card{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}}
 .section-card h3{{font-size:1rem;font-weight:700;color:#fff;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}}
 .top-list{{display:flex;flex-wrap:wrap;gap:.5rem}}
@@ -4061,17 +4061,17 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 
 /* Algorithm weekly */
 .weekly-card{{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1.5rem;margin-bottom:1rem}}
-.weekly-card .week-label{{font-size:.8rem;color:#64748b;margin-bottom:.8rem}}
+.weekly-card .week-label{{font-size:.8rem;color:#888880;margin-bottom:.8rem}}
 .weekly-content{{white-space:pre-wrap;font-size:.88rem;line-height:1.8;color:#cbd5e1}}
 .lang-toggle{{display:flex;gap:.5rem;margin-bottom:1rem}}
-.lang-btn{{padding:.3rem .8rem;border-radius:5px;border:1px solid #334155;background:transparent;color:#64748b;cursor:pointer;font-size:.8rem;font-weight:600}}
+.lang-btn{{padding:.3rem .8rem;border-radius:5px;border:1px solid #334155;background:transparent;color:#888880;cursor:pointer;font-size:.8rem;font-weight:600}}
 .lang-btn.active{{background:#3b82f6;color:#fff;border-color:#3b82f6}}
 
 /* Keywords tab */
 .project-section{{background:#1e293b;border-radius:10px;padding:1.5rem;margin-bottom:1rem;border:1px solid #334155}}
 .project-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;padding-bottom:.8rem;border-bottom:1px solid #334155}}
 .project-header h3{{font-size:1.1rem;font-weight:700}}
-.kw-count{{font-size:.8rem;color:#64748b;background:#0f172a;padding:.2rem .7rem;border-radius:20px}}
+.kw-count{{font-size:.8rem;color:#888880;background:#0f172a;padding:.2rem .7rem;border-radius:20px}}
 .kw-list{{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem}}
 .kw-item{{display:flex;align-items:center;gap:.3rem;background:#0f172a;border:1px solid #334155;border-radius:5px;padding:.3rem .6rem;font-size:.82rem;color:#94a3b8}}
 .kw-del-btn{{background:transparent;border:none;color:#f87171;cursor:pointer;font-size:.9rem;padding:0}}
@@ -4090,8 +4090,8 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 .suggestions-box.show{{display:block}}
 .suggestion-item{{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:.8rem;margin-bottom:.6rem}}
 .suggestion-keyword{{font-weight:700;color:#a78bfa}}
-.suggestion-project{{font-size:.75rem;color:#64748b;margin-left:.5rem}}
-.suggestion-reason{{font-size:.82rem;color:#64748b;margin:.4rem 0}}
+.suggestion-project{{font-size:.75rem;color:#888880;margin-left:.5rem}}
+.suggestion-reason{{font-size:.82rem;color:#888880;margin:.4rem 0}}
 .suggestion-actions{{display:flex;gap:.5rem}}
 .btn-add{{background:#059669;color:#fff;border:none;border-radius:5px;padding:.3rem .8rem;cursor:pointer;font-size:.8rem;font-weight:600}}
 .btn-skip{{background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:.3rem .8rem;cursor:pointer;font-size:.8rem}}
@@ -4108,9 +4108,9 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 <body>
 <div class="topbar">
   <a href="/">← Dashboard</a>
-  <span style="color:#334155">|</span>
+  <span style="color:rgba(255,255,255,0.25)">|</span>
   <span class="title">⚙️ Admin Hub</span>
-  <span style="margin-left:auto;color:#64748b;font-size:.8rem">Welcome, {_esc(admin_user)}</span>
+  <span style="margin-left:auto;color:#888880;font-size:.8rem">Welcome, {_esc(admin_user)}</span>
 </div>
 
 <div class="tabs">
@@ -4122,7 +4122,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 
 <!-- TAB 1: 删除分析 -->
 <div id="tab-deletion" class="tab-content active">
-  <div id="del-loading" style="color:#64748b;padding:2rem">加载中...</div>
+  <div id="del-loading" style="color:#888880;padding:2rem">加载中...</div>
   <div id="del-content" style="display:none">
     <div class="stats-row" id="del-stats"></div>
     <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem">
@@ -4166,11 +4166,11 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
     <div>
       <h2 style="font-size:1.2rem;color:#fff">📡 X 算法周报</h2>
-      <p style="color:#64748b;font-size:.85rem;margin-top:.3rem">监控 X 官方账号 & 头部创作者，自动汇总算法变化</p>
+      <p style="color:#888880;font-size:.85rem;margin-top:.3rem">监控 X 官方账号 & 头部创作者，自动汇总算法变化</p>
     </div>
     <button class="btn btn-green" onclick="refreshAlgoWeekly()" id="algo-refresh-btn">🔄 立即生成本周报告</button>
   </div>
-  <div id="algo-loading" style="color:#64748b;padding:2rem">加载中...</div>
+  <div id="algo-loading" style="color:#888880;padding:2rem">加载中...</div>
   <div id="algo-content"></div>
 </div>
 
@@ -4194,10 +4194,10 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
     <h2 style="font-size:1.1rem;font-weight:700;color:#fff;margin:0">⏰ 定时任务一览</h2>
     <button onclick="loadSchedules()" style="padding:.35rem .9rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:.8rem;cursor:pointer">↻ 刷新</button>
   </div>
-  <div id="schedules-loading" style="color:#64748b;padding:2rem;text-align:center">加载中...</div>
+  <div id="schedules-loading" style="color:#888880;padding:2rem;text-align:center">加载中...</div>
   <div id="schedules-table-wrap" style="overflow-x:auto;display:none"></div>
-  <div style="margin-top:1.2rem;padding:.8rem 1rem;background:#1e293b;border:1px solid #334155;border-radius:8px;font-size:.8rem;color:#64748b">
-    调度器：APScheduler (AsyncIOScheduler) &nbsp;·&nbsp; 部署：supervisord &nbsp;·&nbsp; <span id="schedules-server-time" style="color:#475569"></span>
+  <div style="margin-top:1.2rem;padding:.8rem 1rem;background:#1e293b;border:1px solid #334155;border-radius:8px;font-size:.8rem;color:#888880">
+    调度器：APScheduler (AsyncIOScheduler) &nbsp;·&nbsp; 部署：supervisord &nbsp;·&nbsp; <span id="schedules-server-time" style="color:#888880"></span>
   </div>
 </div>
 
@@ -4230,13 +4230,13 @@ function loadSchedules() {{
       var rows = data.jobs.map(function(j, i) {{
         var bg = i % 2 === 1 ? 'background:#0a0f1a;' : '';
         var dot = '<span style=\"display:inline-block;width:7px;height:7px;border-radius:50%;background:#4ade80;margin-right:5px;vertical-align:middle\"></span>';
-        var lr = j.last_run ? j.last_run.slice(0,16) : '<span style=\"color:#334155\">\u2014</span>';
+        var lr = j.last_run ? j.last_run.slice(0,16) : '<span style=\"color:rgba(255,255,255,0.25)\">\u2014</span>';
         return '<tr style=\"border-bottom:1px solid #1e293b;' + bg + '\">'
           + '<td style=\"padding:.7rem 1rem;color:#e2e8f0;font-weight:600;white-space:nowrap\">' + j.icon + ' ' + j.name + '</td>'
           + '<td style=\"padding:.7rem 1rem;font-family:monospace;color:#93c5fd;white-space:nowrap\">' + j.cron_display + '</td>'
           + '<td style=\"padding:.7rem 1rem;color:#86efac;white-space:nowrap\">' + j.beijing_time + '</td>'
           + '<td style=\"padding:.7rem 1rem;color:#94a3b8;font-size:.83rem\">' + j.description + '</td>'
-          + '<td style=\"padding:.7rem 1rem;color:#64748b;font-family:monospace;font-size:.8rem;white-space:nowrap\">' + lr + '</td>'
+          + '<td style=\"padding:.7rem 1rem;color:#888880;font-family:monospace;font-size:.8rem;white-space:nowrap\">' + lr + '</td>'
           + '<td style=\"padding:.7rem 1rem;color:#fbbf24;font-family:monospace;font-size:.8rem;white-space:nowrap\">' + (j.next_run||'\u2014') + '</td>'
           + '<td style=\"padding:.7rem 1rem;white-space:nowrap\">' + dot + '<span style=\"color:#4ade80;font-size:.8rem\">\u8fd0\u884c\u4e2d</span></td>'
           + '</tr>';
@@ -4300,22 +4300,22 @@ async function loadDeletionReport() {{
     // Top accounts
     document.getElementById('top-accounts').innerHTML = data.top_accounts.slice(0,12).map(a =>
       `<div class="top-chip">@${{a.username}}<span>${{a.cnt}}次</span></div>`
-    ).join('') || '<span style="color:#64748b;font-size:.85rem">暂无数据</span>';
+    ).join('') || '<span style="color:#888880;font-size:.85rem">暂无数据</span>';
 
     // Top keywords
     document.getElementById('top-keywords').innerHTML = data.top_keywords.slice(0,12).map(k =>
-      `<div class="top-chip">${{k.keyword}} <span style="color:#64748b;font-size:.7rem">[${{k.project}}]</span><span>${{k.cnt}}次</span></div>`
-    ).join('') || '<span style="color:#64748b;font-size:.85rem">暂无数据</span>';
+      `<div class="top-chip">${{k.keyword}} <span style="color:#888880;font-size:.7rem">[${{k.project}}]</span><span>${{k.cnt}}次</span></div>`
+    ).join('') || '<span style="color:#888880;font-size:.85rem">暂无数据</span>';
 
     // Table
     document.getElementById('del-tbody').innerHTML = data.recent.map(r => `
       <tr>
-        <td style="color:#64748b;white-space:nowrap;font-size:.78rem">${{r.deleted_at?.slice(0,16)||''}}</td>
+        <td style="color:#888880;white-space:nowrap;font-size:.78rem">${{r.deleted_at?.slice(0,16)||''}}</td>
         <td>${{projTag(r.project)}}</td>
         <td style="color:#94a3b8">@${{r.username||'-'}}</td>
         <td>${{reasonBadge(r.reason)}}</td>
         <td class="tweet-text" title="${{(r.text||'').replace(/"/g,'&quot;')}}">${{(r.text||'').slice(0,80)}}</td>
-        <td style="color:#64748b;font-size:.78rem">${{r.reason_text||''}}</td>
+        <td style="color:#888880;font-size:.78rem">${{r.reason_text||''}}</td>
       </tr>
     `).join('');
 
@@ -4368,7 +4368,7 @@ async function loadAlgoWeekly() {{
 function renderAlgoReports(reports) {{
   const el = document.getElementById('algo-content');
   if (!reports.length) {{
-    el.innerHTML = '<div style="color:#64748b;padding:2rem">暂无周报数据。点击「立即生成本周报告」开始。</div>';
+    el.innerHTML = '<div style="color:#888880;padding:2rem">暂无周报数据。点击「立即生成本周报告」开始。</div>';
     return;
   }}
   el.innerHTML = reports.map((rpt,i) => `
@@ -5018,7 +5018,7 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;
      background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:16px}
 .card{background:#1e293b;border-radius:16px;padding:40px;width:100%;max-width:420px;box-shadow:0 25px 50px rgba(0,0,0,.5)}
 h1{color:#f1f5f9;font-size:22px;font-weight:700;margin-bottom:6px}
-.sub{color:#64748b;font-size:14px;margin-bottom:32px}
+.sub{color:#888880;font-size:14px;margin-bottom:32px}
 .btn{width:100%;padding:14px;border-radius:10px;border:none;font-size:15px;font-weight:600;
      cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px;
      transition:opacity .2s}
@@ -5026,8 +5026,8 @@ h1{color:#f1f5f9;font-size:22px;font-weight:700;margin-bottom:6px}
 .btn-wallet{background:#3b82f6;color:#fff}
 .btn-email{background:#1e3a5f;color:#93c5fd;border:1px solid #2563eb}
 .btn-x{background:#000;color:#fff;border:1px solid #333}
-.btn-google{background:#fff;color:#333;border:1px solid #ddd}
-.divider{text-align:center;color:#334155;font-size:12px;margin:20px 0;position:relative}
+.btn-google{background:#1e293b;color:#f1f5f9;border:1px solid #334155}
+.divider{text-align:center;color:rgba(255,255,255,0.25);font-size:12px;margin:20px 0;position:relative}
 .divider::before,.divider::after{content:'';position:absolute;top:50%;width:42%;height:1px;background:#334155}
 .divider::before{left:0}.divider::after{right:0}
 .email-form{display:none;margin-top:4px}
@@ -5046,7 +5046,7 @@ input:focus{border-color:#3b82f6}
 .msg.ok{background:#14532d;color:#86efac;display:block}
 .msg.err{background:#7f1d1d;color:#fca5a5;display:block}
 .visitor-link{text-align:center;margin-top:24px}
-.visitor-link a{color:#475569;font-size:13px;text-decoration:none}
+.visitor-link a{color:#888880;font-size:13px;text-decoration:none}
 .visitor-link a:hover{color:#94a3b8}
 </style>
 </head>
@@ -5623,7 +5623,7 @@ tr:hover td{{background:#1e293b}}
 a{{color:#38bdf8;text-decoration:none}}
 </style></head><body>
 <h1>🛡️ User Filters</h1>
-<p style="color:#64748b">Total users with filters: {len(by_user)}</p>
+<p style="color:#888880">Total users with filters: {len(by_user)}</p>
 <table><thead><tr>
 <th>Nickname</th><th>Email / ID</th><th>Blocked Keywords</th><th>Blocked Accounts</th>
 </tr></thead><tbody>{rows_html}</tbody></table>
@@ -5722,7 +5722,7 @@ async def shared_list_page(list_id: str, request: Request):
         voter_names = ", ".join([v.get("nickname") or v.get("email", "")[:15] or v["voter"][:8] for v in voters[:5]])
         if len(voters) > 5:
             voter_names += f" +{len(voters)-5} more"
-        voter_badge = f'<span style="font-size:.75rem;color:#64748b">({voter_names})</span>' if voters else ""
+        voter_badge = f'<span style="font-size:.75rem;color:#888880">({voter_names})</span>' if voters else ""
 
         vote_btn_class = "voted" if user_voted else ""
         vote_btn_disabled = "disabled" if user_voted or not current_user_id else ""
@@ -5734,7 +5734,7 @@ async def shared_list_page(list_id: str, request: Request):
         url = t.get("url", "")
 
         rows_html += f"""<tr data-tweet="{tweet_id}">
-            <td style="color:#64748b;font-size:.85rem">{keyword}</td>
+            <td style="color:#888880;font-size:.85rem">{keyword}</td>
             <td><a href="{url}" target="_blank" style="color:#3b82f6;text-decoration:none">@{username}</a><br>
                 <span style="color:#cbd5e1;font-size:.9rem">{text}</span></td>
             <td>{vote_btn} {voter_badge}</td>
@@ -5742,7 +5742,7 @@ async def shared_list_page(list_id: str, request: Request):
         </tr>"""
 
     if not rows_html:
-        rows_html = '<tr><td colspan="4" style="text-align:center;color:#64748b;padding:2rem">No tweets in this list yet.</td></tr>'
+        rows_html = '<tr><td colspan="4" style="text-align:center;color:#888880;padding:2rem">No tweets in this list yet.</td></tr>'
 
     login_prompt = "" if current_user_id else '<p style="background:#1e3a2f;color:#4ade80;padding:.8rem;border-radius:8px;margin-bottom:1rem;font-size:.9rem">🔒 <a href="/login" style="color:#4ade80;font-weight:600">Sign in</a> to vote on tweets in this shared list.</p>'
 
@@ -5759,7 +5759,7 @@ async def shared_list_page(list_id: str, request: Request):
             replies = row.get("reply_count") or 0
             likes = row.get("like_count") or 0
             hot = " 🔥" if replies >= 3 else ""
-            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
+            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#888880;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
         items_html = "".join(_ticker_text(r) for r in (_ti or []))
         # Duplicate for seamless loop
         ticker_bar = f'''<div class="ticker-wrap">
@@ -5775,7 +5775,7 @@ async def shared_list_page(list_id: str, request: Request):
 body{{font-family:-apple-system,sans-serif;background:#0f172a;color:#f1f5f9;padding:2rem}}
 .container{{max-width:1200px;margin:0 auto}}
 h1{{font-size:1.8rem;margin-bottom:.5rem;color:#f1f5f9}}
-.subtitle{{color:#64748b;margin-bottom:1.5rem;font-size:.95rem}}
+.subtitle{{color:#888880;margin-bottom:1.5rem;font-size:.95rem}}
 table{{width:100%;border-collapse:collapse;background:#1e293b;border-radius:12px;overflow:hidden}}
 th{{background:#0f172a;padding:1rem;text-align:left;font-size:.85rem;color:#94a3b8;font-weight:600}}
 td{{padding:1rem;border-top:1px solid #334155;font-size:.9rem}}
@@ -5812,7 +5812,7 @@ tr:hover td{{background:#1e3a5f}}
     <tbody>{rows_html}</tbody>
   </table>
 
-  <p style="margin-top:1.5rem;color:#64748b;font-size:.85rem">
+  <p style="margin-top:1.5rem;color:#888880;font-size:.85rem">
     Signed in as: <strong>{nickname}</strong> ·
     <a href="/settings" style="color:#3b82f6">My Shared Lists</a>
   </p>
@@ -5984,14 +5984,14 @@ async def settings_page(user: Dict = Depends(_user_auth)):
                     background:#0f172a;border:1px solid #334155;border-radius:8px;margin-bottom:.5rem">
           <div>
             <div style="font-family:monospace;color:#3b82f6;font-size:.9rem">{masked}</div>
-            <div style="font-size:.75rem;color:#64748b;margin-top:.2rem">{k.get('name', 'Default')} · Created {k.get('created_at', '')[:10]}</div>
+            <div style="font-size:.75rem;color:#888880;margin-top:.2rem">{k.get('name', 'Default')} · Created {k.get('created_at', '')[:10]}</div>
           </div>
           <button onclick="deleteKey('{k['key']}')" style="padding:.4rem .8rem;background:#7f1d1d;color:#fca5a5;
                   border:none;border-radius:6px;font-size:.8rem;cursor:pointer">Delete</button>
         </div>"""
 
     if not keys_html:
-        keys_html = '<p style="color:#64748b;font-size:.9rem">No API keys yet. Create one to let your agent access the platform.</p>'
+        keys_html = '<p style="color:#888880;font-size:.9rem">No API keys yet. Create one to let your agent access the platform.</p>'
 
     tier = sub.get("tier", "free")
     is_paid = tier in ("basic", "pro")
@@ -6008,11 +6008,11 @@ async def settings_page(user: Dict = Depends(_user_auth)):
         kw_tags = "".join(
             f'<span class="filter-tag" onclick="removeFilter(\'keyword\',\'{_esc(k)}\')">'
             f'{_esc(k)} ✕</span>' for k in blocked_kws
-        ) or '<span style="color:#64748b;font-size:.82rem">None</span>'
+        ) or '<span style="color:#888880;font-size:.82rem">None</span>'
         acc_tags = "".join(
             f'<span class="filter-tag acc-tag" onclick="removeFilter(\'account\',\'{_esc(a)}\')">'
             f'@{_esc(a)} ✕</span>' for a in blocked_accs
-        ) or '<span style="color:#64748b;font-size:.82rem">None</span>'
+        ) or '<span style="color:#888880;font-size:.82rem">None</span>'
 
         filters_html = f"""
   <div class="section">
@@ -6053,14 +6053,14 @@ async def settings_page(user: Dict = Depends(_user_auth)):
           <div style="display:flex;justify-content:space-between;align-items:start">
             <div style="flex:1">
               <a href="/shared/{lst['id']}" style="color:#3b82f6;font-weight:600;font-size:.95rem;text-decoration:none">{_esc(lst['title'])}</a>
-              <div style="color:#64748b;font-size:.8rem;margin-top:.3rem">{lst.get('tweet_count', 0)} tweets · Created {lst.get('created_at', '')[:10]}</div>
+              <div style="color:#888880;font-size:.8rem;margin-top:.3rem">{lst.get('tweet_count', 0)} tweets · Created {lst.get('created_at', '')[:10]}</div>
             </div>
             <button onclick="deleteList('{lst['id']}')" style="padding:.3rem .6rem;background:#7f1d1d;color:#fca5a5;border:none;border-radius:4px;font-size:.75rem;cursor:pointer">Delete</button>
           </div>
         </div>"""
 
     if not lists_html:
-        lists_html = '<p style="color:#64748b;font-size:.9rem">No shared lists yet. Go to the Voted tab and click "📤 Share Selected" to create one.</p>'
+        lists_html = '<p style="color:#888880;font-size:.9rem">No shared lists yet. Go to the Voted tab and click "📤 Share Selected" to create one.</p>'
 
     shared_lists_section = f"""
   <div class="section">
@@ -6084,7 +6084,7 @@ async def settings_page(user: Dict = Depends(_user_auth)):
             replies = row.get("reply_count") or 0
             likes = row.get("like_count") or 0
             hot = " 🔥" if replies >= 3 else ""
-            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
+            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#888880;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
         items_html = "".join(_ticker_text(r) for r in (_ti or []))
         # Duplicate for seamless loop
         ticker_bar = f'''<div class="ticker-wrap">
@@ -6100,7 +6100,7 @@ async def settings_page(user: Dict = Depends(_user_auth)):
 body{{font-family:-apple-system,sans-serif;background:#0f172a;color:#f1f5f9;padding:2rem}}
 .container{{max-width:800px;margin:0 auto}}
 h1{{font-size:1.8rem;margin-bottom:.5rem}}
-.subtitle{{color:#64748b;margin-bottom:2rem}}
+.subtitle{{color:#888880;margin-bottom:2rem}}
 .section{{background:#1e293b;border-radius:12px;padding:1.5rem;margin-bottom:1.5rem}}
 .section h2{{font-size:1.2rem;margin-bottom:1rem;color:#f1f5f9}}
 .btn{{padding:.6rem 1.2rem;border-radius:8px;border:none;font-size:.9rem;font-weight:600;cursor:pointer;transition:.2s}}
@@ -6125,7 +6125,7 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
   <div class="section">
     <h2>Profile</h2>
     <p style="color:#94a3b8;font-size:.9rem;margin-bottom:1rem">Signed in as <strong>{nickname}</strong></p>
-    <p style="color:#64748b;font-size:.85rem">Auth method: {user.get('auth_type', 'unknown')}</p>
+    <p style="color:#888880;font-size:.85rem">Auth method: {user.get('auth_type', 'unknown')}</p>
   </div>
 
   <div class="section">
@@ -6147,7 +6147,7 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
       Current plan: <strong>{tier.title()}</strong>
       {f' · expires <strong>{sub.get("expires_at","")[:10]}</strong>' if sub.get("expires_at") else ""}
     </p>
-    <p style="color:#64748b;font-size:.82rem;margin-bottom:1.2rem">
+    <p style="color:#888880;font-size:.82rem;margin-bottom:1.2rem">
       Free tier: view only. Basic/Pro: can vote and use Agent API.
     </p>
 
@@ -6157,20 +6157,20 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
       <div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:1rem;opacity:.85">
         <div style="font-weight:700;color:#94a3b8;margin-bottom:.4rem">🆓 Free</div>
         <div style="font-size:1.3rem;font-weight:700;color:#f1f5f9">0 AKRE</div>
-        <div style="font-size:.75rem;color:#64748b;margin-bottom:.8rem">forever</div>
-        <ul style="color:#64748b;font-size:.8rem;list-style:none;margin-bottom:.8rem;line-height:1.8">
+        <div style="font-size:.75rem;color:#888880;margin-bottom:.8rem">forever</div>
+        <ul style="color:#888880;font-size:.8rem;list-style:none;margin-bottom:.8rem;line-height:1.8">
           <li>✓ View tweets</li>
           <li style="color:#ef4444">✗ Vote</li>
           <li style="color:#ef4444">✗ Add keywords</li>
           <li style="color:#ef4444">✗ Agent API</li>
         </ul>
-        <div style="text-align:center;font-size:.75rem;color:#475569;padding:.4rem;background:#1e293b;border-radius:6px">Current free plan</div>
+        <div style="text-align:center;font-size:.75rem;color:#888880;padding:.4rem;background:#1e293b;border-radius:6px">Current free plan</div>
       </div>
       <!-- Basic -->
       <div style="background:#0f172a;border:2px solid #3b82f6;border-radius:10px;padding:1rem">
         <div style="font-weight:700;color:#93c5fd;margin-bottom:.4rem">⭐ Basic</div>
-        <div style="font-size:1.3rem;font-weight:700;color:#f1f5f9">10 AKRE<span style="font-size:.75rem;color:#64748b">/mo</span></div>
-        <div style="font-size:.75rem;color:#64748b;margin-bottom:.8rem">monthly only</div>
+        <div style="font-size:1.3rem;font-weight:700;color:#f1f5f9">10 AKRE<span style="font-size:.75rem;color:#888880">/mo</span></div>
+        <div style="font-size:.75rem;color:#888880;margin-bottom:.8rem">monthly only</div>
         <ul style="color:#94a3b8;font-size:.8rem;list-style:none;margin-bottom:.8rem;line-height:1.8">
           <li>✓ View tweets</li>
           <li>✓ Vote on tweets</li>
@@ -6183,7 +6183,7 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
       <div style="background:#0f172a;border:2px solid #7c3aed;border-radius:10px;padding:1rem;position:relative">
         <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:#7c3aed;color:#fff;font-size:.7rem;font-weight:700;padding:.2rem .7rem;border-radius:10px">BEST VALUE</div>
         <div style="font-weight:700;color:#c4b5fd;margin-bottom:.4rem">💎 Pro</div>
-        <div style="font-size:1.3rem;font-weight:700;color:#f1f5f9">3,000 AKRE<span style="font-size:.75rem;color:#64748b">/mo</span></div>
+        <div style="font-size:1.3rem;font-weight:700;color:#f1f5f9">3,000 AKRE<span style="font-size:.75rem;color:#888880">/mo</span></div>
         <div style="font-size:.75rem;color:#22c55e;margin-bottom:.8rem">or 18,000 AKRE/yr (50% off)</div>
         <ul style="color:#94a3b8;font-size:.8rem;list-style:none;margin-bottom:.8rem;line-height:1.8">
           <li>✓ View tweets</li>
@@ -6203,7 +6203,7 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
 
       <!-- Price block -->
       <div style="background:#0a1628;border:1px solid #1e3a5f;border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem;text-align:center">
-        <div style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem">Amount to send</div>
+        <div style="font-size:.72rem;color:#888880;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem">Amount to send</div>
         <div style="font-size:2rem;font-weight:800;color:#3b82f6;line-height:1.1">
           <span id="sub-amount"></span>
           <span style="font-size:1rem;font-weight:600;color:#60a5fa;margin-left:.3rem">$AKRE</span>
@@ -6212,7 +6212,7 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
 
       <!-- Wallet address block -->
       <div style="margin-bottom:1rem">
-        <div style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem">Send to</div>
+        <div style="font-size:.72rem;color:#888880;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem">Send to</div>
         <div style="display:flex;align-items:center;gap:.5rem">
           <code id="donate-addr" style="flex:1;background:#1e293b;border:1px solid #334155;border-radius:6px;
                 padding:.5rem .7rem;font-size:.78rem;color:#3b82f6;word-break:break-all;line-height:1.4">{_DONATE_EVM}</code>
@@ -6222,7 +6222,7 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
             📋 Copy
           </button>
         </div>
-        <p style="font-size:.74rem;color:#64748b;margin-top:.4rem">
+        <p style="font-size:.74rem;color:#888880;margin-top:.4rem">
           Network: <strong style="color:#94a3b8">Polygon</strong> · Contract: <a href="https://polygonscan.com/token/0xE9c21De62C5C5d0cEAcCe2762bF655AfDcEB7ab3" target="_blank" style="color:#22c55e">AKRE ↗</a>
         </p>
       </div>
@@ -6259,15 +6259,15 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
         <div class="pay-spinner"></div>
         <span id="pms-progress" style="font-size:.82rem;color:#94a3b8">Auto-checking… (1/12)</span>
       </div>
-      <p style="font-size:.75rem;color:#64748b;margin-bottom:1rem">Checks every 5 seconds · Usually confirms within 1–2 minutes</p>
-      <button onclick="checkStatusNow()" style="width:100%;padding:.45rem;border-radius:6px;border:1px solid #1e3a5f;background:transparent;color:#475569;font-size:.78rem;cursor:pointer">Force check now</button>
+      <p style="font-size:.75rem;color:#888880;margin-bottom:1rem">Checks every 5 seconds · Usually confirms within 1–2 minutes</p>
+      <button onclick="checkStatusNow()" style="width:100%;padding:.45rem;border-radius:6px;border:1px solid #1e3a5f;background:transparent;color:#888880;font-size:.78rem;cursor:pointer">Force check now</button>
     </div>
     <!-- Step 2: success -->
     <div id="pms-success" style="display:none;text-align:center">
       <div style="font-size:2rem;margin-bottom:.5rem">🎉</div>
       <div style="font-size:1.1rem;font-weight:700;color:#22c55e;margin-bottom:.4rem">Subscription activated!</div>
       <p id="pms-success-msg" style="font-size:.85rem;color:#94a3b8;margin-bottom:1rem"></p>
-      <p style="font-size:.78rem;color:#64748b">Reloading page…</p>
+      <p style="font-size:.78rem;color:#888880">Reloading page…</p>
     </div>
     <!-- Step 3: timeout / check later -->
     <div id="pms-later" style="display:none">
@@ -6279,14 +6279,14 @@ h1{{font-size:1.8rem;margin-bottom:.5rem}}
       </div>
       <div style="display:flex;gap:.6rem">
         <button onclick="checkStatusNow()" style="flex:1;padding:.5rem;border-radius:6px;border:1px solid #3b82f6;background:#1e293b;color:#3b82f6;font-size:.82rem;cursor:pointer">Check status</button>
-        <button onclick="closePayModal()" style="flex:1;padding:.5rem;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#64748b;font-size:.82rem;cursor:pointer">Close</button>
+        <button onclick="closePayModal()" style="flex:1;padding:.5rem;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#888880;font-size:.82rem;cursor:pointer">Close</button>
       </div>
     </div>
     <!-- Step 4: failed -->
     <div id="pms-failed" style="display:none">
       <div style="font-size:1.1rem;font-weight:700;color:#f87171;margin-bottom:.6rem">✗ Verification failed</div>
       <p id="pms-error-msg" style="font-size:.85rem;color:#94a3b8;margin-bottom:1rem"></p>
-      <button onclick="closePayModal()" style="width:100%;padding:.5rem;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#64748b;font-size:.82rem;cursor:pointer">Close</button>
+      <button onclick="closePayModal()" style="width:100%;padding:.5rem;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#888880;font-size:.82rem;cursor:pointer">Close</button>
     </div>
   </div>
 </div>
@@ -6552,7 +6552,7 @@ async function deleteList(listId) {{
       <p style="color:#94a3b8;font-size:.85rem">Save this key now — you won't see it again.</p>
     </div>
     <div style="background:#0f172a;border-radius:10px;padding:1rem;margin-bottom:1.2rem">
-      <p style="color:#64748b;font-size:.72rem;margin-bottom:.4rem;letter-spacing:.05em;text-transform:uppercase">Your API Key</p>
+      <p style="color:#888880;font-size:.72rem;margin-bottom:.4rem;letter-spacing:.05em;text-transform:uppercase">Your API Key</p>
       <div style="display:flex;gap:.6rem;align-items:center">
         <input id="apikey-value" type="text" readonly
           style="flex:1;background:#1e293b;border:1.5px solid #334155;border-radius:8px;
@@ -6792,7 +6792,7 @@ def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: 
     )
 
     if not digest:
-        content_block = '<div style="text-align:center;padding:3rem;color:#64748b">该日期暂无播报内容</div>'
+        content_block = '<div style="text-align:center;padding:3rem;color:#888880">该日期暂无播报内容</div>'
         audio_zh_src = ""
         audio_en_src = ""
     else:
@@ -6811,7 +6811,7 @@ def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: 
             f'background:#4f46e5;border:none;border-radius:20px;color:#fff;font-size:.82rem;'
             f'font-weight:600;cursor:pointer">▶ 收听语音播报</button>'
             if (audio_zh or audio_en) else
-            '<span style="color:#64748b;font-size:.82rem">音频生成中...</span>'
+            '<span style="color:#888880;font-size:.82rem">音频生成中...</span>'
         )
         tweet_link = (
             f'<a href="https://x.com/i/web/status/{_esc(tweet_id)}" target="_blank" '
@@ -6851,7 +6851,7 @@ def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: 
 
   {tweet_link}
 </div>
-<div style="font-size:.75rem;color:#64748b;padding:.5rem .2rem">⚠️ 以上内容仅供参考，不构成任何投资建议。投资有风险，决策需谨慎。</div>
+<div style="font-size:.75rem;color:#888880;padding:.5rem .2rem">⚠️ 以上内容仅供参考，不构成任何投资建议。投资有风险，决策需谨慎。</div>
 """
 
     # Build ticker bar HTML
@@ -6867,7 +6867,7 @@ def _build_digest_page(digest: Optional[Dict], dates: List[str], selected_date: 
             replies = row.get("reply_count") or 0
             likes = row.get("like_count") or 0
             hot = " 🔥" if replies >= 3 else ""
-            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#475569;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
+            return f'<span class="ticker-item"><a href="{url}" target="_blank" rel="noopener">@{username}</a>: {text}{hot} <span style="color:#888880;font-size:.72rem">❤{likes}</span></span><span class="ticker-sep">·</span>'
         items_html = "".join(_ticker_text(r) for r in (_ti or []))
         # Duplicate for seamless loop
         ticker_bar = f'''<div class="ticker-wrap">
@@ -6909,11 +6909,11 @@ main{{max-width:900px;margin:0 auto;padding:1.5rem 1.5rem;padding-bottom:80px}}
 .dpb-lang{{display:flex;gap:.3rem}}
 .dpb-lang button{{background:#1e1b4b;border:1px solid #4338ca;color:#a5b4fc;font-size:.7rem;border-radius:4px;padding:.15rem .45rem;cursor:pointer}}
 .dpb-lang button.active{{background:#4338ca;color:#e0e7ff}}
-.dpb-close{{background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;padding:.2rem;margin-left:.5rem}}
+.dpb-close{{background:none;border:none;color:#888880;cursor:pointer;font-size:1rem;padding:.2rem;margin-left:.5rem}}
 .ticker-item{{display:inline-block;margin-right:3.5rem;font-size:.78rem;vertical-align:middle;color:#cbd5e1}}
 .ticker-item a{{color:#60a5fa;text-decoration:none;font-weight:500}}
 .ticker-item a:hover{{text-decoration:underline}}
-.ticker-sep{{color:#334155;margin-right:3.5rem;font-size:.9rem}}
+.ticker-sep{{color:rgba(255,255,255,0.25);margin-right:3.5rem;font-size:.9rem}}
 @keyframes ticker-scroll{{0%{{transform:translateX(0)}}100%{{transform:translateX(-50%)}}}}
 select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:6px;padding:.5rem .8rem;font-size:.9rem;cursor:pointer}}
 </style>
@@ -6930,7 +6930,7 @@ select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:
     <select onchange="location.href='/digest/'+this.value">
       {date_options if date_options else '<option>No digests yet</option>'}
     </select>
-    <span style="color:#64748b;font-size:.8rem">最近30天 · 北京时间每天8:00发布</span>
+    <span style="color:#888880;font-size:.8rem">最近30天 · 北京时间每天8:00发布</span>
   </div>
   {content_block}
 </main>
