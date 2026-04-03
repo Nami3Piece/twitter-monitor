@@ -1294,7 +1294,7 @@ def _build_room_section(keyword_stats: List[Dict], nickname: str = "monitor") ->
     </p>
   </div>
 
-  <div style="background:#fff;border-radius:12px;padding:1.5rem;margin-bottom:1.5rem;box-shadow:0 1px 3px rgba(0,0,0,.1)">
+  <div style="background:#141414;border-radius:0;padding:1.5rem;margin-bottom:1.5rem;box-shadow:none">
     <h3 style="color:#8b5cf6;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem">
       🔗 Share Content
     </h3>
@@ -1310,7 +1310,7 @@ def _build_room_section(keyword_stats: List[Dict], nickname: str = "monitor") ->
       </button>
     </div>
     <div style="text-align:center;color:#94a3b8;font-size:.8rem;margin:.5rem 0">or</div>
-    <div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:1rem">
+    <div style="background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.15);border-radius:0;padding:1rem">
       <h4 style="color:#64748b;font-size:.9rem;margin-bottom:.8rem">💚 Manual Add Keywords</h4>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.8rem">
         <select id="manual-project" style="padding:.6rem;border:1px solid #e2e8f0;border-radius:6px;font-size:.85rem">
@@ -1375,10 +1375,10 @@ async function analyzeContent() {{
 
     data.suggestions.forEach((s, i) => {{
       html += `
-        <div style="background:#fff;border:1px solid #e9d5ff;border-radius:6px;padding:.8rem;margin-bottom:.8rem">
+        <div style="background:#141414;border:0.5px solid rgba(168,85,247,0.3);border-radius:0;padding:.8rem;margin-bottom:.8rem">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
             <span style="font-weight:600;color:#7c3aed">${{s.keyword}}</span>
-            <span style="font-size:.8rem;color:#64748b;background:#f1f5f9;padding:.2rem .6rem;border-radius:4px">${{s.project}}</span>
+            <span style="font-size:.8rem;color:#888880;background:rgba(255,255,255,0.06);padding:.2rem .6rem;border-radius:4px">${{s.project}}</span>
           </div>
           <p style="font-size:.85rem;color:#64748b;margin-bottom:.6rem">${{s.reason}}</p>
           <button onclick="addSuggestedKeyword('${{s.project}}', '${{s.keyword}}', ${{i}})"
@@ -1436,7 +1436,7 @@ async function addManualKeyword() {{
     if (data.ok) {{
       // Show thank you message
       const thankYouMsg = `
-        <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:2rem;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.3);z-index:9999;max-width:500px;text-align:center">
+        <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a1a2e;padding:2rem;border-radius:0;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;max-width:500px;text-align:center">
           <div style="font-size:3rem;margin-bottom:1rem">🎉✨</div>
           <h3 style="color:#8b5cf6;font-size:1.3rem;margin-bottom:1rem">Thank You for Your Contribution!</h3>
           <p style="color:#1e293b;line-height:1.8;margin-bottom:1.5rem">
@@ -1886,10 +1886,10 @@ tr.hidden{{display:none}}
 .tweet-checkbox{{cursor:pointer;width:16px;height:16px}}
 .like-count{{color:#e11d48;font-size:.82rem;white-space:nowrap}}
 .tweet-card-cell{{min-width:280px;max-width:360px}}
-.tweet-card{{border:1px solid var(--border);border-radius:12px;padding:.75rem 1rem;background:#fff;font-size:.84rem;line-height:1.5}}
+.tweet-card{{border:1px solid var(--border);border-radius:12px;padding:.75rem 1rem;background:#141414;font-size:.84rem;line-height:1.5}}
 .tweet-card.hot{{border-color:#f97316;box-shadow:0 0 0 2px #fff7ed}}
 .tweet-card.my-voted{{border-color:#3b82f6;box-shadow:0 0 0 2px #dbeafe;background:#f0f9ff}}
-.hot-badge{{display:inline-block;padding:.1rem .4rem;background:#fff7ed;color:#c2410c;border-radius:4px;font-size:.68rem;font-weight:700;margin-left:.4rem;vertical-align:middle}}
+.hot-badge{{display:inline-block;padding:.1rem .4rem;background:rgba(194,65,12,0.15);color:#c2410c;border-radius:4px;font-size:.68rem;font-weight:700;margin-left:.4rem;vertical-align:middle}}
 .my-vote-badge{{display:inline-block;padding:.1rem .4rem;background:#dbeafe;color:#1e40af;border-radius:4px;font-size:.68rem;font-weight:700;margin-left:.4rem;vertical-align:middle}}
 .tc-header{{display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}}
 .tc-avatar{{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:.95rem;flex-shrink:0}}
@@ -1903,7 +1903,7 @@ tr.hidden{{display:none}}
 .tc-footer{{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:.45rem;margin-top:.2rem;gap:.8rem;flex-wrap:wrap}}
 .tc-stat{{font-size:.75rem;color:var(--muted);white-space:nowrap}}
 .followers-cell{{color:#7c3aed;font-size:.82rem;white-space:nowrap}}
-.tc-quoted{{background:#f8fafc;border-left:3px solid #94a3b8;border-radius:0 6px 6px 0;padding:.4rem .6rem;margin-bottom:.5rem;font-size:.8rem;color:var(--muted)}}
+.tc-quoted{{background:rgba(255,255,255,0.03);border-left:3px solid #94a3b8;border-radius:0 6px 6px 0;padding:.4rem .6rem;margin-bottom:.5rem;font-size:.8rem;color:var(--muted)}}
 .tc-quoted-user{{font-weight:600;color:#475569;margin-right:.4rem}}
 .tc-quoted-text{{word-break:break-word}}
 .tc-media{{margin:.5rem 0;border-radius:8px;overflow:hidden}}
@@ -1911,14 +1911,14 @@ tr.hidden{{display:none}}
 .tc-link{{font-size:.78rem;color:#3b82f6;text-decoration:none}}
 .tc-link:hover{{text-decoration:underline}}
 .time{{color:var(--muted);font-size:.76rem;white-space:nowrap}}
-a.go{{display:inline-block;padding:.2rem .5rem;border-radius:4px;background:#f1f5f9;color:#475569;text-decoration:none;font-size:.8rem}}
+a.go{{display:inline-block;padding:.2rem .5rem;border-radius:4px;background:rgba(255,255,255,0.06);color:#888880;text-decoration:none;font-size:.8rem}}
 a.go:hover{{background:#0f172a;color:#fff}}
 .empty{{padding:2rem;text-align:center;color:var(--muted)}}
 .vote-bar-wrap{{width:80px;height:6px;background:#e2e8f0;border-radius:3px;display:inline-block;vertical-align:middle;margin-right:.4rem}}
 .vote-bar{{height:6px;background:#3b82f6;border-radius:3px;transition:.3s}}
 .vc{{font-size:.78rem;color:var(--muted)}}
 .badge-followed{{display:inline-block;padding:.15rem .5rem;border-radius:4px;background:#dcfce7;color:#166534;font-size:.75rem;font-weight:600}}
-.badge-tracking{{display:inline-block;padding:.15rem .5rem;border-radius:4px;background:#f1f5f9;color:var(--muted);font-size:.75rem}}
+.badge-tracking{{display:inline-block;padding:.15rem .5rem;border-radius:4px;background:rgba(255,255,255,0.06);color:var(--muted);font-size:.75rem}}
 .toast{{position:fixed;bottom:1.5rem;right:1.5rem;padding:.7rem 1.2rem;border-radius:8px;font-size:.85rem;font-weight:500;color:#fff;background:#0f172a;box-shadow:0 4px 12px rgba(0,0,0,.2);opacity:0;transform:translateY(8px);transition:.3s;pointer-events:none;z-index:999}}
 .toast.show{{opacity:1;transform:translateY(0)}}
 footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
@@ -2047,21 +2047,21 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 .event-link:hover{{text-decoration:underline}}
 .event-delete-btn{{background:none;border:none;cursor:pointer;font-size:.8rem;opacity:.55;padding:.2rem .4rem;border-radius:4px;transition:opacity .15s,background .15s}}
 .event-delete-btn:hover{{opacity:1;background:rgba(239,68,68,.12)}}
-.acct-insight{{padding:.6rem 1rem;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:.8rem;color:#92400e;margin-bottom:.8rem}}
+.acct-insight{{padding:.6rem 1rem;background:rgba(251,191,36,0.1);border:0.5px solid rgba(251,191,36,0.3);border-radius:6px;font-size:.8rem;color:#fbbf24;margin-bottom:.8rem}}
 .ai-draft-btn{{background:#8b5cf6;color:#fff;border:none;padding:.3rem .7rem;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;transition:.2s}}
 .ai-draft-btn:hover{{background:#7c3aed}}
 #ai-retweet-modal,#ai-reply-modal{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center}}
 #ai-retweet-modal.show,#ai-reply-modal.show{{display:flex}}
-.ai-modal-content{{background:#fff;border-radius:12px;padding:2rem;max-width:600px;width:90%;max-height:80vh;overflow-y:auto}}
+.ai-modal-content{{background:#1a1a2e;border-radius:0;border:0.5px solid rgba(255,255,255,0.08);padding:2rem;max-width:600px;width:90%;max-height:80vh;overflow-y:auto}}
 .ai-modal-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem}}
 .ai-modal-title{{font-size:1.3rem;font-weight:700;color:#0f172a}}
 .ai-modal-close{{background:transparent;border:none;font-size:1.5rem;cursor:pointer;color:#64748b;padding:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:6px}}
-.ai-modal-close:hover{{background:#f1f5f9}}
+.ai-modal-close:hover{{background:rgba(255,255,255,0.1)}}
 .ai-style-tabs{{display:flex;gap:.5rem;margin-bottom:1.5rem;border-bottom:2px solid #e2e8f0;padding-bottom:.5rem}}
 .ai-style-tab{{padding:.5rem 1rem;border:none;background:transparent;color:#64748b;font-size:.9rem;font-weight:600;cursor:pointer;border-radius:6px 6px 0 0;transition:.2s}}
-.ai-style-tab:hover{{background:#f8fafc;color:#475569}}
+.ai-style-tab:hover{{background:rgba(255,255,255,0.05);color:#F5F5F0}}
 .ai-style-tab.active{{background:#8b5cf6;color:#fff}}
-.ai-draft-box{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:1rem;margin-bottom:1rem;min-height:100px;display:none}}
+.ai-draft-box{{background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.08);border-radius:0;padding:1rem;margin-bottom:1rem;min-height:100px;display:none}}
 .ai-draft-box.active{{display:block}}
 .ai-draft-text{{color:#1e293b;line-height:1.6;font-size:.95rem;white-space:pre-wrap;word-break:break-word}}
 .ai-draft-loading{{text-align:center;color:#64748b;padding:2rem}}
@@ -2074,7 +2074,7 @@ footer{{text-align:center;padding:1.2rem;color:var(--muted);font-size:.76rem}}
 
 .keyword-stats-section{{padding:1rem 2rem;background:var(--card);border-bottom:1px solid var(--border)}}
 .keyword-stats-table{{margin-top:.8rem}}
-.keyword-stats-table th{{background:#f8fafc;padding:.5rem .8rem;font-size:.75rem}}
+.keyword-stats-table th{{background:#111;padding:.5rem .8rem;font-size:.75rem}}
 .keyword-stats-table td{{padding:.5rem .8rem;font-size:.82rem}}
 </style>
 
@@ -2362,7 +2362,7 @@ async function copyAIDraft(modalType) {{
           <input type="file" id="ct-logo-input" accept="image/*" onchange="handleLogoUpload(this)"
             style="font-size:.8rem;color:#94a3b8;flex:1">
           <div id="ct-logo-preview" style="display:none">
-            <img id="ct-logo-img" style="height:40px;border-radius:4px;border:1px solid #334155;object-fit:contain;background:#fff;padding:2px">
+            <img id="ct-logo-img" style="height:40px;border-radius:4px;border:1px solid #334155;object-fit:contain;background:#141414;padding:2px">
             <button type="button" onclick="removeLogo()" style="margin-left:.4rem;background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;cursor:pointer">✕</button>
           </div>
         </div>
@@ -2471,7 +2471,7 @@ async function copyAIDraft(modalType) {{
 
 <!-- Donate Modal -->
 <div id="donate-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:16px;padding:2rem;max-width:520px;width:calc(100% - 2rem);box-shadow:0 20px 60px rgba(0,0,0,.3);position:relative;max-height:90vh;overflow-y:auto">
+  <div style="background:#1a1a2e;border-radius:0;padding:2rem;border:0.5px solid rgba(255,255,255,0.08);max-width:520px;width:calc(100% - 2rem);box-shadow:0 20px 60px rgba(0,0,0,.3);position:relative;max-height:90vh;overflow-y:auto">
     <button onclick="closeDonate()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;font-size:1.3rem;cursor:pointer;color:#94a3b8">✕</button>
     <h2 style="font-size:1.2rem;font-weight:700;margin-bottom:.3rem">💛 Support Twitter Monitor</h2>
     <p style="font-size:.83rem;color:#64748b;margin-bottom:.8rem">Your donation helps us keep tracking and curating the best Web3 content.</p>
@@ -2504,9 +2504,9 @@ async function copyAIDraft(modalType) {{
 
 <!-- Donate Modal -->
     <div style="display:flex;gap:.5rem;margin-bottom:1.5rem">
-      <button onclick="switchDonateTab('btc')" id="dtab-btc" class="dtab active-dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #f59e0b;background:#fffbeb;color:#92400e;font-weight:600;cursor:pointer;font-size:.83rem">₿ Bitcoin</button>
-      <button onclick="switchDonateTab('akre')" id="dtab-akre" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #e2e8f0;background:#fff;color:#64748b;font-weight:600;cursor:pointer;font-size:.83rem">🌱 $AKRE</button>
-      <button onclick="switchDonateTab('agent')" id="dtab-agent" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #e2e8f0;background:#fff;color:#64748b;font-weight:600;cursor:pointer;font-size:.83rem">🤖 AI Agent</button>
+      <button onclick="switchDonateTab('btc')" id="dtab-btc" class="dtab active-dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #f59e0b;background:rgba(245,158,11,0.15);color:#f59e0b;font-weight:600;cursor:pointer;font-size:.83rem">₿ Bitcoin</button>
+      <button onclick="switchDonateTab('akre')" id="dtab-akre" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #e2e8f0;background:transparent;color:#888880;font-weight:600;cursor:pointer;font-size:.83rem">🌱 $AKRE</button>
+      <button onclick="switchDonateTab('agent')" id="dtab-agent" class="dtab" style="flex:1;padding:.5rem;border-radius:8px;border:2px solid #e2e8f0;background:transparent;color:#888880;font-weight:600;cursor:pointer;font-size:.83rem">🤖 AI Agent</button>
     </div>
 
     <!-- BTC panel -->
@@ -2514,10 +2514,10 @@ async function copyAIDraft(modalType) {{
       <div style="text-align:center;margin-bottom:1rem">
         <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=bitcoin:bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3" alt="BTC QR" style="border-radius:8px;border:4px solid #fef3c7">
       </div>
-      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem">
+      <div style="background:rgba(245,158,11,0.1);border:0.5px solid rgba(245,158,11,0.3);border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem">
         <div style="font-size:.72rem;color:#92400e;font-weight:600;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">Bitcoin Address (BTC, Native SegWit)</div>
         <div style="font-family:monospace;font-size:.78rem;word-break:break-all;color:#1e293b;margin-bottom:.6rem">bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3</div>
-        <button onclick="copyAddr('bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3','btc-copy')" id="btc-copy" style="padding:.3rem .9rem;border-radius:6px;border:1.5px solid #f59e0b;background:#fff;color:#92400e;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy</button>
+        <button onclick="copyAddr('bc1qh0cddzrz35mgm0xhwu9xnw22p329k8kw322fq3','btc-copy')" id="btc-copy" style="padding:.3rem .9rem;border-radius:6px;border:1.5px solid #f59e0b;background:transparent;color:#f59e0b;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy</button>
       </div>
     </div>
 
@@ -2529,9 +2529,9 @@ async function copyAIDraft(modalType) {{
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem">
         <div style="font-size:.72rem;color:#166534;font-weight:600;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">$AKRE — EVM Address (Ethereum / Polygon)</div>
         <div style="font-family:monospace;font-size:.78rem;word-break:break-all;color:#1e293b;margin-bottom:.6rem">0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7</div>
-        <button onclick="copyAddr('0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7','akre-copy')" id="akre-copy" style="padding:.3rem .9rem;border-radius:6px;border:1.5px solid #22c55e;background:#fff;color:#166534;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy</button>
+        <button onclick="copyAddr('0xBa203894dBDa6d072Bc89C1EC526E34540B8a0A7','akre-copy')" id="akre-copy" style="padding:.3rem .9rem;border-radius:6px;border:1.5px solid #22c55e;background:transparent;color:#22c55e;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy</button>
       </div>
-      <div style="font-size:.78rem;color:#64748b;background:#f8fafc;border-radius:6px;padding:.6rem .8rem">
+      <div style="font-size:.78rem;color:#888880;background:rgba(255,255,255,0.03);border-radius:6px;padding:.6rem .8rem">
         💡 $AKRE contract on Polygon: <a href="https://polygonscan.com/token/0xE9c21De62C5C5d0cEAcCe2762bF655AfDcEB7ab3" target="_blank" style="color:#22c55e;font-family:monospace">0xE9c2...ab3</a>
         &nbsp;|&nbsp; <a href="https://docs.arkreen.com/token/what-is-akre" target="_blank" style="color:#64748b">Docs ↗</a>
       </div>
@@ -2557,8 +2557,8 @@ async function copyAIDraft(modalType) {{
         <strong>How it works:</strong> Your AI agent sends a request to <code style="background:#e0f2fe;padding:.1rem .3rem;border-radius:3px">/api/donate</code>, receives a 402 with payment options on Polygon, pays with AKRE or USDT automatically, then retries with the payment proof in <code style="background:#e0f2fe;padding:.1rem .3rem;border-radius:3px">X-Payment</code> header.
       </div>
       <div style="display:flex;gap:.6rem">
-        <button onclick="copyAddr('https://monitor.dailyxdigest.uk/api/donate','agent-copy')" id="agent-copy" style="flex:1;padding:.4rem;border-radius:6px;border:1.5px solid #3b82f6;background:#fff;color:#1d4ed8;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy Endpoint</button>
-        <a href="/api/donate" target="_blank" style="flex:1;padding:.4rem;border-radius:6px;border:1.5px solid #8b5cf6;background:#fff;color:#6d28d9;font-size:.8rem;font-weight:600;cursor:pointer;text-decoration:none;text-align:center">🔗 View 402 Response</a>
+        <button onclick="copyAddr('https://monitor.dailyxdigest.uk/api/donate','agent-copy')" id="agent-copy" style="flex:1;padding:.4rem;border-radius:6px;border:1.5px solid #3b82f6;background:transparent;color:#3b82f6;font-size:.8rem;font-weight:600;cursor:pointer">📋 Copy Endpoint</button>
+        <a href="/api/donate" target="_blank" style="flex:1;padding:.4rem;border-radius:6px;border:1.5px solid #8b5cf6;background:transparent;color:#8b5cf6;font-size:.8rem;font-weight:600;cursor:pointer;text-decoration:none;text-align:center">🔗 View 402 Response</a>
       </div>
     </div>
 
