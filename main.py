@@ -306,6 +306,12 @@ def _setup_scheduler() -> AsyncIOScheduler:
     # Publish X Algorithm Weekly Report to GitHub — every Monday UTC 0:00 (Beijing 8:00)
     scheduler.add_job(_publish_algo_weekly_to_github, CronTrigger(day_of_week="mon", hour=0, minute=0, timezone="UTC"), id="algo_weekly_github")
 
+    # Retry pending AI draft pre-generation every 30 minutes (Issue #44)
+    async def _retry_ai_drafts():
+        from ai.draft_manager import retry_pending_drafts
+        await retry_pending_drafts()
+    scheduler.add_job(_retry_ai_drafts, CronTrigger(minute="*/30"), id="ai_draft_retry")
+
     return scheduler
 
 

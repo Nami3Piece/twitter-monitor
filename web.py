@@ -3419,7 +3419,10 @@ function dpbSetLang(lang) {{
 
 function dpbPlay() {{
   if (!_dpb.audio.src) dpbSetLang(_dpb.lang);
-  _dpb.audio.play();
+  _dpb.audio.play().catch(e => {{
+    console.warn('Audio play failed:', e);
+    _dpb.subEl.textContent = '播放失败，请检查音频文件是否已生成';
+  }});
 }}
 
 function dpbToggle() {{
@@ -3458,6 +3461,14 @@ _dpb.audio.addEventListener('pause', () => {{
 _dpb.audio.addEventListener('ended', () => {{
   _dpb.playBtn.textContent = '▶';
   _dpb.seek.value = 0;
+}});
+_dpb.audio.addEventListener('error', () => {{
+  _dpb.playBtn.textContent = '▶';
+  const btn = document.getElementById('cj-listen-btn');
+  if (btn) {{ btn.textContent = '🎙️ Audio Brief'; btn.classList.remove('playing'); }}
+  _dpb.subEl.textContent = '音频文件不可用，请稍后重试';
+  const t = document.getElementById('toast');
+  if (t) {{ t.textContent = '音频文件暂不可用'; t.className = 'toast show error'; setTimeout(()=>t.className='toast',3000); }}
 }});
 _dpb.audio.addEventListener('timeupdate', () => {{
   const d = _dpb.audio.duration || 0;
@@ -3563,8 +3574,18 @@ async def api_delete(req: DeleteRequest, user: Dict = Depends(_user_auth)) -> JS
 
 @app.post("/api/ai-retweet-draft")
 async def api_ai_retweet_draft(req: AIRetweetRequest, user: Dict = Depends(_user_auth)) -> JSONResponse:
-    """Generate AI retweet drafts with 3 style options."""
+    """Generate AI retweet drafts with 3 style options. Serves cached drafts if pre-generated."""
     try:
+        # Check pre-generated cache first
+        from db.database import get_ai_draft
+        cached = await get_ai_draft(req.tweet_id, "retweet")
+        if cached:
+            return JSONResponse({"ok": True, "drafts": {
+                "professional": cached["professional"],
+                "casual": cached["casual"],
+                "enthusiastic": cached["enthusiastic"],
+            }, "cached": True})
+
         # Fetch tweet details
         async with aiosqlite.connect(DB_PATH) as db:
             db.row_factory = aiosqlite.Row
@@ -3577,9 +3598,7 @@ async def api_ai_retweet_draft(req: AIRetweetRequest, user: Dict = Depends(_user
                     return JSONResponse({"ok": False, "error": "Tweet not found"}, status_code=404)
                 tweet = dict(row)
 
-        # Generate drafts using Claude API
         from ai.claude_retweet import generate_retweet_drafts
-
         drafts = await generate_retweet_drafts(
             project=tweet.get("project", ""),
             keyword=tweet.get("keyword", ""),
@@ -3590,10 +3609,7 @@ async def api_ai_retweet_draft(req: AIRetweetRequest, user: Dict = Depends(_user
         if not drafts:
             return JSONResponse({"ok": False, "error": "Failed to generate drafts"}, status_code=500)
 
-        return JSONResponse({
-            "ok": True,
-            "drafts": drafts
-        })
+        return JSONResponse({"ok": True, "drafts": drafts})
 
     except Exception as e:
         logger.error(f"AI retweet draft error: {e}")
@@ -3602,8 +3618,18 @@ async def api_ai_retweet_draft(req: AIRetweetRequest, user: Dict = Depends(_user
 
 @app.post("/api/ai-reply-draft")
 async def api_ai_reply_draft(req: AIRetweetRequest, user: Dict = Depends(_user_auth)) -> JSONResponse:
-    """Generate AI reply drafts with 3 style options."""
+    """Generate AI reply drafts with 3 style options. Serves cached drafts if pre-generated."""
     try:
+        # Check pre-generated cache first
+        from db.database import get_ai_draft
+        cached = await get_ai_draft(req.tweet_id, "reply")
+        if cached:
+            return JSONResponse({"ok": True, "drafts": {
+                "professional": cached["professional"],
+                "casual": cached["casual"],
+                "enthusiastic": cached["enthusiastic"],
+            }, "cached": True})
+
         # Fetch tweet details
         async with aiosqlite.connect(DB_PATH) as db:
             db.row_factory = aiosqlite.Row
@@ -3616,9 +3642,7 @@ async def api_ai_reply_draft(req: AIRetweetRequest, user: Dict = Depends(_user_a
                     return JSONResponse({"ok": False, "error": "Tweet not found"}, status_code=404)
                 tweet = dict(row)
 
-        # Generate drafts using Claude API
         from ai.claude_reply import generate_reply_drafts
-
         drafts = await generate_reply_drafts(
             project=tweet.get("project", ""),
             keyword=tweet.get("keyword", ""),
@@ -3629,10 +3653,7 @@ async def api_ai_reply_draft(req: AIRetweetRequest, user: Dict = Depends(_user_a
         if not drafts:
             return JSONResponse({"ok": False, "error": "Failed to generate drafts"}, status_code=500)
 
-        return JSONResponse({
-            "ok": True,
-            "drafts": drafts
-        })
+        return JSONResponse({"ok": True, "drafts": drafts})
 
     except Exception as e:
         logger.error(f"AI reply draft error: {e}")
@@ -3896,16 +3917,22 @@ async def api_ai_strategy_analysis(_: str = Depends(_auth)) -> JSONResponse:
         api_key=os.getenv("ANTHROPIC_API_KEY", ""),
         base_url=os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
     )
-    try:
-        resp = await client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=1500,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        analysis = resp.content[0].text
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-    return JSONResponse({"ok": True, "analysis": analysis})
+    last_err = None
+    for attempt in range(3):
+        try:
+            resp = await client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1500,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            analysis = resp.content[0].text
+            return JSONResponse({"ok": True, "analysis": analysis})
+        except Exception as e:
+            last_err = e
+            logger.warning(f"ai-strategy-analysis attempt {attempt+1} failed: {e}")
+            if attempt < 2:
+                await asyncio.sleep(2 ** attempt)
+    return JSONResponse({"ok": False, "error": f"AI 服务暂时不可用，请稍后重试。({last_err})"}, status_code=500)
 
 
 @app.get("/api/admin/algo-weekly")
@@ -3913,6 +3940,18 @@ async def api_algo_weekly_get(_: str = Depends(_auth)) -> JSONResponse:
     from db.database import get_algo_weekly
     reports = await get_algo_weekly(limit=5)
     return JSONResponse({"ok": True, "reports": reports})
+
+
+@app.get("/api/admin/audio-files")
+async def api_admin_audio_files(_: str = Depends(_auth)) -> JSONResponse:
+    """List audio files in AUDIO_DIR for debugging."""
+    audio_dir = os.getenv("AUDIO_DIR", "data/audio")
+    if not os.path.isdir(audio_dir):
+        return JSONResponse({"ok": True, "dir": audio_dir, "exists": False, "files": []})
+    files = sorted(os.listdir(audio_dir), reverse=True)[:50]
+    sizes = {f: os.path.getsize(os.path.join(audio_dir, f)) for f in files}
+    return JSONResponse({"ok": True, "dir": audio_dir, "exists": True,
+                         "files": [{"name": f, "size": sizes[f]} for f in files]})
 
 
 @app.post("/api/admin/algo-weekly/refresh")

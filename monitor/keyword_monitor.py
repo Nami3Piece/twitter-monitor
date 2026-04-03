@@ -391,6 +391,15 @@ async def handle_vote(tweet_id: str, voter: str) -> Dict:
     except Exception as e:
         logger.warning(f"Failed to generate engagement drafts for {tweet_id}: {e}")
 
+    # Pre-generate AI retweet/reply drafts when vote threshold reached (Issue #44)
+    try:
+        from ai.draft_manager import enqueue_draft_generation, VOTE_THRESHOLD
+        if vote_count >= VOTE_THRESHOLD:
+            await enqueue_draft_generation(tweet_id)
+            logger.info(f"Enqueued AI draft pre-generation for {tweet_id} (votes={vote_count})")
+    except Exception as e:
+        logger.warning(f"Failed to enqueue draft generation for {tweet_id}: {e}")
+
     return result
 
 

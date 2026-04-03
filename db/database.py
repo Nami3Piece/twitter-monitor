@@ -103,6 +103,22 @@ async def init_db() -> None:
                 PRIMARY KEY (tweet_id, voter)
             )
         """)
+        # Pre-generated AI drafts (triggered when vote >= 3)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS ai_drafts (
+                tweet_id        TEXT NOT NULL,
+                draft_type      TEXT NOT NULL,
+                professional    TEXT,
+                casual          TEXT,
+                enthusiastic    TEXT,
+                status          TEXT DEFAULT 'pending',
+                retry_count     INTEGER DEFAULT 0,
+                last_error      TEXT,
+                created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (tweet_id, draft_type)
+            )
+        """)
         # Migrate accounts table
         async with db.execute("PRAGMA table_info(accounts)") as cur:
             acols = {row[1] for row in await cur.fetchall()}
@@ -980,5 +996,55 @@ async def get_all_payment_submissions() -> list:
             FROM payment_submissions ps
             LEFT JOIN users u ON u.id = ps.user_id
             ORDER BY ps.submitted_at DESC
+        """) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+# ── AI Drafts helpers ─────────────────────────────────────────────────────────
+
+async def get_ai_draft(tweet_id: str, draft_type: str) -> Optional[dict]:
+    """Get pre-generated AI draft if status='done'."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM ai_drafts WHERE tweet_id=? AND draft_type=? AND status='done'",
+            (tweet_id, draft_type)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def upsert_ai_draft(tweet_id: str, draft_type: str, status: str,
+                          professional: str = None, casual: str = None,
+                          enthusiastic: str = None, retry_count: int = 0,
+                          last_error: str = None) -> None:
+    """Insert or update an ai_drafts row."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO ai_drafts (tweet_id, draft_type, professional, casual, enthusiastic,
+                                   status, retry_count, last_error, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(tweet_id, draft_type) DO UPDATE SET
+                professional  = COALESCE(excluded.professional, professional),
+                casual        = COALESCE(excluded.casual, casual),
+                enthusiastic  = COALESCE(excluded.enthusiastic, enthusiastic),
+                status        = excluded.status,
+                retry_count   = excluded.retry_count,
+                last_error    = excluded.last_error,
+                updated_at    = CURRENT_TIMESTAMP
+        """, (tweet_id, draft_type, professional, casual, enthusiastic,
+              status, retry_count, last_error))
+        await db.commit()
+
+
+async def get_pending_ai_drafts() -> list:
+    """Return all pending/failed ai_draft rows with retry_count < 6."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT d.*, t.project, t.keyword, t.text, t.username
+            FROM ai_drafts d
+            JOIN tweets t ON t.tweet_id = d.tweet_id
+            WHERE d.status IN ('pending', 'failed') AND d.retry_count < 6
         """) as cur:
             return [dict(r) for r in await cur.fetchall()]
