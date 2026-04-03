@@ -7276,6 +7276,8 @@ async def api_get_schedules():
         {"id":"algo_weekly_github","name":"算法周报发布GitHub","icon":"📤","cron_display":"每周一 00:00 UTC","beijing_time":"每周一 08:00","description":"将X算法周报自动提交到 GitHub docs/weekly-reports/","hour_utc":0,"minute_utc":0,"day_of_week":0},
         {"id":"vip_monitor","name":"VIP账号监控","icon":"⭐","cron_display":"每天 0/8/16:30 UTC","beijing_time":"08:30/16:30/00:30","description":"直接抓取被投票账号的最新推文，确保高质量账号每8小时出现一次","hour_utc":0,"minute_utc":30},
         {"id":"algo_weekly","name":"X算法周报生成","icon":"📡","cron_display":"每周一 01:00 UTC","beijing_time":"每周一 09:00","description":"AI分析X平台算法趋势，生成中英文周报","hour_utc":1,"minute_utc":0,"day_of_week":0},
+        {"id":"daily_api_check","name":"AI API 健康检查","icon":"🔌","cron_display":"每天 00:00 UTC","beijing_time":"每天 08:00","description":"检查 v2code.ai 代理连通性，日志写入 /var/log/twitter-monitor-api-check.log","hour_utc":0,"minute_utc":0},
+        {"id":"db_consistency","name":"数据库一致性检查","icon":"🗄️","cron_display":"每天 00:00 UTC","beijing_time":"每天 08:00","description":"确认 /var/www/data/tweets.db 为软链接，检查 deleted_tweets / voted / users 数量是否正常","hour_utc":0,"minute_utc":0},
     ]
 
     last_runs = {}
@@ -7301,6 +7303,26 @@ async def api_get_schedules():
                     last_runs["algo_weekly"] = row[0]
                     if "algo_weekly_github" not in last_runs:
                         last_runs["algo_weekly_github"] = row[0]
+    except Exception:
+        pass
+
+    # Read last run of api_check / db_consistency from log file
+    try:
+        import aiofiles
+        async with aiofiles.open("/var/log/twitter-monitor-api-check.log", "r") as f:
+            lines = await f.readlines()
+        last_ok_api = last_ok_db = None
+        for line in reversed(lines):
+            if "[API] OK" in line and not last_ok_api:
+                last_ok_api = line.split("]")[0].strip("[")
+            if "[DB] voted=" in line and not last_ok_db:
+                last_ok_db = line.split("]")[0].strip("[")
+            if last_ok_api and last_ok_db:
+                break
+        if last_ok_api:
+            last_runs["daily_api_check"] = last_ok_api
+        if last_ok_db:
+            last_runs["db_consistency"] = last_ok_db
     except Exception:
         pass
 
