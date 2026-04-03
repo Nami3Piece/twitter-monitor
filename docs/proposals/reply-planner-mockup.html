@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily X Digest — Reply Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0A0A0A;
+  --card: #141414;
+  --surface: #1a1a2e;
+  --border: rgba(255,255,255,0.08);
+  --text: #F5F5F0;
+  --muted: #888880;
+  --signal: #D4FF00;
+  --green: #22c55e;
+  --blue: #3b82f6;
+  --purple: #a855f7;
+  --orange: #f97316;
+  --red: #ef4444;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Space Grotesk', sans-serif; }
+
+/* ═══ NAV ═══ */
+.nav {
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  padding: 0 28px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 0.5px solid var(--border);
+}
+.nav-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+}
+.nav-title em { color: var(--signal); font-style: normal; }
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.nav-link {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  text-decoration: none;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.nav-link:hover { color: var(--text); }
+.nav-link.active { color: var(--signal); }
+
+/* ═══ CREDITS BAR ═══ */
+.credits-bar {
+  background: var(--card);
+  border-bottom: 0.5px solid var(--border);
+  padding: 10px 28px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.credit-item {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.credit-item .label { color: var(--muted); }
+.credit-item .value { color: var(--signal); font-weight: 500; }
+.credit-item .value.white { color: var(--text); }
+
+/* ═══ MAIN LAYOUT ═══ */
+.main {
+  display: flex;
+  height: calc(100vh - 56px - 40px);
+}
+.sidebar {
+  width: 280px;
+  border-right: 0.5px solid var(--border);
+  padding: 20px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.content {
+  flex: 1;
+  padding: 20px 28px;
+  overflow-y: auto;
+}
+
+/* ═══ SIDEBAR ═══ */
+.sidebar-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.sidebar-sub {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--muted);
+  margin-bottom: 16px;
+  letter-spacing: 0.05em;
+}
+.time-slot {
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.time-slot:hover { border-color: rgba(255,255,255,0.15); }
+.time-slot.active { border-color: var(--signal); background: rgba(212,255,0,0.03); }
+.time-slot.done { border-color: var(--green); opacity: 0.6; }
+.slot-time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--signal);
+  margin-bottom: 2px;
+}
+.slot-lang {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 4px;
+}
+.slot-lang.en { color: var(--blue); border: 0.5px solid rgba(59,130,246,0.3); }
+.slot-lang.cn { color: var(--orange); border: 0.5px solid rgba(249,115,22,0.3); }
+.slot-type {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+}
+.slot-count {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--muted);
+  float: right;
+  margin-top: -14px;
+}
+.slot-count em { color: var(--signal); font-style: normal; }
+
+/* Stats summary */
+.sidebar-stats {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 0.5px solid var(--border);
+}
+.sidebar-stat {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.sidebar-stat .val { color: var(--signal); }
+
+/* ═══ CONTENT: VOTED TWEETS ═══ */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.section-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+}
+.section-badge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--signal);
+  border: 0.5px solid rgba(212,255,0,0.3);
+  padding: 3px 10px;
+  letter-spacing: 0.08em;
+}
+
+/* Filters */
+.filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.filter-btn {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  border: 0.5px solid var(--border);
+  background: transparent;
+  padding: 5px 12px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+}
+.filter-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+.filter-btn.active { color: var(--signal); border-color: var(--signal); background: rgba(212,255,0,0.05); }
+
+/* Tweet card for voting */
+.vote-card {
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  padding: 16px 20px;
+  margin-bottom: 8px;
+  transition: all 0.15s;
+}
+.vote-card:hover { border-color: rgba(255,255,255,0.15); }
+.vote-card.voted { border-left: 2px solid var(--signal); }
+.vote-card.scheduled { border-left: 2px solid var(--green); background: rgba(34,197,94,0.02); }
+
+.vc-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.vc-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #2a2a2a;
+  flex-shrink: 0;
+}
+.vc-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.vc-handle {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+}
+.vc-sector {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  padding: 2px 8px;
+  margin-left: auto;
+}
+.vc-sector.arkreen { color: var(--green); border: 0.5px solid rgba(34,197,94,0.3); }
+.vc-sector.greenbtc { color: var(--orange); border: 0.5px solid rgba(249,115,22,0.3); }
+.vc-sector.tlay { color: var(--purple); border: 0.5px solid rgba(168,85,247,0.3); }
+.vc-sector.ai { color: var(--blue); border: 0.5px solid rgba(59,130,246,0.3); }
+
+.vc-text {
+  font-size: 13px;
+  color: #ccc;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+
+.vc-metrics {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+.vc-metric {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* Action buttons */
+.vc-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.btn-vote {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--signal);
+  border: 0.5px solid var(--signal);
+  background: transparent;
+  padding: 5px 14px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+}
+.btn-vote:hover { background: rgba(212,255,0,0.1); }
+.btn-vote.voted {
+  background: var(--signal);
+  color: var(--bg);
+}
+
+.btn-ai {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  padding: 5px 14px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  border: 0.5px solid;
+  background: transparent;
+}
+.btn-ai.reply { color: var(--blue); border-color: rgba(59,130,246,0.4); }
+.btn-ai.reply:hover { background: rgba(59,130,246,0.1); }
+.btn-ai.quote { color: var(--purple); border-color: rgba(168,85,247,0.4); }
+.btn-ai.quote:hover { background: rgba(168,85,247,0.1); }
+.btn-ai.schedule { color: var(--green); border-color: rgba(34,197,94,0.4); }
+.btn-ai.schedule:hover { background: rgba(34,197,94,0.1); }
+
+.btn-cost {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  color: var(--muted);
+  margin-left: 2px;
+}
+
+/* ═══ AI DRAFT PANEL ═══ */
+.draft-panel {
+  background: var(--surface);
+  border: 0.5px solid rgba(79, 70, 229, 0.3);
+  padding: 16px 20px;
+  margin: 8px 0 8px 44px;
+}
+.draft-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.draft-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--purple);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.draft-styles {
+  display: flex;
+  gap: 6px;
+}
+.draft-style {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--muted);
+  border: 0.5px solid var(--border);
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.draft-style.active { color: var(--signal); border-color: var(--signal); }
+
+.draft-content {
+  background: rgba(0,0,0,0.3);
+  border: 0.5px solid var(--border);
+  padding: 12px;
+  font-size: 13px;
+  color: #ccc;
+  line-height: 1.6;
+  margin-bottom: 10px;
+  min-height: 80px;
+}
+.draft-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.btn-copy {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--signal);
+  border: 0.5px solid var(--signal);
+  background: transparent;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+.btn-schedule-draft {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--bg);
+  background: var(--green);
+  border: none;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+.btn-agent {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--purple);
+  border: 0.5px solid rgba(168,85,247,0.4);
+  background: transparent;
+  padding: 5px 14px;
+  cursor: pointer;
+  margin-left: auto;
+}
+.credit-hint {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--muted);
+  margin-left: 8px;
+}
+
+/* ═══ AGENT MODE BANNER ═══ */
+.agent-banner {
+  background: linear-gradient(135deg, rgba(168,85,247,0.1), rgba(59,130,246,0.1));
+  border: 0.5px solid rgba(168,85,247,0.3);
+  padding: 14px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.agent-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.agent-icon {
+  width: 28px;
+  height: 28px;
+  background: var(--purple);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+.agent-text {
+  font-size: 12px;
+  color: var(--text);
+}
+.agent-text small {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  display: block;
+  margin-top: 2px;
+}
+.btn-agent-mode {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--purple);
+  border: 0.5px solid var(--purple);
+  background: transparent;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+/* ═══ SCHEDULED QUEUE ═══ */
+.queue-section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 0.5px solid var(--border);
+}
+.queue-item {
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  border-left: 2px solid var(--green);
+  padding: 12px 16px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.qi-time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--green);
+  flex-shrink: 0;
+  width: 50px;
+}
+.qi-type {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+.qi-type.reply { color: var(--blue); border: 0.5px solid rgba(59,130,246,0.3); }
+.qi-type.quote { color: var(--purple); border: 0.5px solid rgba(168,85,247,0.3); }
+.qi-preview {
+  font-size: 12px;
+  color: var(--muted);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qi-target {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.qi-status {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  flex-shrink: 0;
+  padding: 2px 8px;
+}
+.qi-status.pending { color: var(--orange); border: 0.5px solid rgba(249,115,22,0.3); }
+.qi-status.sent { color: var(--green); border: 0.5px solid rgba(34,197,94,0.3); }
+.qi-status.agent { color: var(--purple); border: 0.5px solid rgba(168,85,247,0.3); }
+</style>
+</head>
+<body>
+
+<!-- ═══ NAV ═══ -->
+<nav class="nav">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="nav-title">Daily <em>X</em> Digest</div>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);border-left:0.5px solid var(--border);padding-left:12px;">Reply Planner</span>
+  </div>
+  <div class="nav-links">
+    <a class="nav-link" href="#">Dashboard</a>
+    <a class="nav-link" href="#">Digest</a>
+    <a class="nav-link" href="#">Podcast</a>
+    <a class="nav-link" href="#">Poster</a>
+    <a class="nav-link active" href="#">Planner</a>
+    <a class="nav-link" href="#">SEO</a>
+  </div>
+</nav>
+
+<!-- ═══ CREDITS BAR ═══ -->
+<div class="credits-bar">
+  <div class="credit-item"><span class="label">Credits:</span><span class="value">1,240</span></div>
+  <div class="credit-item"><span class="label">Today earned:</span><span class="value">+47</span></div>
+  <div class="credit-item"><span class="label">Today spent:</span><span class="value white">-30</span></div>
+  <div class="credit-item"><span class="label">Votes today:</span><span class="value">8/50</span></div>
+  <div class="credit-item"><span class="label">AI drafts:</span><span class="value">6</span></div>
+  <div style="margin-left:auto;">
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--signal);border:0.5px solid var(--signal);padding:4px 12px;cursor:pointer;">+ Top Up</span>
+  </div>
+</div>
+
+<!-- ═══ MAIN LAYOUT ═══ -->
+<div class="main">
+
+  <!-- ═══ LEFT SIDEBAR: Daily Schedule ═══ -->
+  <div class="sidebar">
+    <div class="sidebar-title">Today's Plan</div>
+    <div class="sidebar-sub">2026-04-02 · 6 time slots</div>
+
+    <div class="time-slot done">
+      <div class="slot-time">08:00 ✓</div>
+      <span class="slot-lang en">EN</span>
+      <span class="slot-type">Digest Thread</span>
+      <div class="slot-count"><em>3</em>/3 sent</div>
+    </div>
+
+    <div class="time-slot active">
+      <div class="slot-time">12:00 ←</div>
+      <span class="slot-lang en">EN</span>
+      <span class="slot-type">Hot Reply</span>
+      <div class="slot-count"><em>2</em>/5 queued</div>
+    </div>
+
+    <div class="time-slot">
+      <div class="slot-time">16:00</div>
+      <span class="slot-lang en">EN</span>
+      <span class="slot-lang cn">中</span>
+      <span class="slot-type">Bilingual Post</span>
+      <div class="slot-count"><em>0</em>/2</div>
+    </div>
+
+    <div class="time-slot">
+      <div class="slot-time">20:00</div>
+      <span class="slot-lang cn">中</span>
+      <span class="slot-type">深度观点</span>
+      <div class="slot-count"><em>0</em>/1</div>
+    </div>
+
+    <div class="time-slot">
+      <div class="slot-time">00:00</div>
+      <span class="slot-lang en">EN</span>
+      <span class="slot-type">VIP Reply</span>
+      <div class="slot-count"><em>0</em>/3</div>
+    </div>
+
+    <div class="time-slot">
+      <div class="slot-time">隔天</div>
+      <span class="slot-lang cn">中</span>
+      <span class="slot-type">中文版</span>
+      <div class="slot-count"><em>0</em>/2</div>
+    </div>
+
+    <!-- Daily Stats -->
+    <div class="sidebar-stats">
+      <div class="sidebar-stat"><span>Replies planned</span><span class="val">2</span></div>
+      <div class="sidebar-stat"><span>Quotes planned</span><span class="val">1</span></div>
+      <div class="sidebar-stat"><span>Credits cost est.</span><span class="val">~25</span></div>
+      <div class="sidebar-stat"><span>Vote credits earned</span><span class="val">+16</span></div>
+    </div>
+  </div>
+
+  <!-- ═══ RIGHT CONTENT ═══ -->
+  <div class="content">
+
+    <!-- Agent Mode Banner -->
+    <div class="agent-banner">
+      <div class="agent-info">
+        <div class="agent-icon">🤖</div>
+        <div class="agent-text">
+          Agent Mode Available
+          <small>Let your agent auto-vote, draft & schedule replies via API · 50 tasks/day free</small>
+        </div>
+      </div>
+      <button class="btn-agent-mode">Enable Agent →</button>
+    </div>
+
+    <!-- Section: Trending for Vote -->
+    <div class="section-header">
+      <div class="section-title">Vote & Plan Replies</div>
+      <div class="section-badge">12:00 EN · Hot Reply slot</div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters">
+      <button class="filter-btn active">All Sectors</button>
+      <button class="filter-btn">ARKREEN</button>
+      <button class="filter-btn">GREENBTC</button>
+      <button class="filter-btn">TLAY</button>
+      <button class="filter-btn">AI_RENAISSANCE</button>
+      <button class="filter-btn">🇨🇳 精英榜</button>
+      <button class="filter-btn">🔥 Trending</button>
+    </div>
+
+    <!-- ═══ TWEET 1: Not voted yet ═══ -->
+    <div class="vote-card">
+      <div class="vc-top">
+        <div class="vc-avatar"></div>
+        <div>
+          <span class="vc-name">Arkreen Network</span>
+          <span class="vc-handle">@ArkreenNetwork</span>
+        </div>
+        <span class="vc-sector arkreen">ARKREEN</span>
+      </div>
+      <div class="vc-text">🌱 Sanity Energy 宣布正在重新定义绿色挖矿，结合真实基础设施、社群与Web3，并预告重大消息即将发布。</div>
+      <div class="vc-metrics">
+        <span class="vc-metric">💬 12</span>
+        <span class="vc-metric">🔄 28</span>
+        <span class="vc-metric">❤️ 67</span>
+        <span class="vc-metric">👁 5.2K</span>
+        <span class="vc-metric" style="margin-left:auto;">2h ago</span>
+      </div>
+      <div class="vc-actions">
+        <button class="btn-vote">✓ Vote <span class="btn-cost">(+2 credits)</span></button>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);">Vote first to unlock AI drafts</span>
+      </div>
+    </div>
+
+    <!-- ═══ TWEET 2: Voted → AI Drafts unlocked ═══ -->
+    <div class="vote-card voted">
+      <div class="vc-top">
+        <div class="vc-avatar" style="background:var(--blue);"></div>
+        <div>
+          <span class="vc-name">Chaofan Shou</span>
+          <span class="vc-handle">@Fried_rice</span>
+        </div>
+        <span class="vc-sector ai">AI_RENAISSANCE</span>
+      </div>
+      <div class="vc-text">Claude Code source code has been leaked via a map file in their npm registry! Including all system prompts, the complete query engine, Undercover Mode, and internal telemetry.</div>
+      <div class="vc-metrics">
+        <span class="vc-metric">💬 342</span>
+        <span class="vc-metric">🔄 1.2K</span>
+        <span class="vc-metric">❤️ 3.4K</span>
+        <span class="vc-metric">👁 2.1M</span>
+        <span class="vc-metric" style="margin-left:auto;">1d ago</span>
+      </div>
+      <div class="vc-actions">
+        <button class="btn-vote voted">✓ Voted</button>
+        <button class="btn-ai reply">💬 AI Reply Draft <span class="btn-cost">(-5 credits)</span></button>
+        <button class="btn-ai quote">📝 AI Quote Draft <span class="btn-cost">(-3 credits)</span></button>
+        <button class="btn-ai schedule">📅 Schedule <span class="btn-cost">(→ 12:00)</span></button>
+      </div>
+    </div>
+
+    <!-- AI Draft Panel (expanded for this tweet) -->
+    <div class="draft-panel">
+      <div class="draft-header">
+        <div class="draft-label">AI Reply Draft — @Fried_rice</div>
+        <div class="draft-styles">
+          <span class="draft-style active">Professional</span>
+          <span class="draft-style">Casual</span>
+          <span class="draft-style">Enthusiastic</span>
+        </div>
+      </div>
+      <div class="draft-content">This is a significant security incident. The exposure of system prompts and internal architecture through source maps is a classic supply chain oversight. It highlights why build pipeline security — especially for AI products — needs the same rigor as application security. The real question: how will this affect the trust model for closed-source AI tools going forward?</div>
+      <div class="draft-actions">
+        <button class="btn-copy">📋 Copy</button>
+        <button class="btn-schedule-draft">📅 Schedule → 12:00</button>
+        <span class="credit-hint">-5 credits consumed</span>
+        <button class="btn-agent">🤖 Send via Agent</button>
+      </div>
+    </div>
+
+    <!-- ═══ TWEET 3: Voted + Scheduled ═══ -->
+    <div class="vote-card scheduled">
+      <div class="vc-top">
+        <div class="vc-avatar" style="background:var(--orange);"></div>
+        <div>
+          <span class="vc-name">DSBatten</span>
+          <span class="vc-handle">@DSBatten</span>
+        </div>
+        <span class="vc-sector greenbtc">GREENBTC</span>
+      </div>
+      <div class="vc-text">The "ant model" for Bitcoin mining: miners consume surplus energy that humans don't need. A new framework for the green mining narrative. 🐜⚡</div>
+      <div class="vc-metrics">
+        <span class="vc-metric">💬 34</span>
+        <span class="vc-metric">🔄 89</span>
+        <span class="vc-metric">❤️ 245</span>
+        <span class="vc-metric">👁 31.2K</span>
+        <span class="vc-metric" style="margin-left:auto;">2h ago</span>
+      </div>
+      <div class="vc-actions">
+        <button class="btn-vote voted">✓ Voted</button>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--green);">📅 Scheduled → 12:00 (Quote)</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--purple);margin-left:auto;">🤖 Agent will send</span>
+      </div>
+    </div>
+
+    <!-- ═══ TWEET 4: Another unvoted ═══ -->
+    <div class="vote-card">
+      <div class="vc-top">
+        <div class="vc-avatar" style="background:var(--purple);"></div>
+        <div>
+          <span class="vc-name">TLAY</span>
+          <span class="vc-handle">@tlay_io</span>
+        </div>
+        <span class="vc-sector tlay">TLAY</span>
+      </div>
+      <div class="vc-text">The Embedded Trust Layer for the $10T Machine Economy. New partnership with leading automotive manufacturer for vehicle-to-grid energy settlement.</div>
+      <div class="vc-metrics">
+        <span class="vc-metric">💬 15</span>
+        <span class="vc-metric">🔄 32</span>
+        <span class="vc-metric">❤️ 89</span>
+        <span class="vc-metric">👁 8.2K</span>
+        <span class="vc-metric" style="margin-left:auto;">4h ago</span>
+      </div>
+      <div class="vc-actions">
+        <button class="btn-vote">✓ Vote <span class="btn-cost">(+2 credits)</span></button>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);">Vote first to unlock AI drafts</span>
+      </div>
+    </div>
+
+    <!-- ═══ CART / 购物车 ═══ -->
+    <div class="queue-section">
+      <div class="section-header">
+        <div class="section-title">🛒 My Cart · 待发布</div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);">选好帖子 → AI 生成回复 → 加入购物车 → Agent 自动发 或 下载手动发</span>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--bg);background:var(--green);border:none;padding:6px 16px;cursor:pointer;">🤖 Agent 全部发送</button>
+        <button style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text);background:transparent;border:0.5px solid var(--border);padding:6px 16px;cursor:pointer;">📥 下载全部文案</button>
+        <button style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--signal);background:transparent;border:0.5px solid var(--signal);padding:6px 16px;cursor:pointer;">🔍 AI 安全检查</button>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);display:flex;align-items:center;margin-left:8px;">Est. cost: ~25 credits</span>
+      </div>
+
+      <!-- Cart Item with Safety Check -->
+      <div style="background:var(--card);border:0.5px solid var(--border);border-left:2px solid var(--green);padding:16px 20px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--green);">12:00</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--blue);border:0.5px solid rgba(59,130,246,0.3);padding:2px 8px;">Reply</span>
+          <span style="font-size:12px;color:var(--text);">→ @Fried_rice</span>
+          <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--green);border:0.5px solid rgba(34,197,94,0.3);padding:2px 8px;">✅ Safe</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);cursor:pointer;">✕</span>
+        </div>
+        <div style="font-size:12px;color:#aaa;line-height:1.5;margin-bottom:8px;">This is a significant security incident. The exposure of system prompts through source maps is a classic supply chain oversight...</div>
+        <!-- Safety Check Detail -->
+        <div style="background:rgba(34,197,94,0.05);border:0.5px solid rgba(34,197,94,0.2);padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);">
+          <span style="color:var(--green);">AI Safety Check:</span>
+          ✅ No external links · ✅ Positive tone · ✅ No sensitive words · ✅ Optimal length · ✅ No spam pattern
+        </div>
+      </div>
+
+      <!-- Cart Item with Warning -->
+      <div style="background:var(--card);border:0.5px solid var(--border);border-left:2px solid var(--orange);padding:16px 20px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--green);">12:00</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--purple);border:0.5px solid rgba(168,85,247,0.3);padding:2px 8px;">Quote</span>
+          <span style="font-size:12px;color:var(--text);">→ @DSBatten</span>
+          <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--orange);border:0.5px solid rgba(249,115,22,0.3);padding:2px 8px;">⚠️ Warning</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);cursor:pointer;">✕</span>
+        </div>
+        <div style="font-size:12px;color:#aaa;line-height:1.5;margin-bottom:8px;">The "ant model" reframes BTC mining perfectly. Check out our analysis at https://dailyxdigest.uk/report...</div>
+        <!-- Safety Warning Detail -->
+        <div style="background:rgba(249,115,22,0.05);border:0.5px solid rgba(249,115,22,0.2);padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);">
+          <span style="color:var(--orange);">AI Safety Check:</span>
+          ❌ <span style="color:var(--orange);">Contains external link (severe reach penalty)</span> · ✅ Positive tone · ✅ No sensitive words
+          <br><span style="color:var(--signal);margin-top:4px;display:inline-block;">💡 Suggestion: Remove the URL. Post the link in a follow-up reply instead.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ SCHEDULED QUEUE ═══ -->
+    <div class="queue-section">
+      <div class="section-header">
+        <div class="section-title">📅 Today's Queue</div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);">3 scheduled · 1 sent</span>
+      </div>
+
+      <div class="queue-item">
+        <div class="qi-time">08:00</div>
+        <span class="qi-type reply">Reply</span>
+        <div class="qi-preview">Great thread on solar data verification...</div>
+        <div class="qi-target">→ @ArkreenNetwork</div>
+        <span class="qi-status sent">✓ Sent</span>
+      </div>
+
+      <div class="queue-item">
+        <div class="qi-time">12:00</div>
+        <span class="qi-type reply">Reply</span>
+        <div class="qi-preview">This is a significant security incident...</div>
+        <div class="qi-target">→ @Fried_rice</div>
+        <span class="qi-status pending">Pending</span>
+      </div>
+
+      <div class="queue-item">
+        <div class="qi-time">12:00</div>
+        <span class="qi-type quote">Quote</span>
+        <div class="qi-preview">The "ant model" reframes BTC mining as...</div>
+        <div class="qi-target">→ @DSBatten</div>
+        <span class="qi-status agent">🤖 Agent</span>
+      </div>
+
+      <div class="queue-item" style="opacity:0.5;">
+        <div class="qi-time" style="color:var(--muted);">16:00</div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);">— Empty slot · Add bilingual post —</span>
+      </div>
+
+      <div class="queue-item" style="opacity:0.5;">
+        <div class="qi-time" style="color:var(--muted);">20:00</div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);">— Empty slot · Add 中文深度帖 —</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

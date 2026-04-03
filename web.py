@@ -1829,43 +1829,44 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Twitter Monitor</title>
+<title>Daily X Digest</title>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-NBFLCR9BGJ"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments)}}gtag('js',new Date());gtag('config','G-NBFLCR9BGJ');</script>
-<style>{{--bg:#f1f5f9;--card:#fff;--border:#e2e8f0;--text:#1e293b;--muted:#64748b;--radius:8px}}
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>{{--bg:#0A0A0A;--card:#141414;--border:rgba(255,255,255,0.08);--text:#F5F5F0;--muted:#888880;--signal:#D4FF00;--radius:2px}}
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text)}}
-header{{background:#0f172a;color:#fff;padding:.9rem 2rem;display:flex;justify-content:space-between;align-items:center}}
-header h1{{font-size:1.1rem;font-weight:700}}
+body{{font-family:'Space Grotesk',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text)}}
+header{{background:#0A0A0A;color:var(--text);padding:.9rem 2rem;display:flex;justify-content:space-between;align-items:center;border-bottom:0.5px solid var(--border)}}
+header h1{{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800;letter-spacing:-0.025em}}
 .meta{{font-size:.75rem;opacity:.55}}
-.stats-bar{{display:flex;gap:1rem;padding:.8rem 2rem;background:var(--card);border-bottom:1px solid var(--border);flex-wrap:wrap}}
-.stat-card{{background:var(--bg);border-radius:var(--radius);padding:.5rem 1rem;min-width:90px;text-align:center}}
-.stat-num{{font-size:1.4rem;font-weight:700;color:var(--text)}}
-.stat-label{{font-size:.7rem;color:var(--muted);margin-top:.1rem}}
-.search-wrap{{padding:.5rem 2rem;background:var(--card);border-bottom:1px solid var(--border)}}
-#search-box{{width:100%;max-width:400px;padding:.4rem .8rem;border:1px solid var(--border);border-radius:6px;font-size:.85rem;outline:none}}
-#search-box:focus{{border-color:#3b82f6}}
-.tabs{{display:flex;gap:.5rem;padding:.8rem 2rem;background:var(--card);border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:center}}
-.tab{{padding:.3rem .85rem;border-radius:9999px;border:1px solid var(--border);font-size:.82rem;font-weight:500;cursor:pointer;background:var(--bg);color:var(--muted);transition:.15s;user-select:none}}
-.tab.active{{color:#fff!important;border-color:transparent}}
+.stats-bar{{display:flex;gap:0;padding:0 2rem;background:var(--bg);border-bottom:0.5px solid var(--border);flex-wrap:wrap}}
+.stat-card{{flex:1;padding:.7rem 1rem;text-align:center;border-right:0.5px solid var(--border)}}
+.stat-num{{font-family:'Syne',sans-serif;font-size:1.3rem;font-weight:700;color:var(--signal)}}
+.stat-label{{font-family:'IBM Plex Mono',monospace;font-size:.65rem;color:var(--muted);margin-top:.1rem;text-transform:uppercase;letter-spacing:0.05em}}
+.search-wrap{{padding:.5rem 2rem;background:var(--bg);border-bottom:0.5px solid var(--border)}}
+#search-box{{width:100%;max-width:400px;padding:.4rem .8rem;border:0.5px solid var(--border);background:var(--card);color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:.85rem;outline:none}}
+#search-box:focus{{border-color:var(--signal)}}
+.tabs{{display:flex;gap:.4rem;padding:.8rem 2rem;background:var(--bg);border-bottom:0.5px solid var(--border);flex-wrap:wrap;align-items:center}}
+.tab{{padding:.3rem .85rem;border-radius:0;border:0.5px solid transparent;font-family:'IBM Plex Mono',monospace;font-size:.78rem;font-weight:500;cursor:pointer;background:transparent;color:var(--muted);transition:.15s;user-select:none;letter-spacing:0.04em}}
+.tab.active{{color:var(--signal)!important;border-color:var(--signal);background:rgba(212,255,0,0.05)}}
 .subtabs{{display:flex;gap:.4rem;margin-bottom:1rem}}
-.subtab{{padding:.28rem .8rem;border-radius:6px;font-size:.8rem;font-weight:500;cursor:pointer;background:var(--bg);color:var(--muted);border:1px solid var(--border)}}
-.subtab.active{{background:#0f172a;color:#fff;border-color:#0f172a}}
+.subtab{{padding:.28rem .8rem;border-radius:0;font-family:'IBM Plex Mono',monospace;font-size:.78rem;font-weight:500;cursor:pointer;background:transparent;color:var(--muted);border:0.5px solid var(--border)}}
+.subtab.active{{background:rgba(212,255,0,0.05);color:var(--signal);border-color:var(--signal)}}
 main{{padding:1.2rem 2rem;max-width:1500px;margin:0 auto}}
 .section{{display:none}}.section.active{{display:block}}
 .subsection{{display:none}}.subsection.active{{display:block}}
-table{{width:100%;border-collapse:collapse;background:var(--card);border-radius:var(--radius);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.07);margin-bottom:1.5rem}}
-thead{{background:#f8fafc}}
+table{{width:100%;border-collapse:collapse;background:var(--card);border-radius:0;overflow:hidden;box-shadow:none;margin-bottom:1.5rem}}
+thead{{background:#111}}
 th{{padding:.6rem 1rem;text-align:left;font-size:.72rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}}
-td{{padding:.65rem 1rem;border-top:1px solid var(--border);font-size:.84rem;vertical-align:top;line-height:1.5}}
-tr:hover td{{background:#fafbfc}}
+td{{padding:.65rem 1rem;border-top:0.5px solid var(--border);font-size:.84rem;vertical-align:top;line-height:1.5}}
+tr:hover td{{background:#1a1a1a}}
 tr.hidden{{display:none}}
 .kw{{display:inline-block;padding:.15rem .45rem;border-radius:4px;font-size:.72rem;font-weight:600;white-space:nowrap}}
 .kw-sm{{display:inline-block;padding:.1rem .35rem;border-radius:3px;font-size:.7rem;background:#f1f5f9;color:var(--muted);margin:1px}}
 .user{{font-weight:500;text-decoration:none}}
 .tweet-text{{max-width:300px;word-break:break-word}}
 .ai-cell{{max-width:280px;word-break:break-word}}
-.ai-reply{{background:#f0fdf4;border-left:3px solid #22c55e;padding:.4rem .6rem;border-radius:0 4px 4px 0;font-size:.82rem;color:#166534;line-height:1.5}}
+.ai-reply{{background:rgba(34,197,94,0.1);border-left:3px solid #22c55e;padding:.4rem .6rem;border-radius:0;font-size:.82rem;color:#86efac;line-height:1.5}}
 .ai-pending{{font-size:.78rem;color:var(--muted);font-style:italic}}
 .ai-engagement{{display:flex;flex-direction:column;gap:.8rem}}
 .ai-section{{background:#fafbfc;border-radius:6px;padding:.6rem}}
@@ -1873,9 +1874,9 @@ tr.hidden{{display:none}}
 .ai-version{{background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:.5rem;margin-bottom:.4rem;font-size:.8rem;line-height:1.5;display:flex;gap:.5rem}}
 .ai-version:last-child{{margin-bottom:0}}
 .version-label{{display:inline-block;background:#3b82f6;color:#fff;font-size:.7rem;font-weight:700;padding:.15rem .4rem;border-radius:3px;flex-shrink:0}}
-.vote-btn{{padding:.3rem .7rem;border-radius:6px;border:1.5px solid #3b82f6;background:#fff;color:#3b82f6;font-size:.8rem;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap}}
-.vote-btn:hover{{background:#3b82f6;color:#fff}}
-.vote-btn.voted{{background:#22c55e;color:#fff;border-color:#22c55e;cursor:default}}
+.vote-btn{{padding:.3rem .7rem;border-radius:0;border:0.5px solid var(--signal);background:transparent;color:var(--signal);font-family:'IBM Plex Mono',monospace;font-size:.78rem;font-weight:500;cursor:pointer;transition:.15s;white-space:nowrap}}
+.vote-btn:hover{{background:rgba(212,255,0,0.1);color:var(--signal)}}
+.vote-btn.voted{{background:#22c55e;color:#0A0A0A;border-color:#22c55e;cursor:default}}
 .vote-btn.loading{{opacity:.5;cursor:wait}}
 .delete-btn{{padding:.3rem .7rem;border-radius:6px;border:1.5px solid #ef4444;background:#fff;color:#ef4444;font-size:.8rem;cursor:pointer;transition:.15s}}
 .delete-btn:hover{{background:#ef4444;color:#fff}}
@@ -2256,16 +2257,16 @@ async function copyAIDraft(modalType) {{
 <body>
 <span id="page-top"></span>
 <header>
-  <h1>🐦 Twitter Monitor Dashboard</h1>
+  <h1>🐱 Daily <span style="color:#D4FF00">X</span> Digest</h1>
   <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
     <div class="meta">Updated: {updated} &nbsp;|&nbsp; Showing last 24h tweets</div>
     <div id="hdr-btc" style="display:flex;flex-direction:column;align-items:center;line-height:1.2;flex-shrink:0"><span id="hdr-btc-price" style="color:#f59e0b;font-size:.82rem;font-weight:700">—</span><span style="color:#64748b;font-size:.65rem">₿ BTC/USD</span></div>
     <div id="hdr-akre" style="display:flex;flex-direction:column;align-items:center;line-height:1.2;flex-shrink:0"><span id="hdr-akre-price" style="color:#22d3ee;font-size:.82rem;font-weight:700">—</span><span style="color:#64748b;font-size:.65rem">🌱 AKRE/USD</span></div>
-    <a href="#page-bottom" style="padding:.35rem .75rem;border-radius:6px;border:1px solid #334155;background:transparent;color:#64748b;font-size:.78rem;cursor:pointer;white-space:nowrap;flex-shrink:0;text-decoration:none;display:inline-block" title="Jump to bottom">↓ Bottom</a>
-    <a href="/digest" style="padding:.4rem .9rem;border-radius:20px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:.82rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;box-shadow:0 2px 12px rgba(168,85,247,.45);letter-spacing:.01em"><span style="font-size:1rem">🎙️</span> Daily Digest</a>
-    <a href="https://seo.dailyxdigest.uk" target="_blank" style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #22d3ee;background:transparent;color:#22d3ee;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block">🔍 SEO</a>
-    <a href="/logo/" target="_blank" style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #8b5cf6;background:transparent;color:#8b5cf6;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block">🎨 Logo Agent</a>
-    <button onclick="openDonate()" style="padding:.4rem .9rem;border-radius:6px;border:1.5px solid #f59e0b;background:transparent;color:#f59e0b;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap">💛 Donate</button>
+    <a href="#page-bottom" style="padding:.35rem .75rem;border-radius:0;border:0.5px solid rgba(255,255,255,0.15);background:transparent;color:#888880;font-size:.78rem;cursor:pointer;white-space:nowrap;flex-shrink:0;text-decoration:none;display:inline-block" title="Jump to bottom">↓ Bottom</a>
+    <a href="/digest" style="padding:.4rem .9rem;border-radius:0;background:#D4FF00;color:#0A0A0A;font-size:.82rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;letter-spacing:.01em"><span style="font-size:1rem">🎙️</span> Daily Digest</a>
+    <a href="https://seo.dailyxdigest.uk" target="_blank" style="padding:.4rem .9rem;border-radius:0;border:0.5px solid rgba(255,255,255,0.15);background:transparent;color:#888880;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block">🔍 SEO</a>
+    <a href="/logo/" target="_blank" style="padding:.4rem .9rem;border-radius:0;border:0.5px solid rgba(255,255,255,0.15);background:transparent;color:#888880;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block">🎨 Logo Agent</a>
+    <button onclick="openDonate()" style="padding:.4rem .9rem;border-radius:0;border:0.5px solid rgba(255,255,255,0.15);background:transparent;color:#888880;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap">💰 Wallet</button>
     {_contract_btn}
     {_upgrade_btn}
     {_user_menu_html}
