@@ -18,6 +18,9 @@ ENV/
 *.sqlite3
 data/
 
+# Backups (large binary/audio files)
+backups/
+
 # Logs
 *.log
 logs/
