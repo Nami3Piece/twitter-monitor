@@ -124,15 +124,27 @@ def _clean_for_tts(text: str, lang: str = "en") -> str:
 
 
 async def _generate_audio(text: str, voice: str, output_path: str, lang: str = "en") -> bool:
-    """使用 edge-tts 生成音频文件。"""
+    """生成音频文件。优先使用 MiniMax 付费 TTS，失败则降级到 edge-tts。"""
+    # Try MiniMax first via unified synthesize()
+    try:
+        from services.tts_service import synthesize
+        ok = await synthesize(_clean_for_tts(text, lang), output_path, lang=lang)
+        if ok:
+            logger.info(f"Audio saved via MiniMax TTS: {output_path}")
+            return True
+        logger.warning("MiniMax TTS failed, falling back to edge-tts")
+    except Exception as e:
+        logger.warning(f"MiniMax TTS error: {e}, falling back to edge-tts")
+
+    # Fallback: edge-tts (free)
     try:
         import edge_tts
         communicate = edge_tts.Communicate(_clean_for_tts(text, lang), voice)
         await communicate.save(output_path)
-        logger.info(f"Audio saved: {output_path}")
+        logger.info(f"Audio saved via edge-tts: {output_path}")
         return True
     except Exception as e:
-        logger.error(f"TTS error ({voice}): {e}")
+        logger.error(f"edge-tts error ({voice}): {e}")
         return False
 
 

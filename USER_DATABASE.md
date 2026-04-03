@@ -53,7 +53,7 @@
 如果订阅数据再次丢失，使用以下命令恢复：
 
 ```bash
-ssh -i ~/.ssh/id_aliyun admin@43.103.0.20 "cd /var/www/twitter-monitor && sudo /var/www/twitter-monitor/venv/bin/python3 << 'EOF'
+ssh -i ~/.ssh/id_aliyun admin@<SERVER_IP> "cd /var/www/twitter-monitor && sudo /var/www/twitter-monitor/venv/bin/python3 << 'EOF'
 import asyncio
 import aiosqlite
 from datetime import datetime, timedelta, timezone
@@ -77,13 +77,13 @@ EOF
 
 ```bash
 # 检查用户
-ssh -i ~/.ssh/id_aliyun admin@43.103.0.20 "cd /var/www/twitter-monitor && sudo sqlite3 data/tweets.db 'SELECT * FROM users;'"
+ssh -i ~/.ssh/id_aliyun admin@<SERVER_IP> "cd /var/www/twitter-monitor && sudo sqlite3 data/tweets.db 'SELECT * FROM users;'"
 
 # 检查订阅
-ssh -i ~/.ssh/id_aliyun admin@43.103.0.20 "cd /var/www/twitter-monitor && sudo sqlite3 data/tweets.db 'SELECT * FROM subscriptions;'"
+ssh -i ~/.ssh/id_aliyun admin@<SERVER_IP> "cd /var/www/twitter-monitor && sudo sqlite3 data/tweets.db 'SELECT * FROM subscriptions;'"
 
 # 检查投票数据
-ssh -i ~/.ssh/id_aliyun admin@43.103.0.20 "cd /var/www/twitter-monitor && sudo sqlite3 data/tweets.db 'SELECT COUNT(*) FROM tweets WHERE voted=1;'"
+ssh -i ~/.ssh/id_aliyun admin@<SERVER_IP> "cd /var/www/twitter-monitor && sudo sqlite3 data/tweets.db 'SELECT COUNT(*) FROM tweets WHERE voted=1;'"
 ```
 
 ---

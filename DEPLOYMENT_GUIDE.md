@@ -1,7 +1,7 @@
 # 🚀 阿里云服务器完整部署指南
 
 ## 服务器信息
-- **IP**: 43.103.0.20
+- **IP**: <SERVER_IP>
 - **域名**: monitor.dailyxdigest.uk
 - **服务**: Twitter Monitor + Logo Agent
 
@@ -13,7 +13,7 @@
 
 在 Mac Terminal 中执行：
 ```bash
-ssh root@43.103.0.20
+ssh root@<SERVER_IP>
 ```
 
 ### 步骤 2: 执行整合部署
@@ -35,10 +35,10 @@ chmod +x deploy_integrated.sh
 
 ```bash
 # 上传 Twitter Monitor 的 .env
-scp /Users/namipieces/twitter-monitor/.env root@43.103.0.20:/var/www/twitter-monitor/.env
+scp /Users/namipieces/twitter-monitor/.env root@<SERVER_IP>:/var/www/twitter-monitor/.env
 
 # 如果 Logo Agent 有 .env，也上传
-# scp /path/to/logo-agent/.env root@43.103.0.20:/var/www/logo-agent/.env
+# scp /path/to/logo-agent/.env root@<SERVER_IP>:/var/www/logo-agent/.env
 ```
 
 ### 步骤 4: 配置长期在线保障

@@ -1,7 +1,7 @@
 # 手动部署步骤
 
 ## 前提条件
-- 服务器 IP: 43.103.0.20
+- 服务器 IP: <SERVER_IP>
 - 域名: monitor.dailyxdigest.uk
 - 需要 root 权限
 
@@ -11,7 +11,7 @@
 
 在 Mac Terminal 中执行：
 ```bash
-ssh root@43.103.0.20
+ssh root@<SERVER_IP>
 ```
 
 ---
@@ -44,10 +44,10 @@ chmod +x deploy_integrated.sh
 
 ```bash
 # 上传 Twitter Monitor 的 .env
-scp /Users/namipieces/twitter-monitor/.env root@43.103.0.20:/var/www/twitter-monitor/.env
+scp /Users/namipieces/twitter-monitor/.env root@<SERVER_IP>:/var/www/twitter-monitor/.env
 
 # 如果 Logo Agent 有 .env，也上传
-# scp /path/to/logo-agent/.env root@43.103.0.20:/var/www/logo-agent/.env
+# scp /path/to/logo-agent/.env root@<SERVER_IP>:/var/www/logo-agent/.env
 ```
 
 ---

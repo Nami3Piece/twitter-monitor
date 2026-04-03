@@ -9,7 +9,7 @@
 
 登录服务器：
 ```bash
-ssh root@43.103.0.20
+ssh root@<SERVER_IP>
 ```
 
 生成 SSH 密钥：
@@ -42,7 +42,7 @@ chmod +x deploy_integrated.sh
 ./deploy_integrated.sh
 
 # 上传 .env 文件（在本地 Mac 执行）
-scp /Users/namipieces/twitter-monitor/.env root@43.103.0.20:/var/www/twitter-monitor/.env
+scp /Users/namipieces/twitter-monitor/.env root@<SERVER_IP>:/var/www/twitter-monitor/.env
 ```
 
 ---
@@ -55,7 +55,7 @@ scp /Users/namipieces/twitter-monitor/.env root@43.103.0.20:/var/www/twitter-mon
 
 ### 1. SERVER_HOST
 - Name: `SERVER_HOST`
-- Value: `43.103.0.20`
+- Value: `<SERVER_IP>`
 
 ### 2. SERVER_USER
 - Name: `SERVER_USER`
@@ -128,7 +128,7 @@ GitHub Actions 会自动执行以下步骤：
 2. **检查 SSH 连接**
    ```bash
    # 在本地测试 SSH 连接
-   ssh -i ~/.ssh/github_actions_key root@43.103.0.20
+   ssh -i ~/.ssh/github_actions_key root@<SERVER_IP>
    ```
 
 3. **检查服务器上的 Git 配置**
