@@ -373,13 +373,15 @@ async def _fetch_stats() -> Dict:
     """Return aggregate counts for the stats bar."""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT COUNT(*), SUM(voted) FROM tweets "
+            "SELECT COUNT(*) FROM tweets "
             "WHERE created_at_iso >= datetime('now', '-24 hours') "
             "AND created_at_iso IS NOT NULL AND created_at_iso != ''"
         ) as cur:
             row = await cur.fetchone()
         total = row[0] or 0
-        voted = row[1] or 0
+        async with db.execute("SELECT COUNT(*) FROM tweets WHERE voted=1") as cur:
+            vrow = await cur.fetchone()
+        voted = vrow[0] or 0
         async with db.execute(
             "SELECT COUNT(*) FROM accounts WHERE followed=1"
         ) as cur:
