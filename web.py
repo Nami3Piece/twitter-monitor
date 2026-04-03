@@ -505,9 +505,9 @@ def _build_top_events_html(events: List[Dict]) -> str:
 
         # Vote button with count
         if user_voted:
-            vote_btn = f'<button class="vote-btn voted" disabled style="font-size:.75rem;padding:.3rem .8rem;background:#22c55e;color:#fff;border:none;border-radius:4px;cursor:not-allowed">✓ Voted ({vote_count})</button>'
+            vote_btn = f'<button class="vote-btn voted" disabled>✓ Voted ({vote_count})</button>'
         else:
-            vote_btn = f'<button class="vote-btn" onclick="vote(this,\'{tweet_id}\')" style="font-size:.75rem;padding:.3rem .8rem;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600">✓ Vote ({vote_count})</button>'
+            vote_btn = f'<button class="vote-btn" onclick="vote(this,\'{tweet_id}\')">✓ Vote ({vote_count})</button>'
 
         # Media image
         media_url = ev.get("media_url") or ""
@@ -1256,7 +1256,7 @@ def _build_keyword_stats_table(keyword_stats: List[Dict]) -> str:
             kw_rows.append(f'<div style="display:flex;justify-content:space-between;padding:.3rem .5rem;border-bottom:1px solid {c}11"><span style="font-size:.8rem">{keyword}{heart}</span><span style="font-weight:600;color:{c}">{count}</span></div>')
 
         project_cards.append(f'''
-<div style="background:#fff;border-radius:8px;border-left:3px solid {c};box-shadow:0 1px 3px rgba(0,0,0,.08);overflow:hidden">
+<div style="background:var(--card);border-radius:0;border-left:3px solid {c};box-shadow:none;overflow:hidden">
   <div style="background:{c}11;padding:.6rem .8rem;border-bottom:2px solid {c}">
     <div style="font-weight:700;color:{c};font-size:.9rem">{project}</div>
     <div style="font-size:.75rem;color:#64748b;margin-top:.2rem">{len(stats)}  keywords · {sum(s["count"] for s in stats)}  tweets</div>
@@ -1838,7 +1838,7 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
 body{{font-family:'Space Grotesk',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text)}}
 header{{background:#0A0A0A;color:var(--text);padding:.9rem 2rem;display:flex;justify-content:space-between;align-items:center;border-bottom:0.5px solid var(--border)}}
 header h1{{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800;letter-spacing:-0.025em}}
-.meta{{font-size:.75rem;opacity:.55}}
+.meta{{font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:#888880}}
 .stats-bar{{display:flex;gap:0;padding:0 2rem;background:var(--bg);border-bottom:0.5px solid var(--border);flex-wrap:wrap}}
 .stat-card{{flex:1;padding:.7rem 1rem;text-align:center;border-right:0.5px solid var(--border)}}
 .stat-num{{font-family:'Syne',sans-serif;font-size:1.3rem;font-weight:700;color:var(--signal)}}
@@ -1862,27 +1862,27 @@ td{{padding:.65rem 1rem;border-top:0.5px solid var(--border);font-size:.84rem;ve
 tr:hover td{{background:#1a1a1a}}
 tr.hidden{{display:none}}
 .kw{{display:inline-block;padding:.15rem .45rem;border-radius:4px;font-size:.72rem;font-weight:600;white-space:nowrap}}
-.kw-sm{{display:inline-block;padding:.1rem .35rem;border-radius:3px;font-size:.7rem;background:#f1f5f9;color:var(--muted);margin:1px}}
+.kw-sm{{display:inline-block;padding:.1rem .35rem;border-radius:3px;font-size:.7rem;background:rgba(255,255,255,0.06);color:var(--muted);margin:1px}}
 .user{{font-weight:500;text-decoration:none}}
 .tweet-text{{max-width:300px;word-break:break-word}}
 .ai-cell{{max-width:280px;word-break:break-word}}
 .ai-reply{{background:rgba(34,197,94,0.1);border-left:3px solid #22c55e;padding:.4rem .6rem;border-radius:0;font-size:.82rem;color:#86efac;line-height:1.5}}
 .ai-pending{{font-size:.78rem;color:var(--muted);font-style:italic}}
 .ai-engagement{{display:flex;flex-direction:column;gap:.8rem}}
-.ai-section{{background:#fafbfc;border-radius:6px;padding:.6rem}}
-.ai-section strong{{display:block;font-size:.75rem;color:#475569;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.03em}}
-.ai-version{{background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:.5rem;margin-bottom:.4rem;font-size:.8rem;line-height:1.5;display:flex;gap:.5rem}}
+.ai-section{{background:rgba(255,255,255,0.03);border-radius:0;padding:.6rem}}
+.ai-section strong{{display:block;font-size:.75rem;color:var(--muted);margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.03em}}
+.ai-version{{background:var(--card);border:0.5px solid var(--border);border-radius:0;padding:.5rem;margin-bottom:.4rem;font-size:.8rem;line-height:1.5;display:flex;gap:.5rem}}
 .ai-version:last-child{{margin-bottom:0}}
 .version-label{{display:inline-block;background:#3b82f6;color:#fff;font-size:.7rem;font-weight:700;padding:.15rem .4rem;border-radius:3px;flex-shrink:0}}
 .vote-btn{{padding:.3rem .7rem;border-radius:0;border:0.5px solid var(--signal);background:transparent;color:var(--signal);font-family:'IBM Plex Mono',monospace;font-size:.78rem;font-weight:500;cursor:pointer;transition:.15s;white-space:nowrap}}
 .vote-btn:hover{{background:rgba(212,255,0,0.1);color:var(--signal)}}
 .vote-btn.voted{{background:#22c55e;color:#0A0A0A;border-color:#22c55e;cursor:default}}
 .vote-btn.loading{{opacity:.5;cursor:wait}}
-.delete-btn{{padding:.3rem .7rem;border-radius:6px;border:1.5px solid #ef4444;background:#fff;color:#ef4444;font-size:.8rem;cursor:pointer;transition:.15s}}
-.delete-btn:hover{{background:#ef4444;color:#fff}}
+.delete-btn{{padding:.3rem .7rem;border-radius:0;border:0.5px solid #ef4444;background:transparent;color:#ef4444;font-size:.8rem;cursor:pointer;transition:.15s}}
+.delete-btn:hover{{background:#ef4444;color:#0A0A0A}}
 .batch-actions{{display:flex;gap:1rem;align-items:center;padding:.8rem 0;margin-bottom:.5rem}}
-.batch-delete-btn{{padding:.4rem 1rem;border-radius:6px;border:1.5px solid #ef4444;background:#fff;color:#ef4444;font-weight:600;cursor:pointer;transition:.15s}}
-.batch-delete-btn:hover{{background:#ef4444;color:#fff}}
+.batch-delete-btn{{padding:.4rem 1rem;border-radius:0;border:0.5px solid #ef4444;background:transparent;color:#ef4444;font-weight:600;cursor:pointer;transition:.15s}}
+.batch-delete-btn:hover{{background:#ef4444;color:#0A0A0A}}
 .tweet-checkbox{{cursor:pointer;width:16px;height:16px}}
 .like-count{{color:#e11d48;font-size:.82rem;white-space:nowrap}}
 .tweet-card-cell{{min-width:280px;max-width:360px}}
