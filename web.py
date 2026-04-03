@@ -6972,6 +6972,7 @@ select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:
       {date_options if date_options else '<option>No digests yet</option>'}
     </select>
     <span style="color:#888880;font-size:.8rem">最近30天 · 北京时间每天8:00发布</span>
+    {'<button onclick="regenAudio()" id="regen-audio-btn" style="margin-left:auto;padding:.35rem .9rem;background:#7c3aed;border:none;border-radius:8px;color:#fff;font-size:.8rem;font-weight:600;cursor:pointer">🔄 重新生成音频</button><button onclick="regenAudioBatch()" style="padding:.35rem .9rem;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;font-size:.8rem;cursor:pointer">📦 补全历史音频</button>' if user_tier == "admin" else ''}
   </div>
   {content_block}
 </main>
@@ -7038,51 +7039,102 @@ function showDigestTab(l){{
   dpbSetLang(l==='zh'?'zh':'en');
 }}
 window.addEventListener('load',function(){{dpbInit('{audio_zh_src}','{audio_en_src}');}});
+
+async function regenAudio() {{
+  const btn = document.getElementById('regen-audio-btn');
+  if (!btn) return;
+  const sel = document.querySelector('select');
+  const date = sel ? sel.value : '';
+  btn.textContent = '⏳ 生成中...'; btn.disabled = true;
+  try {{
+    const r = await fetch('/api/digest/regen-audio?date=' + date, {{method:'POST'}});
+    const d = await r.json();
+    if (d.ok) {{
+      btn.textContent = '✅ 完成 (' + (d.success||0) + '/' + (d.total||0) + ') — ' + (d.backend||'');
+      setTimeout(() => location.reload(), 1500);
+    }} else {{
+      btn.textContent = '❌ ' + (d.error || '失败');
+      btn.disabled = false;
+    }}
+  }} catch(e) {{
+    btn.textContent = '❌ 网络错误'; btn.disabled = false;
+  }}
+}}
+
+async function regenAudioBatch() {{
+  if (!confirm('将为所有缺失音频的历史摘要重新生成，可能需要几分钟，继续？')) return;
+  const r = await fetch('/api/digest/regen-audio-batch', {{method:'POST'}});
+  const d = await r.json();
+  alert(d.message || (d.ok ? '后台任务已启动' : '失败'));
+}}
 </script>
 </body>
 </html>"""
 
 
+async def _get_digest_user_tier(request: Request) -> str:
+    """Resolve user tier for digest page (admin/pro/basic/free)."""
+    user = await _auth_module.get_current_user(request)
+    if not user:
+        return "free"
+    if user["id"] in _auth_module.ADMIN_USER_IDS:
+        return "admin"
+    sub = (await _auth_module.get_subscription(user["id"]) or {})
+    return sub.get("tier", "free") if sub.get("status") == "active" else "free"
+
+
 @app.get("/digest", response_class=HTMLResponse)
-async def digest_latest():
+async def digest_latest(request: Request):
     dates = await _fetch_digest_dates(30)
     ticker_items = await _fetch_ticker_items()
+    user_tier = await _get_digest_user_tier(request)
     if not dates:
-        return HTMLResponse(_build_digest_page(None, [], "", ticker_items))
+        return HTMLResponse(_build_digest_page(None, [], "", ticker_items, user_tier))
     latest = dates[0]
     digest = await _fetch_digest(latest)
-    return HTMLResponse(_build_digest_page(digest, dates, latest, ticker_items))
+    return HTMLResponse(_build_digest_page(digest, dates, latest, ticker_items, user_tier))
 
 
 @app.get("/digest/{date}", response_class=HTMLResponse)
-async def digest_by_date(date: str):
+async def digest_by_date(date: str, request: Request):
     if not _re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(status_code=400, detail="Invalid date format")
     dates = await _fetch_digest_dates(30)
     digest = await _fetch_digest(date)
     ticker_items = await _fetch_ticker_items()
-    return HTMLResponse(_build_digest_page(digest, dates, date, ticker_items))
+    user_tier = await _get_digest_user_tier(request)
+    return HTMLResponse(_build_digest_page(digest, dates, date, ticker_items, user_tier))
 
 
 @app.post("/api/digest/regen-audio")
-async def regen_digest_audio(request: Request, _: str = Depends(_auth)) -> JSONResponse:
-    """Regenerate ALL TTS audio for today's digest (news + insight, zh + en)."""
+async def regen_digest_audio(request: Request, _: str = Depends(_auth),
+                              date: str = None) -> JSONResponse:
+    """Regenerate TTS audio for any digest date (default: today). Uses MiniMax TTS."""
     import datetime, os
     from digest_runner import _generate_audio
+    from services.tts_service import synthesize
 
-    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    if not date:
+        date = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime("%Y-%m-%d")
+    if not _re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        return JSONResponse({"ok": False, "error": "Invalid date format"}, status_code=400)
 
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM digests WHERE date=?", (today,)) as cur:
+        async with db.execute("SELECT * FROM digests WHERE date=?", (date,)) as cur:
             row = await cur.fetchone()
 
     if not row:
-        return JSONResponse({"ok": False, "error": "No digest for today"}, status_code=404)
+        return JSONResponse({"ok": False, "error": f"No digest for {date}"}, status_code=404)
 
     digest = dict(row)
     audio_dir = os.getenv("AUDIO_DIR", "data/audio")
     os.makedirs(audio_dir, exist_ok=True)
+
+    # Check MiniMax availability
+    minimax_key = os.getenv("MINIMAX_API_KEY", "")
+    tts_backend = "MiniMax" if minimax_key else "edge-tts"
+    logger.info(f"regen-audio: date={date}, backend={tts_backend}")
 
     results = {}
 
@@ -7093,38 +7145,103 @@ async def regen_digest_audio(request: Request, _: str = Depends(_auth)) -> JSONR
     ]:
         text = digest.get(field) or ""
         if text:
-            path = os.path.join(audio_dir, f"digest_{today}_{suffix}.mp3")
+            path = os.path.join(audio_dir, f"digest_{date}_{suffix}.mp3")
             ok = await _generate_audio(text, voice, path, lang=lang)
-            results[f"audio_{suffix}"] = f"digest_{today}_{suffix}.mp3" if ok else None
+            results[f"audio_{suffix}"] = f"digest_{date}_{suffix}.mp3" if ok else None
+            logger.info(f"regen-audio [{suffix}]: {'OK' if ok else 'FAILED'} → {path}")
 
-    # ── 核心洞察音频（之前被遗漏） ────────────────────────────────────────────
+    # ── 核心洞察音频 ──────────────────────────────────────────────────────────
     for lang, field, voice, suffix in [
         ("zh", "content_insight_zh", "zh-CN-YunyangNeural", "insight_zh"),
         ("en", "content_insight_en", "en-US-AriaNeural",    "insight_en"),
     ]:
         text = digest.get(field) or ""
         if text:
-            path = os.path.join(audio_dir, f"digest_{today}_{suffix}.mp3")
+            path = os.path.join(audio_dir, f"digest_{date}_{suffix}.mp3")
             ok = await _generate_audio(text, voice, path, lang=lang)
-            results[f"audio_{suffix}"] = f"digest_{today}_{suffix}.mp3" if ok else None
+            results[f"audio_{suffix}"] = f"digest_{date}_{suffix}.mp3" if ok else None
+            logger.info(f"regen-audio [{suffix}]: {'OK' if ok else 'FAILED'} → {path}")
 
-    # ── 原子写回 DB ──────────────────────────────────────────────────────────
+    # ── 写回 DB（只更新非 None 的字段）───────────────────────────────────────
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """UPDATE digests
                SET audio_zh=?, audio_en=?, audio_insight_zh=?, audio_insight_en=?
                WHERE date=?""",
             (
-                results.get("audio_zh"),
-                results.get("audio_en"),
-                results.get("audio_insight_zh"),
-                results.get("audio_insight_en"),
-                today,
+                results.get("audio_zh") or digest.get("audio_zh"),
+                results.get("audio_en") or digest.get("audio_en"),
+                results.get("audio_insight_zh") or digest.get("audio_insight_zh"),
+                results.get("audio_insight_en") or digest.get("audio_insight_en"),
+                date,
             )
         )
         await db.commit()
 
-    return JSONResponse({"ok": True, "date": today, "audio": results})
+    success_count = sum(1 for v in results.values() if v)
+    return JSONResponse({
+        "ok": True,
+        "date": date,
+        "backend": tts_backend,
+        "audio": results,
+        "success": success_count,
+        "total": len(results),
+    })
+
+
+@app.post("/api/digest/regen-audio-batch")
+async def regen_digest_audio_batch(_: str = Depends(_auth)) -> JSONResponse:
+    """Backfill missing audio for ALL historical digests. Runs in background."""
+    import asyncio as _asyncio
+
+    async def _backfill():
+        import datetime, os
+        from digest_runner import _generate_audio
+
+        audio_dir = os.getenv("AUDIO_DIR", "data/audio")
+        os.makedirs(audio_dir, exist_ok=True)
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM digests WHERE audio_insight_zh IS NULL OR audio_zh IS NULL ORDER BY date DESC"
+            ) as cur:
+                rows = [dict(r) for r in await cur.fetchall()]
+
+        logger.info(f"backfill: {len(rows)} digests need audio")
+        fixed = 0
+        for d in rows:
+            date = d["date"]
+            updates = {}
+            for lang, field, voice, suffix in [
+                ("zh", "content_zh",         "zh-CN-YunyangNeural", "zh"),
+                ("en", "content_en",         "en-US-AriaNeural",    "en"),
+                ("zh", "content_insight_zh", "zh-CN-YunyangNeural", "insight_zh"),
+                ("en", "content_insight_en", "en-US-AriaNeural",    "insight_en"),
+            ]:
+                if d.get(f"audio_{suffix}"):
+                    continue  # already exists
+                text = d.get(field) or ""
+                if not text:
+                    continue
+                path = os.path.join(audio_dir, f"digest_{date}_{suffix}.mp3")
+                ok = await _generate_audio(text, voice, path, lang=lang)
+                if ok:
+                    updates[f"audio_{suffix}"] = f"digest_{date}_{suffix}.mp3"
+            if updates:
+                async with aiosqlite.connect(DB_PATH) as db:
+                    sets = ", ".join(f"{k}=?" for k in updates)
+                    await db.execute(
+                        f"UPDATE digests SET {sets} WHERE date=?",
+                        list(updates.values()) + [date]
+                    )
+                    await db.commit()
+                fixed += 1
+                logger.info(f"backfill: fixed {date} — {list(updates.keys())}")
+        logger.info(f"backfill: done. Fixed {fixed}/{len(rows)} digests")
+
+    _asyncio.create_task(_backfill())
+    return JSONResponse({"ok": True, "message": "批量补全任务已在后台启动，请查看日志"})
 
 
 @app.get("/audio/{filename}")
