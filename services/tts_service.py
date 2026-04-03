@@ -44,6 +44,15 @@ def _clean_for_tts(text: str, lang: str = "en") -> str:
     return text.strip()
 
 
+def _get_ffmpeg() -> str:
+    """Return path to ffmpeg: bundled (imageio-ffmpeg) > system."""
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return "ffmpeg"
+
+
 def _split_text(text: str, max_chars: int = 4000) -> list[str]:
     """按段落拆分长文本，每片不超过 max_chars。"""
     paragraphs = text.split("\n\n")
@@ -262,7 +271,7 @@ async def _concat_audio(files: list[str], output_path: str) -> None:
             f.write(f"file '{fp}'\n")
 
     proc = await asyncio.create_subprocess_exec(
-        "ffmpeg", "-f", "concat", "-safe", "0", "-i", list_path,
+        _get_ffmpeg(), "-f", "concat", "-safe", "0", "-i", list_path,
         "-c", "copy", output_path, "-y",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -279,7 +288,7 @@ async def normalize_audio(input_path: str, output_path: str) -> bool:
     """ffmpeg 响度标准化 + 高通滤波。"""
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-i", input_path,
+            _get_ffmpeg(), "-i", input_path,
             "-af", "highpass=f=80,loudnorm=I=-16.6:TP=-1.5:LRA=11",
             "-ar", "44100", "-b:a", "192k",
             output_path, "-y",

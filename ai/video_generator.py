@@ -13,6 +13,15 @@ from loguru import logger
 
 AUDIO_DIR      = os.getenv("AUDIO_DIR", "data/audio")
 FONT_PATH      = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+
+
+def _get_ffmpeg() -> str:
+    """Return bundled ffmpeg (imageio-ffmpeg) or fall back to system."""
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return "ffmpeg"
 FONT_PATH_BOLD = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
 
 # Palette
@@ -236,8 +245,11 @@ def _draw_poster(date: str, lang: str, text: str) -> Optional[bytes]:
 
 
 def _get_audio_duration(audio_path: str) -> float:
+    ffmpeg = _get_ffmpeg()
+    # ffprobe is usually co-located with ffmpeg
+    ffprobe = ffmpeg.replace("ffmpeg", "ffprobe") if "ffmpeg" in ffmpeg else "ffprobe"
     result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+        [ffprobe, "-v", "error", "-show_entries", "format=duration",
          "-of", "default=noprint_wrappers=1:nokey=1", audio_path],
         capture_output=True, text=True, timeout=10,
     )
@@ -286,9 +298,10 @@ async def generate_insight_video(
         with open(poster_path, "wb") as f:
             f.write(png_bytes)
 
+        ffmpeg = _get_ffmpeg()
         if audio_path:
             cmd = [
-                "ffmpeg", "-y",
+                ffmpeg, "-y",
                 "-loop", "1", "-i", poster_path,
                 "-i", audio_path,
                 "-c:v", "libx264", "-tune", "stillimage",
@@ -302,7 +315,7 @@ async def generate_insight_video(
         else:
             # No audio: 60s silent video
             cmd = [
-                "ffmpeg", "-y",
+                ffmpeg, "-y",
                 "-loop", "1", "-t", "60", "-i", poster_path,
                 "-c:v", "libx264", "-tune", "stillimage",
                 "-preset", "ultrafast", "-crf", "28",
