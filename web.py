@@ -1833,7 +1833,7 @@ def _build_page(data: Dict[str, List[Dict]], accounts: Dict[str, List[Dict]], st
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-NBFLCR9BGJ"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments)}}gtag('js',new Date());gtag('config','G-NBFLCR9BGJ');</script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
-<style>{{--bg:#0A0A0A;--card:#141414;--border:rgba(255,255,255,0.08);--text:#F5F5F0;--muted:#888880;--signal:#D4FF00;--radius:2px}}
+<style>:root{{--bg:#0A0A0A;--card:#141414;--border:rgba(255,255,255,0.08);--text:#F5F5F0;--muted:#888880;--signal:#D4FF00;--radius:2px}}
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:'Space Grotesk',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text)}}
 header{{background:#0A0A0A;color:var(--text);padding:.9rem 2rem;display:flex;justify-content:space-between;align-items:center;border-bottom:0.5px solid var(--border)}}
@@ -1859,7 +1859,7 @@ table{{width:100%;border-collapse:collapse;background:var(--card);border-radius:
 thead{{background:#111}}
 th{{padding:.6rem 1rem;text-align:left;font-size:.72rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}}
 td{{padding:.65rem 1rem;border-top:0.5px solid var(--border);font-size:.84rem;vertical-align:top;line-height:1.5}}
-tr:hover td{{background:#1a1a1a}}
+tbody tr{{background:var(--card)}}tr:hover td{{background:#1a1a1a}}
 tr.hidden{{display:none}}
 .kw{{display:inline-block;padding:.15rem .45rem;border-radius:4px;font-size:.72rem;font-weight:600;white-space:nowrap}}
 .kw-sm{{display:inline-block;padding:.1rem .35rem;border-radius:3px;font-size:.7rem;background:rgba(255,255,255,0.06);color:var(--muted);margin:1px}}
