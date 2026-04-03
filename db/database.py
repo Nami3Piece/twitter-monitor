@@ -513,11 +513,20 @@ async def vote_tweet(tweet_id: str, voter: str) -> Tuple[bool, Optional[str], Op
 async def get_tweet_votes(tweet_id: str, current_user: str) -> Tuple[int, bool]:
     """Get vote count and whether current user voted. Returns (total_votes, user_voted)."""
     async with aiosqlite.connect(DB_PATH) as db:
-        # Get total vote count
+        # Get total vote count from user_votes
         async with db.execute(
             "SELECT COUNT(*) FROM user_votes WHERE tweet_id=?", (tweet_id,)
         ) as cur:
             total_votes = (await cur.fetchone())[0]
+
+        # Fallback: if tweet is marked voted but no user_votes record, show at least 1
+        if total_votes == 0:
+            async with db.execute(
+                "SELECT voted FROM tweets WHERE tweet_id=?", (tweet_id,)
+            ) as cur:
+                row = await cur.fetchone()
+                if row and row[0]:
+                    total_votes = 1
 
         # Check if current user voted
         async with db.execute(
