@@ -6979,7 +6979,7 @@ select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:
       {date_options if date_options else '<option>No digests yet</option>'}
     </select>
     <span style="color:#888880;font-size:.8rem">最近30天 · 北京时间每天8:00发布</span>
-    {'<button onclick="regenAudio()" id="regen-audio-btn" style="margin-left:auto;padding:.35rem .9rem;background:#7c3aed;border:none;border-radius:8px;color:#fff;font-size:.8rem;font-weight:600;cursor:pointer">🔄 重新生成音频</button><button onclick="regenAudioBatch()" style="padding:.35rem .9rem;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;font-size:.8rem;cursor:pointer">📦 补全历史音频</button>' if user_tier == "admin" else ''}
+    {'<button onclick="regenAudio()" id="regen-audio-btn" style="margin-left:auto;padding:.35rem .9rem;background:#7c3aed;border:none;border-radius:8px;color:#fff;font-size:.8rem;font-weight:600;cursor:pointer">🔄 重新生成音频</button><button onclick="regenAudioBatch()" style="padding:.35rem .9rem;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;font-size:.8rem;cursor:pointer">📦 补全历史音频</button><button onclick="openPdfVideoModal()" style="padding:.35rem .9rem;background:#0f766e;border:none;border-radius:8px;color:#fff;font-size:.8rem;font-weight:600;cursor:pointer">🎬 PDF合成视频</button>' if user_tier == "admin" else ''}
   </div>
   {content_block}
 </main>
@@ -7074,7 +7074,103 @@ async function regenAudioBatch() {{
   const d = await r.json();
   alert(d.message || (d.ok ? '后台任务已启动' : '失败'));
 }}
+
+// ── PDF → Video ──────────────────────────────────────────────────────────────
+function openPdfVideoModal() {{
+  document.getElementById('pdf-video-modal').style.display = 'flex';
+}}
+function closePdfVideoModal() {{
+  document.getElementById('pdf-video-modal').style.display = 'none';
+  document.getElementById('pdf-video-status').textContent = '';
+  document.getElementById('pdf-video-progress-bar').style.width = '0%';
+  document.getElementById('pdf-video-file').value = '';
+  document.getElementById('pdf-video-lang').value = 'zh';
+}}
+
+async function submitPdfVideo() {{
+  const fileInput = document.getElementById('pdf-video-file');
+  const lang = document.getElementById('pdf-video-lang').value;
+  const statusEl = document.getElementById('pdf-video-status');
+  const progressBar = document.getElementById('pdf-video-progress-bar');
+  const submitBtn = document.getElementById('pdf-video-submit-btn');
+
+  if (!fileInput.files || !fileInput.files[0]) {{
+    statusEl.textContent = '请选择PDF文件'; return;
+  }}
+  const sel = document.querySelector('select');
+  const date = sel ? sel.value : '';
+
+  const formData = new FormData();
+  formData.append('pdf', fileInput.files[0]);
+
+  submitBtn.disabled = true;
+  statusEl.textContent = '上传中...';
+  progressBar.style.width = '5%';
+
+  let jobId;
+  try {{
+    const r = await fetch('/api/digest/pdf-video/start?date=' + date + '&lang=' + lang, {{
+      method: 'POST', body: formData
+    }});
+    if (!r.ok) {{
+      const e = await r.json().catch(() => ({{}}));
+      statusEl.textContent = '❌ ' + (e.detail || '上传失败');
+      submitBtn.disabled = false; return;
+    }}
+    const d = await r.json();
+    jobId = d.job_id;
+  }} catch(e) {{
+    statusEl.textContent = '❌ 网络错误'; submitBtn.disabled = false; return;
+  }}
+
+  // Poll status
+  const poll = setInterval(async () => {{
+    try {{
+      const r = await fetch('/api/digest/pdf-video/status/' + jobId);
+      const d = await r.json();
+      statusEl.textContent = d.message || '';
+      progressBar.style.width = (d.progress || 0) + '%';
+      if (d.status === 'done') {{
+        clearInterval(poll);
+        statusEl.textContent = '✅ 完成！(' + Math.round((d.size||0)/1024) + ' KB) — 正在下载...';
+        progressBar.style.width = '100%';
+        window.location.href = '/api/digest/pdf-video/download/' + jobId;
+        setTimeout(() => {{ submitBtn.disabled = false; }}, 2000);
+      }} else if (d.status === 'error') {{
+        clearInterval(poll);
+        statusEl.textContent = '❌ ' + (d.message || '生成失败');
+        submitBtn.disabled = false;
+      }}
+    }} catch(e) {{ /* ignore poll errors */ }}
+  }}, 2000);
+}}
 </script>
+
+<!-- PDF → Video Modal -->
+<div id="pdf-video-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:2rem;width:min(480px,92vw);position:relative">
+    <button onclick="closePdfVideoModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
+    <h3 style="color:#f1f5f9;margin:0 0 1rem">🎬 PDF 合成视频</h3>
+    <p style="color:#94a3b8;font-size:.85rem;margin:0 0 1.2rem">上传 NotebookLM 生成的 PDF，自动与当前日期的音频合并为 MP4 幻灯片视频。</p>
+    <div style="margin-bottom:.8rem">
+      <label style="color:#cbd5e1;font-size:.85rem;display:block;margin-bottom:.4rem">选择 PDF 文件（最大 50MB）</label>
+      <input type="file" id="pdf-video-file" accept=".pdf,application/pdf" style="width:100%;padding:.5rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.85rem">
+    </div>
+    <div style="margin-bottom:1.2rem">
+      <label style="color:#cbd5e1;font-size:.85rem;display:block;margin-bottom:.4rem">语言（匹配音频）</label>
+      <select id="pdf-video-lang" style="padding:.4rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.85rem">
+        <option value="zh">中文</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+    <div style="background:#0f172a;border-radius:8px;height:6px;margin-bottom:.8rem;overflow:hidden">
+      <div id="pdf-video-progress-bar" style="height:100%;background:#0f766e;width:0%;transition:width .3s"></div>
+    </div>
+    <div id="pdf-video-status" style="color:#94a3b8;font-size:.82rem;min-height:1.2em;margin-bottom:1rem"></div>
+    <button id="pdf-video-submit-btn" onclick="submitPdfVideo()" style="width:100%;padding:.65rem;background:#0f766e;border:none;border-radius:8px;color:#fff;font-size:.9rem;font-weight:600;cursor:pointer">开始生成</button>
+  </div>
+</div>
+
 </body>
 </html>"""
 
@@ -7423,6 +7519,114 @@ async def download_insight_video(job_id: str, request: Request):
     )
 
 
+# ── PDF → Video Job API ───────────────────────────────────────────────────────
+
+_pdf_video_jobs: dict = {}  # job_id -> {status, progress, message, data, error}
+
+
+async def _run_pdf_video_job(job_id: str, pdf_bytes: bytes, audio_path: str, filename_stem: str):
+    job = _pdf_video_jobs[job_id]
+    from ai.video_generator import generate_video_from_pdf
+
+    async def _cb(pct: int, msg: str):
+        job["progress"] = pct
+        job["message"] = msg
+
+    try:
+        job.update({"status": "running"})
+        data = await generate_video_from_pdf(pdf_bytes, audio_path, on_progress=_cb)
+        if data:
+            job.update({"status": "done", "progress": 100,
+                        "message": "完成！", "data": data,
+                        "size": len(data), "filename": f"{filename_stem}.mp4"})
+        else:
+            job.update({"status": "error", "message": "视频生成失败，请重试"})
+    except Exception as e:
+        logger.error(f"pdf-video job {job_id}: {e}")
+        job.update({"status": "error", "message": str(e)[:120]})
+    await asyncio.sleep(600)
+    _pdf_video_jobs.pop(job_id, None)
+
+
+@app.post("/api/digest/pdf-video/start")
+async def start_pdf_video(request: Request, date: str = "", lang: str = "zh"):
+    from fastapi import UploadFile, File
+    user = await _auth_module.get_current_user(request)
+    user_id = user["id"] if user else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Login required")
+    if user_id not in _auth_module.ADMIN_USER_IDS:
+        sub = (await _auth_module.get_subscription(user_id) or {})
+        tier = sub.get("tier", "free") if sub.get("status") in ("active", None, "") else "free"
+        if tier == "free":
+            raise HTTPException(status_code=403, detail="Pro subscription required")
+
+    form = await request.form()
+    pdf_file = form.get("pdf")
+    if not pdf_file or not hasattr(pdf_file, "read"):
+        raise HTTPException(status_code=400, detail="Missing pdf file")
+
+    content_type = getattr(pdf_file, "content_type", "") or ""
+    if "pdf" not in content_type.lower() and not getattr(pdf_file, "filename", "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="File must be a PDF")
+
+    pdf_bytes = await pdf_file.read()
+    if len(pdf_bytes) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="PDF too large (max 50MB)")
+
+    # Resolve audio file for the given date+lang
+    audio_path = None
+    if date and _re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        digest = await _fetch_digest(date)
+        if digest:
+            if lang == "zh":
+                audio_fn = digest.get("audio_insight_zh") or digest.get("audio_zh") or ""
+            else:
+                audio_fn = digest.get("audio_insight_en") or digest.get("audio_en") or ""
+            if audio_fn:
+                candidate = os.path.join(AUDIO_DIR, audio_fn)
+                if os.path.exists(candidate):
+                    audio_path = candidate
+
+    filename_stem = f"pdf-digest-{date or 'video'}-{lang}"
+    job_id = _uuid.uuid4().hex[:10]
+    _pdf_video_jobs[job_id] = {
+        "status": "pending", "progress": 0, "message": "排队中...",
+    }
+    asyncio.create_task(_run_pdf_video_job(job_id, pdf_bytes, audio_path, filename_stem))
+    return JSONResponse({"job_id": job_id})
+
+
+@app.get("/api/digest/pdf-video/status/{job_id}")
+async def pdf_video_status(job_id: str):
+    job = _pdf_video_jobs.get(job_id)
+    if not job:
+        return JSONResponse({"status": "not_found"})
+    return JSONResponse({
+        "status": job["status"],
+        "progress": job.get("progress", 0),
+        "message": job.get("message", ""),
+        "size": job.get("size", 0),
+    })
+
+
+@app.get("/api/digest/pdf-video/download/{job_id}")
+async def download_pdf_video(job_id: str, request: Request):
+    job = _pdf_video_jobs.get(job_id)
+    if not job or job.get("status") != "done":
+        raise HTTPException(status_code=404, detail="Video not ready")
+    user = await _auth_module.get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    data = job.pop("data", None)
+    if not data:
+        raise HTTPException(status_code=410, detail="Already downloaded")
+    filename = job.get("filename", "digest-video.mp4")
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="video/mp4",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/schedules")

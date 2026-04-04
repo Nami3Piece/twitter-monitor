@@ -244,6 +244,121 @@ def _draw_poster(date: str, lang: str, text: str) -> Optional[bytes]:
         return None
 
 
+async def generate_video_from_pdf(
+    pdf_bytes: bytes,
+    audio_path: Optional[str],
+    on_progress=None,
+) -> Optional[bytes]:
+    """
+    Render each PDF page as a 1920×1080 image, then combine with audio into MP4.
+    Pages are distributed evenly over the audio duration (min 3s per page).
+    Returns raw MP4 bytes, or None on failure.
+    """
+    async def _p(pct: int, msg: str):
+        if on_progress:
+            await on_progress(pct, msg)
+
+    await _p(5, "解析PDF...")
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        logger.error("pdf-video: PyMuPDF not installed")
+        return None
+
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        n_pages = len(doc)
+        if n_pages == 0:
+            logger.error("pdf-video: empty PDF")
+            return None
+    except Exception as e:
+        logger.error(f"pdf-video: failed to open PDF: {e}")
+        return None
+
+    # Determine per-page duration
+    audio_duration = 0.0
+    if audio_path and os.path.exists(audio_path):
+        audio_duration = _get_audio_duration(audio_path)
+    if audio_duration <= 0:
+        audio_duration = n_pages * 8.0  # fallback: 8s per page
+
+    per_page = max(3.0, audio_duration / n_pages)
+
+    await _p(20, f"渲染 {n_pages} 页PDF...")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        frame_paths = []
+        for i, page in enumerate(doc):
+            # Render at 2x scale → ~1920px wide for 16:9 PDF pages
+            mat = fitz.Matrix(2.0, 2.0)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            frame_path = os.path.join(tmpdir, f"frame_{i:04d}.png")
+            pix.save(frame_path)
+            frame_paths.append(frame_path)
+            await _p(20 + int(40 * (i + 1) / n_pages), f"渲染第 {i+1}/{n_pages} 页...")
+
+        doc.close()
+
+        await _p(65, "合成视频...")
+        out_mp4 = os.path.join(tmpdir, "output.mp4")
+        ffmpeg = _get_ffmpeg()
+
+        # Build concat demuxer file: each frame shown for per_page seconds
+        concat_txt = os.path.join(tmpdir, "concat.txt")
+        with open(concat_txt, "w") as f:
+            for fp in frame_paths:
+                f.write(f"file '{fp}'\n")
+                f.write(f"duration {per_page:.3f}\n")
+            # ffmpeg concat needs the last file listed again without duration
+            f.write(f"file '{frame_paths[-1]}'\n")
+
+        if audio_path and os.path.exists(audio_path):
+            cmd = [
+                ffmpeg, "-y", "-loglevel", "error",
+                "-f", "concat", "-safe", "0", "-i", concat_txt,
+                "-i", audio_path,
+                "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart",
+                "-shortest",
+                out_mp4,
+            ]
+        else:
+            cmd = [
+                ffmpeg, "-y", "-loglevel", "error",
+                "-f", "concat", "-safe", "0", "-i", concat_txt,
+                "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                out_mp4,
+            ]
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            _, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=300)
+        except asyncio.TimeoutError:
+            proc.kill()
+            logger.error("pdf-video: ffmpeg timed out after 300s")
+            return None
+        if proc.returncode != 0:
+            logger.error(f"pdf-video: ffmpeg failed:\n{stderr_bytes.decode()[-600:]}")
+            return None
+
+        await _p(95, "打包完成...")
+        with open(out_mp4, "rb") as f:
+            data = f.read()
+
+    logger.info(f"pdf-video: done {len(data)//1024}KB, {n_pages} pages, {audio_duration:.1f}s audio")
+    return data
+
+
 def _get_audio_duration(audio_path: str) -> float:
     ffmpeg = _get_ffmpeg()
     # ffprobe is usually co-located with ffmpeg
