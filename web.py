@@ -673,6 +673,15 @@ def _build_homepage_section(digest: dict, top_events: List[Dict], user_tier: str
         f'font-size:.72rem;font-weight:600;text-decoration:none;margin-left:.2rem">⬇ EN MP4</a>'
         if (_can_dl and audio_insight_en_src) else ""
     )
+    # Admin-only: PDF slideshow video upload button (placed next to MP4 download)
+    pdf_video_btn = (
+        f'<button onclick="openPdfVideoModal(\'zh\')" '
+        f'title="上传PDF合成幻灯片视频" '
+        f'style="display:inline-flex;align-items:center;gap:.25rem;padding:.18rem .55rem;'
+        f'border-radius:12px;border:1.5px solid #0f766e;background:#0f2a25;color:#5eead4;'
+        f'font-size:.72rem;font-weight:600;cursor:pointer;margin-left:.3rem">🎬 PDF视频</button>'
+        if user_tier == "admin" else ""
+    )
     # 语言切换 tab
     lang_toggle = (
         '<span style="display:inline-flex;align-items:center;gap:.2rem;margin-left:.5rem">'
@@ -803,7 +812,7 @@ function _vidError(el, lang, errMsg) {
     <span class="cj-date">{_esc(digest_date)}</span>
     {lang_toggle}
     {listen_btn}
-    {dl_zh}{dl_en}
+    {dl_zh}{dl_en}{pdf_video_btn}
   </div>
   <div id="ins-zh-body" class="cj-body insight-body">{insight_zh_html}
     <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid #1e293b">
@@ -6979,7 +6988,7 @@ select{{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:
       {date_options if date_options else '<option>No digests yet</option>'}
     </select>
     <span style="color:#888880;font-size:.8rem">最近30天 · 北京时间每天8:00发布</span>
-    {'<button onclick="regenAudio()" id="regen-audio-btn" style="margin-left:auto;padding:.35rem .9rem;background:#7c3aed;border:none;border-radius:8px;color:#fff;font-size:.8rem;font-weight:600;cursor:pointer">🔄 重新生成音频</button><button onclick="regenAudioBatch()" style="padding:.35rem .9rem;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;font-size:.8rem;cursor:pointer">📦 补全历史音频</button><button onclick="openPdfVideoModal()" style="padding:.35rem .9rem;background:#0f766e;border:none;border-radius:8px;color:#fff;font-size:.8rem;font-weight:600;cursor:pointer">🎬 PDF合成视频</button>' if user_tier == "admin" else ''}
+    {'<button onclick="regenAudio()" id="regen-audio-btn" style="margin-left:auto;padding:.35rem .9rem;background:#7c3aed;border:none;border-radius:8px;color:#fff;font-size:.8rem;font-weight:600;cursor:pointer">🔄 重新生成音频</button><button onclick="regenAudioBatch()" style="padding:.35rem .9rem;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;font-size:.8rem;cursor:pointer">📦 补全历史音频</button>' if user_tier == "admin" else ''}
   </div>
   {content_block}
 </main>
@@ -7076,8 +7085,9 @@ async function regenAudioBatch() {{
 }}
 
 // ── PDF → Video ──────────────────────────────────────────────────────────────
-function openPdfVideoModal() {{
+function openPdfVideoModal(lang) {{
   document.getElementById('pdf-video-modal').style.display = 'flex';
+  if (lang) document.getElementById('pdf-video-lang').value = lang;
 }}
 function closePdfVideoModal() {{
   document.getElementById('pdf-video-modal').style.display = 'none';
