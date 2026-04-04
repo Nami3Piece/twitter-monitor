@@ -84,9 +84,9 @@ async def synthesize_minimax(text: str, output_path: str, lang: str = "zh") -> b
     clean_text = _clean_for_tts(text, lang)
     base_url = os.getenv("MINIMAX_BASE_URL", "https://api.minimaxi.chat")
 
-    # 中文用 presenter_male，英文用 English_male
+    # 中文用 presenter_male，英文用 Friendly_Person（English_male 不存在）
     voice_zh = os.getenv("MINIMAX_VOICE_ZH", "presenter_male")
-    voice_en = os.getenv("MINIMAX_VOICE_EN", "English_male")
+    voice_en = os.getenv("MINIMAX_VOICE_EN", "Friendly_Person")
     voice_id = voice_zh if lang == "zh" else voice_en
     model = os.getenv("MINIMAX_TTS_MODEL", "speech-02-hd")
 
