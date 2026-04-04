@@ -7403,7 +7403,7 @@ function splitTextIntoBlocks() {
   if (!raw) return;
   const SEP = '\\u2028';
   const marked = raw.replace(/([。！？!?])/g, '$1' + SEP).split(SEP).map(function(s){ return s.trim(); }).filter(Boolean);
-  const allSentences = marked.length > 1 ? marked : raw.split(/\n\n+/).map(function(s){ return s.trim(); }).filter(Boolean);
+  const allSentences = marked.length > 1 ? marked : raw.split(/\\n\\n+/).map(function(s){ return s.trim(); }).filter(Boolean);
   if (allSentences.length === 0) return;
   blocks = allSentences.slice(0, 20).map(function(s, i) {
     return { id: newId(), text: s, tweet: blocks[i] ? blocks[i].tweet : null };
