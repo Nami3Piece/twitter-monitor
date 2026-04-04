@@ -7366,8 +7366,10 @@ function updateCharCount() {
 }
 
 function extractTweetId(url) {
-  const m = url.match(/status\/(\d+)/);
-  return m ? m[1] : null;
+  const parts = url.split('/status/');
+  if (parts.length < 2) return null;
+  const id = parts[1].split(/[/?#]/)[0];
+  return /^\d+$/.test(id) ? id : null;
 }
 
 async function fetchTweetIntoEl(url, el, id) {
