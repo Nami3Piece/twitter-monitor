@@ -7651,33 +7651,14 @@ async function generate() {
         saveBtn.className = 'gen-btn save-btn';
         saveBtn.style.cssText = 'margin-top:12px;background:#16a34a;width:100%';
         saveBtn.textContent = '📥 保存视频到本地';
-        saveBtn.onclick = async () => {
-          saveBtn.disabled = true;
-          saveBtn.textContent = '⏳ 获取文件...';
-          try {
-            const resp = await fetch(dlUrl);
-            if (!resp.ok) throw new Error('下载失败');
-            const blob = await resp.blob();
-            if (window.showSaveFilePicker) {
-              const fh = await window.showSaveFilePicker({
-                suggestedName: fname,
-                types: [{ description: 'MP4 视频', accept: { 'video/mp4': ['.mp4'] } }]
-              });
-              const w = await fh.createWritable();
-              await w.write(blob);
-              await w.close();
-              saveBtn.textContent = '✅ 已保存';
-            } else {
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url; a.download = fname; a.click();
-              URL.revokeObjectURL(url);
-              saveBtn.textContent = '✅ 已发送到下载文件夹';
-            }
-          } catch (e) {
-            if (e.name === 'AbortError') { saveBtn.textContent = '📥 保存视频到本地'; saveBtn.disabled = false; return; }
-            saveBtn.textContent = '❌ ' + e.message;
-          }
+        saveBtn.onclick = function() {
+          const a = document.createElement('a');
+          a.href = dlUrl;
+          a.download = fname;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          saveBtn.textContent = '✅ 已发送到下载文件夹';
         };
         wrap.appendChild(saveBtn);
         btn.disabled = false;
