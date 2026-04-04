@@ -7,6 +7,7 @@ Endpoints:
   GET  /api/accounts        JSON accounts list
 """
 
+import io
 import os
 import secrets
 import time
