@@ -7253,10 +7253,12 @@ textarea::placeholder{color:#334155}
 .generate-btn{width:100%;padding:1rem;background:linear-gradient(135deg,#4f46e5,#7c3aed);border:none;border-radius:10px;color:#fff;font-size:1rem;font-weight:700;cursor:pointer;letter-spacing:.02em;transition:opacity .2s;margin-top:.5rem}
 .generate-btn:hover{opacity:.9}
 .generate-btn:disabled{opacity:.5;cursor:not-allowed}
-.progress-wrap{display:none;margin-top:1rem}
+.progress-wrap{display:none;margin-top:1rem;margin-bottom:.5rem}
+.progress-wrap.visible{display:block}
 .progress-bar-bg{background:#1e293b;border-radius:99px;height:8px;overflow:hidden;margin-bottom:.6rem}
 .progress-bar-fill{height:100%;background:linear-gradient(90deg,#4f46e5,#7c3aed);width:0%;transition:width .4s}
 .progress-msg{font-size:.82rem;color:#94a3b8;text-align:center}
+.err-msg{display:none;padding:.6rem 1rem;background:#1c0a0a;border:1px solid #7f1d1d;border-radius:8px;color:#f87171;font-size:.85rem;margin-bottom:.5rem}
 .char-count{font-size:.75rem;color:#475569;text-align:right;margin-top:.3rem}
 .tip{font-size:.78rem;color:#475569;margin-top:.5rem;padding:.5rem .75rem;background:#0a0f1a;border-radius:6px;border-left:2px solid #1e3a5f}
 </style>
@@ -7346,6 +7348,7 @@ textarea::placeholder{color:#334155}
   </div>
 
   <!-- Generate -->
+  <div class="err-msg" id="err-msg"></div>
   <div class="progress-wrap" id="progress-wrap">
     <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
     <div class="progress-msg" id="progress-msg">准备中...</div>
@@ -7458,20 +7461,39 @@ function handleDrop(e) {
   handleFileSelect(document.getElementById('pdf-input'));
 }
 
+function showErr(msg) {
+  const el = document.getElementById('err-msg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.scrollIntoView({behavior:'smooth', block:'center'});
+}
+function hideErr() {
+  document.getElementById('err-msg').style.display = 'none';
+}
+
 async function generate() {
+  hideErr();
   const text = document.getElementById('insight-text').value.trim();
   const pdfInput = document.getElementById('pdf-input');
   const lang = document.getElementById('lang-select').value;
   const audioMode = document.getElementById('audio-select').value;
   const validTweets = resolvedTweets.filter(t => !t.error);
 
-  if (!text) { alert('请填写核心洞察文案（第1步）'); return; }
-  if (!pdfInput.files || !pdfInput.files[0]) { alert('请上传 PDF 文件（第3步）'); return; }
+  if (!text) {
+    showErr('⚠️ 请先填写第1步：核心洞察文案（字幕内容）');
+    document.getElementById('insight-text').focus();
+    return;
+  }
+  if (!pdfInput.files || !pdfInput.files[0]) {
+    showErr('⚠️ 请先上传第3步：PDF 幻灯片文件');
+    document.getElementById('upload-zone').scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
 
   const btn = document.getElementById('gen-btn');
   const wrap = document.getElementById('progress-wrap');
   btn.disabled = true;
-  wrap.style.display = '';
+  wrap.classList.add('visible');
   wrap.scrollIntoView({behavior:'smooth', block:'center'});
   setProgress(3, '准备上传...');
 
@@ -7493,7 +7515,8 @@ async function generate() {
     const d = await r.json();
     jobId = d.job_id;
   } catch(e) {
-    setProgress(0, '❌ ' + e.message);
+    wrap.classList.remove('visible');
+    showErr('❌ 提交失败：' + e.message);
     btn.disabled = false;
     return;
   }
