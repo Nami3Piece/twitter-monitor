@@ -7401,22 +7401,13 @@ function updateBlockCount() {
 function splitTextIntoBlocks() {
   const raw = document.getElementById('paste-area').value.trim();
   if (!raw) return;
-  const parts = raw.split('。').join('。\x00').split('！').join('！\x00').split('？').join('？\x00').split('!').join('!\x00').split('?').join('?\x00').split('\x00');
-  const sentences = [];
-  for (let i = 0; i < parts.length; i++) {
-    const s = parts[i].trim();
-    if (s) sentences.push(s);
-  }
-  const allSentences = sentences.length > 1 ? sentences : raw.split('\n\n').map(function(s){ return s.trim(); }).filter(Boolean);
+  const SEP = '\u2028';
+  const marked = raw.replace(/([。！？!?])/g, '$1' + SEP).split(SEP).map(function(s){ return s.trim(); }).filter(Boolean);
+  const allSentences = marked.length > 1 ? marked : raw.split(/\n\n+/).map(function(s){ return s.trim(); }).filter(Boolean);
   if (allSentences.length === 0) return;
-  const newBlocks = allSentences.slice(0, 20).map(function(s, i) {
-    return {
-      id: newId(),
-      text: s,
-      tweet: blocks[i] ? blocks[i].tweet : null
-    };
+  blocks = allSentences.slice(0, 20).map(function(s, i) {
+    return { id: newId(), text: s, tweet: blocks[i] ? blocks[i].tweet : null };
   });
-  blocks = newBlocks;
   renderBlocks();
   updateBlockCount();
   document.getElementById('paste-area').value = '';
@@ -7434,10 +7425,25 @@ function renderBlocks() {
     // Left: sentence textarea
     const sentDiv = document.createElement('div');
     sentDiv.className = 'block-sentence';
-    sentDiv.innerHTML = '<div class="block-num">句子 ' + (idx + 1) + '</div>'
-      + '<textarea oninput="updateBlockText(\'' + b.id + '\',this.value)"'
-      + ' placeholder="输入这段文字（视频底部字幕）...">' + esc(b.text) + '</textarea>'
-      + '<button class="block-del" onclick="removeBlock(\'' + b.id + '\')" title="删除">✕</button>';
+
+    const numDiv = document.createElement('div');
+    numDiv.className = 'block-num';
+    numDiv.textContent = '句子 ' + (idx + 1);
+
+    const ta = document.createElement('textarea');
+    ta.placeholder = '输入这段文字（视频底部字幕）...';
+    ta.value = b.text;
+    ta.addEventListener('input', (function(bid){ return function(){ updateBlockText(bid, this.value); }; })(b.id));
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'block-del';
+    delBtn.title = '删除';
+    delBtn.textContent = '\u2715';
+    delBtn.addEventListener('click', (function(bid){ return function(){ removeBlock(bid); }; })(b.id));
+
+    sentDiv.appendChild(numDiv);
+    sentDiv.appendChild(ta);
+    sentDiv.appendChild(delBtn);
 
     // Right: tweet slot
     const slotDiv = document.createElement('div');
@@ -7456,24 +7462,47 @@ function renderBlocks() {
 }
 
 function renderSlotInput(slotDiv, bid) {
-  slotDiv.innerHTML = '<div class="bind-row">'
-    + '<input type="url" id="tinput-' + bid + '" placeholder="粘贴推文链接绑定来源..." onkeydown="if(event.key===\'Enter\')bindTweet(\'' + bid + '\')">'
-    + '<button class="add-btn" onclick="bindTweet(\'' + bid + '\')">绑定</button>'
-    + '</div>';
+  slotDiv.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'bind-row';
+  const inp = document.createElement('input');
+  inp.type = 'url';
+  inp.id = 'tinput-' + bid;
+  inp.placeholder = '粘贴推文链接绑定来源...';
+  inp.addEventListener('keydown', (function(id){ return function(e){ if(e.key==='Enter') bindTweet(id); }; })(bid));
+  const btn = document.createElement('button');
+  btn.className = 'add-btn';
+  btn.textContent = '绑定';
+  btn.addEventListener('click', (function(id){ return function(){ bindTweet(id); }; })(bid));
+  row.appendChild(inp);
+  row.appendChild(btn);
+  slotDiv.appendChild(row);
 }
 
 function renderSlotCard(slotDiv, bid, tw) {
   const initial = ((tw.author_name || tw.username || '?')[0]).toUpperCase();
-  slotDiv.innerHTML = '<div class="slot-card">'
-    + '<div class="slot-avatar">' + initial + '</div>'
-    + '<div class="slot-info" style="flex:1;min-width:0">'
-    + '<div class="slot-name">' + esc(tw.author_name || tw.username) + '</div>'
+  slotDiv.innerHTML = '';
+  const card = document.createElement('div');
+  card.className = 'slot-card';
+  const avatarDiv = document.createElement('div');
+  avatarDiv.className = 'slot-avatar';
+  avatarDiv.textContent = initial;
+  const infoDiv = document.createElement('div');
+  infoDiv.className = 'slot-info';
+  infoDiv.style.cssText = 'flex:1;min-width:0';
+  infoDiv.innerHTML = '<div class="slot-name">' + esc(tw.author_name || tw.username) + '</div>'
     + '<div class="slot-handle">@' + esc(tw.username) + '</div>'
     + '<div class="slot-text">' + esc((tw.text || '').slice(0, 160)) + '</div>'
-    + '<div class="slot-stats">♥ ' + (tw.likes||0).toLocaleString() + ' &nbsp;🔁 ' + (tw.retweets||0).toLocaleString() + '</div>'
-    + '</div>'
-    + '<button class="slot-remove" onclick="removeTweetFromBlock(\'' + bid + '\')" title="移除">✕</button>'
-    + '</div>';
+    + '<div class="slot-stats">\u2665 ' + (tw.likes||0).toLocaleString() + ' \u00a0\u{1F501} ' + (tw.retweets||0).toLocaleString() + '</div>';
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'slot-remove';
+  removeBtn.title = '移除';
+  removeBtn.textContent = '\u2715';
+  removeBtn.addEventListener('click', (function(id){ return function(){ removeTweetFromBlock(id); }; })(bid));
+  card.appendChild(avatarDiv);
+  card.appendChild(infoDiv);
+  card.appendChild(removeBtn);
+  slotDiv.appendChild(card);
 }
 
 // ── Tweet resolution ────────────────────────────────────
@@ -7502,8 +7531,17 @@ async function bindTweet(bid) {
     if (b) b.tweet = d;
     renderSlotCard(slot, bid, d);
   } catch (e) {
-    slot.innerHTML = '<div style="color:#f87171;font-size:.78rem">❌ ' + esc(e.message) + '</div>'
-      + '<button class="add-btn" style="margin-top:.4rem;font-size:.75rem" onclick="renderSlotInput(document.getElementById(\'slot-' + bid + '\'),\'' + bid + '\')">重试</button>';
+    slot.innerHTML = '';
+    const errDiv = document.createElement('div');
+    errDiv.style.cssText = 'color:#f87171;font-size:.78rem';
+    errDiv.textContent = '\u274C ' + e.message;
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'add-btn';
+    retryBtn.style.cssText = 'margin-top:.4rem;font-size:.75rem';
+    retryBtn.textContent = '重试';
+    retryBtn.addEventListener('click', (function(id){ return function(){ renderSlotInput(document.getElementById('slot-'+id), id); }; })(bid));
+    slot.appendChild(errDiv);
+    slot.appendChild(retryBtn);
   }
 }
 
