@@ -3499,8 +3499,103 @@ function cjListen() {{
   }}
   dpbToggle();
 }}
+
+// ── PDF → Video ──────────────────────────────────────────────────────────────
+function openPdfVideoModal(lang) {{
+  document.getElementById('pdf-video-modal').style.display = 'flex';
+  if (lang) document.getElementById('pdf-video-lang').value = lang;
+}}
+function closePdfVideoModal() {{
+  document.getElementById('pdf-video-modal').style.display = 'none';
+  document.getElementById('pdf-video-status').textContent = '';
+  document.getElementById('pdf-video-progress-bar').style.width = '0%';
+  document.getElementById('pdf-video-file').value = '';
+  document.getElementById('pdf-video-lang').value = 'zh';
+}}
+
+async function submitPdfVideo() {{
+  const fileInput = document.getElementById('pdf-video-file');
+  const lang = document.getElementById('pdf-video-lang').value;
+  const statusEl = document.getElementById('pdf-video-status');
+  const progressBar = document.getElementById('pdf-video-progress-bar');
+  const submitBtn = document.getElementById('pdf-video-submit-btn');
+
+  if (!fileInput.files || !fileInput.files[0]) {{
+    statusEl.textContent = '请选择PDF文件'; return;
+  }}
+  // Grab date from insight section date badge if available
+  const dateEl = document.querySelector('.cj-date');
+  const date = dateEl ? dateEl.textContent.trim() : '';
+
+  const formData = new FormData();
+  formData.append('pdf', fileInput.files[0]);
+
+  submitBtn.disabled = true;
+  statusEl.textContent = '上传中...';
+  progressBar.style.width = '5%';
+
+  let jobId;
+  try {{
+    const r = await fetch('/api/digest/pdf-video/start?date=' + date + '&lang=' + lang, {{
+      method: 'POST', body: formData
+    }});
+    if (!r.ok) {{
+      const e = await r.json().catch(() => ({{}}));
+      statusEl.textContent = '❌ ' + (e.detail || '上传失败');
+      submitBtn.disabled = false; return;
+    }}
+    const d = await r.json();
+    jobId = d.job_id;
+  }} catch(e) {{
+    statusEl.textContent = '❌ 网络错误'; submitBtn.disabled = false; return;
+  }}
+
+  const poll = setInterval(async () => {{
+    try {{
+      const r = await fetch('/api/digest/pdf-video/status/' + jobId);
+      const d = await r.json();
+      statusEl.textContent = d.message || '';
+      progressBar.style.width = (d.progress || 0) + '%';
+      if (d.status === 'done') {{
+        clearInterval(poll);
+        statusEl.textContent = '✅ 完成！(' + Math.round((d.size||0)/1024) + ' KB) — 正在下载...';
+        progressBar.style.width = '100%';
+        window.location.href = '/api/digest/pdf-video/download/' + jobId;
+        setTimeout(() => {{ submitBtn.disabled = false; }}, 2000);
+      }} else if (d.status === 'error') {{
+        clearInterval(poll);
+        statusEl.textContent = '❌ ' + (d.message || '生成失败');
+        submitBtn.disabled = false;
+      }}
+    }} catch(e) {{ /* ignore */ }}
+  }}, 2000);
+}}
 </script>
 
+<!-- PDF → Video Modal -->
+<div id="pdf-video-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:2rem;width:min(480px,92vw);position:relative">
+    <button onclick="closePdfVideoModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
+    <h3 style="color:#f1f5f9;margin:0 0 1rem">🎬 PDF 合成视频</h3>
+    <p style="color:#94a3b8;font-size:.85rem;margin:0 0 1.2rem">上传 NotebookLM 生成的 PDF，与当前日期音频合并为 MP4 幻灯片视频。</p>
+    <div style="margin-bottom:.8rem">
+      <label style="color:#cbd5e1;font-size:.85rem;display:block;margin-bottom:.4rem">选择 PDF 文件（最大 50MB）</label>
+      <input type="file" id="pdf-video-file" accept=".pdf,application/pdf" style="width:100%;padding:.5rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.85rem">
+    </div>
+    <div style="margin-bottom:1.2rem">
+      <label style="color:#cbd5e1;font-size:.85rem;display:block;margin-bottom:.4rem">语言（匹配音频）</label>
+      <select id="pdf-video-lang" style="padding:.4rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.85rem">
+        <option value="zh">中文</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+    <div style="background:#0f172a;border-radius:8px;height:6px;margin-bottom:.8rem;overflow:hidden">
+      <div id="pdf-video-progress-bar" style="height:100%;background:#0f766e;width:0%;transition:width .3s"></div>
+    </div>
+    <div id="pdf-video-status" style="color:#94a3b8;font-size:.82rem;min-height:1.2em;margin-bottom:1rem"></div>
+    <button id="pdf-video-submit-btn" onclick="submitPdfVideo()" style="width:100%;padding:.65rem;background:#0f766e;border:none;border-radius:8px;color:#fff;font-size:.9rem;font-weight:600;cursor:pointer">开始生成</button>
+  </div>
+</div>
 
 </body>
 </html>"""
@@ -7083,104 +7178,7 @@ async function regenAudioBatch() {{
   const d = await r.json();
   alert(d.message || (d.ok ? '后台任务已启动' : '失败'));
 }}
-
-// ── PDF → Video ──────────────────────────────────────────────────────────────
-function openPdfVideoModal(lang) {{
-  document.getElementById('pdf-video-modal').style.display = 'flex';
-  if (lang) document.getElementById('pdf-video-lang').value = lang;
-}}
-function closePdfVideoModal() {{
-  document.getElementById('pdf-video-modal').style.display = 'none';
-  document.getElementById('pdf-video-status').textContent = '';
-  document.getElementById('pdf-video-progress-bar').style.width = '0%';
-  document.getElementById('pdf-video-file').value = '';
-  document.getElementById('pdf-video-lang').value = 'zh';
-}}
-
-async function submitPdfVideo() {{
-  const fileInput = document.getElementById('pdf-video-file');
-  const lang = document.getElementById('pdf-video-lang').value;
-  const statusEl = document.getElementById('pdf-video-status');
-  const progressBar = document.getElementById('pdf-video-progress-bar');
-  const submitBtn = document.getElementById('pdf-video-submit-btn');
-
-  if (!fileInput.files || !fileInput.files[0]) {{
-    statusEl.textContent = '请选择PDF文件'; return;
-  }}
-  const sel = document.querySelector('select');
-  const date = sel ? sel.value : '';
-
-  const formData = new FormData();
-  formData.append('pdf', fileInput.files[0]);
-
-  submitBtn.disabled = true;
-  statusEl.textContent = '上传中...';
-  progressBar.style.width = '5%';
-
-  let jobId;
-  try {{
-    const r = await fetch('/api/digest/pdf-video/start?date=' + date + '&lang=' + lang, {{
-      method: 'POST', body: formData
-    }});
-    if (!r.ok) {{
-      const e = await r.json().catch(() => ({{}}));
-      statusEl.textContent = '❌ ' + (e.detail || '上传失败');
-      submitBtn.disabled = false; return;
-    }}
-    const d = await r.json();
-    jobId = d.job_id;
-  }} catch(e) {{
-    statusEl.textContent = '❌ 网络错误'; submitBtn.disabled = false; return;
-  }}
-
-  // Poll status
-  const poll = setInterval(async () => {{
-    try {{
-      const r = await fetch('/api/digest/pdf-video/status/' + jobId);
-      const d = await r.json();
-      statusEl.textContent = d.message || '';
-      progressBar.style.width = (d.progress || 0) + '%';
-      if (d.status === 'done') {{
-        clearInterval(poll);
-        statusEl.textContent = '✅ 完成！(' + Math.round((d.size||0)/1024) + ' KB) — 正在下载...';
-        progressBar.style.width = '100%';
-        window.location.href = '/api/digest/pdf-video/download/' + jobId;
-        setTimeout(() => {{ submitBtn.disabled = false; }}, 2000);
-      }} else if (d.status === 'error') {{
-        clearInterval(poll);
-        statusEl.textContent = '❌ ' + (d.message || '生成失败');
-        submitBtn.disabled = false;
-      }}
-    }} catch(e) {{ /* ignore poll errors */ }}
-  }}, 2000);
-}}
 </script>
-
-<!-- PDF → Video Modal -->
-<div id="pdf-video-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:2rem;width:min(480px,92vw);position:relative">
-    <button onclick="closePdfVideoModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
-    <h3 style="color:#f1f5f9;margin:0 0 1rem">🎬 PDF 合成视频</h3>
-    <p style="color:#94a3b8;font-size:.85rem;margin:0 0 1.2rem">上传 NotebookLM 生成的 PDF，自动与当前日期的音频合并为 MP4 幻灯片视频。</p>
-    <div style="margin-bottom:.8rem">
-      <label style="color:#cbd5e1;font-size:.85rem;display:block;margin-bottom:.4rem">选择 PDF 文件（最大 50MB）</label>
-      <input type="file" id="pdf-video-file" accept=".pdf,application/pdf" style="width:100%;padding:.5rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.85rem">
-    </div>
-    <div style="margin-bottom:1.2rem">
-      <label style="color:#cbd5e1;font-size:.85rem;display:block;margin-bottom:.4rem">语言（匹配音频）</label>
-      <select id="pdf-video-lang" style="padding:.4rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.85rem">
-        <option value="zh">中文</option>
-        <option value="en">English</option>
-      </select>
-    </div>
-    <div style="background:#0f172a;border-radius:8px;height:6px;margin-bottom:.8rem;overflow:hidden">
-      <div id="pdf-video-progress-bar" style="height:100%;background:#0f766e;width:0%;transition:width .3s"></div>
-    </div>
-    <div id="pdf-video-status" style="color:#94a3b8;font-size:.82rem;min-height:1.2em;margin-bottom:1rem"></div>
-    <button id="pdf-video-submit-btn" onclick="submitPdfVideo()" style="width:100%;padding:.65rem;background:#0f766e;border:none;border-radius:8px;color:#fff;font-size:.9rem;font-weight:600;cursor:pointer">开始生成</button>
-  </div>
-</div>
-
 </body>
 </html>"""
 
