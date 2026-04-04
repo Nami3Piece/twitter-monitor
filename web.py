@@ -1168,14 +1168,15 @@ def _tweet_rows(rows: List[Dict], show_ai_draft: bool = False) -> str:
         if reposts: eng_parts.append(f'🔁 {_fmt_num(reposts)}')
         if comments: eng_parts.append(f'💬 {_fmt_num(comments)}')
         eng_html = ('<div class="tc-eng">' + ' &nbsp;·&nbsp; '.join(eng_parts) + '</div>') if eng_parts else ''
+        _hot_badge = "<span class=hot-badge>\U0001f525 Hot</span>" if (r.get("like_count") or 0) >= 50 else ""
         tweet_card = (
-            f'<div class="tweet-card{"  hot" if (r.get("like_count") or 0) >= 50 else ""}{"  my-voted" if user_voted else ""}">' 
+            f'<div class="tweet-card{"  hot" if (r.get("like_count") or 0) >= 50 else ""}{"  my-voted" if user_voted else ""}">'
             f'  <div class="tc-header">'
             f'    <div class="tc-avatar" style="background:{c}">{uname[0].upper() if uname else "?"}</div>'
             f'    <div class="tc-meta">'
             f'      <a class="tc-name" href="https://twitter.com/{uname}" target="_blank" style="color:{c}">@{uname}</a>'
             f'      {acc_stats_html}'
-            f'      {"<span class=hot-badge>\U0001f525 Hot</span>" if (r.get("like_count") or 0) >= 50 else ""}'
+            f'      {_hot_badge}'
             f'      {my_vote_badge}'
             f'      <span class="tc-time">{tweet_time}</span>'
             f'    </div>'
@@ -7220,25 +7221,8 @@ a{color:#a78bfa;text-decoration:none}
 textarea{width:100%;background:#0a0f1a;border:1px solid #1e3a5f;border-radius:8px;color:#e2e8f0;font-size:.9rem;padding:.9rem;resize:vertical;line-height:1.7;min-height:180px;outline:none;transition:border .2s}
 textarea:focus{border-color:#4f46e5}
 textarea::placeholder{color:#334155}
-.tweet-input-row{display:flex;gap:.6rem;margin-bottom:.8rem}
-.tweet-input-row input{flex:1;background:#0a0f1a;border:1px solid #1e3a5f;border-radius:8px;color:#e2e8f0;font-size:.85rem;padding:.6rem .9rem;outline:none;transition:border .2s}
-.tweet-input-row input:focus{border-color:#4f46e5}
-.tweet-input-row input::placeholder{color:#334155}
 .add-btn{padding:.6rem 1.1rem;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;font-size:.82rem;cursor:pointer;white-space:nowrap;transition:background .15s}
 .add-btn:hover{background:#263450;color:#e2e8f0}
-#tweet-list{display:flex;flex-direction:column;gap:.6rem}
-.tweet-card-preview{background:#0a0f1a;border:1px solid #1e3a5f;border-radius:10px;padding:.9rem 1rem;display:flex;align-items:flex-start;gap:.75rem;position:relative;flex-wrap:wrap}
-.tweet-card-preview .avatar{width:36px;height:36px;border-radius:50%;background:#1e3a5f;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.95rem;color:#7dd3fc;flex-shrink:0}
-.tweet-card-preview .info{flex:1;min-width:0}
-.tweet-card-preview .info .name{font-weight:600;font-size:.88rem;color:#f1f5f9}
-.tweet-card-preview .info .handle{font-size:.78rem;color:#64748b;margin-bottom:.3rem}
-.tweet-card-preview .info .text{font-size:.85rem;color:#cbd5e1;line-height:1.5;word-break:break-word}
-.tweet-card-preview .info .stats{font-size:.75rem;color:#475569;margin-top:.4rem}
-.tweet-card-preview .remove-btn{position:absolute;top:.6rem;right:.6rem;background:none;border:none;color:#475569;cursor:pointer;font-size:1rem;padding:.1rem .3rem;border-radius:4px;transition:color .15s}
-.tweet-card-preview .remove-btn:hover{color:#f87171}
-.tweet-card-preview.loading{opacity:.6}
-.tweet-card-preview.error{border-color:#7f1d1d;background:#1c0a0a}
-.tweet-card-preview.error .text{color:#f87171}
 .upload-zone{border:2px dashed #1e3a5f;border-radius:10px;padding:2rem;text-align:center;cursor:pointer;transition:border .2s,background .2s;position:relative}
 .upload-zone:hover,.upload-zone.drag-over{border-color:#4f46e5;background:rgba(79,70,229,.05)}
 .upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer}
@@ -7251,63 +7235,74 @@ textarea::placeholder{color:#334155}
 .setting-group{flex:1;min-width:140px}
 .setting-group label{font-size:.8rem;color:#64748b;display:block;margin-bottom:.4rem}
 .setting-group select{width:100%;padding:.5rem .8rem;background:#0a0f1a;border:1px solid #1e3a5f;border-radius:8px;color:#e2e8f0;font-size:.85rem;outline:none}
-.generate-btn{width:100%;padding:1rem;background:linear-gradient(135deg,#4f46e5,#7c3aed);border:none;border-radius:10px;color:#fff;font-size:1rem;font-weight:700;cursor:pointer;letter-spacing:.02em;transition:opacity .2s;margin-top:.5rem}
-.generate-btn:hover{opacity:.9}
-.generate-btn:disabled{opacity:.5;cursor:not-allowed}
+.gen-btn{width:100%;padding:1rem;background:linear-gradient(135deg,#4f46e5,#7c3aed);border:none;border-radius:10px;color:#fff;font-size:1rem;font-weight:700;cursor:pointer;letter-spacing:.02em;transition:opacity .2s;margin-top:.5rem}
+.gen-btn:hover{opacity:.9}
+.gen-btn:disabled{opacity:.5;cursor:not-allowed}
 .progress-wrap{display:none;margin-top:1rem;margin-bottom:.5rem}
 .progress-wrap.visible{display:block}
 .progress-bar-bg{background:#1e293b;border-radius:99px;height:8px;overflow:hidden;margin-bottom:.6rem}
 .progress-bar-fill{height:100%;background:linear-gradient(90deg,#4f46e5,#7c3aed);width:0%;transition:width .4s}
 .progress-msg{font-size:.82rem;color:#94a3b8;text-align:center}
 .err-msg{display:none;padding:.6rem 1rem;background:#1c0a0a;border:1px solid #7f1d1d;border-radius:8px;color:#f87171;font-size:.85rem;margin-bottom:.5rem}
-.char-count{font-size:.75rem;color:#475569;text-align:right;margin-top:.3rem}
 .tip{font-size:.78rem;color:#475569;margin-top:.5rem;padding:.5rem .75rem;background:#0a0f1a;border-radius:6px;border-left:2px solid #1e3a5f}
+.block-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;align-items:start}
+.block-sentence{background:#0a0f1a;border:1px solid #1e3a5f;border-radius:8px;padding:.7rem;position:relative}
+.block-sentence textarea{min-height:60px;resize:vertical;background:transparent;border:none;color:#e2e8f0;font-size:.85rem;width:100%;outline:none;line-height:1.6}
+.block-num{font-size:.7rem;color:#4f46e5;font-weight:700;margin-bottom:.3rem}
+.block-del{position:absolute;top:.4rem;right:.4rem;background:none;border:none;color:#334155;cursor:pointer;font-size:.85rem;padding:2px 5px;border-radius:4px}
+.block-del:hover{color:#f87171}
+.tweet-slot{background:#0a0f1a;border:1px solid #1e3a5f;border-radius:8px;padding:.7rem;min-height:62px}
+.tweet-slot .bind-row{display:flex;gap:.5rem}
+.tweet-slot .bind-row input{flex:1;background:#080d18;border:1px solid #1e3a5f;border-radius:6px;color:#e2e8f0;font-size:.78rem;padding:.45rem .7rem;outline:none}
+.tweet-slot .bind-row input::placeholder{color:#334155}
+.tweet-slot .bind-row button{padding:.45rem .8rem;font-size:.78rem}
+.slot-card{display:flex;gap:.6rem;align-items:flex-start}
+.slot-avatar{width:28px;height:28px;border-radius:50%;background:#1e3a5f;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem;color:#7dd3fc;flex-shrink:0}
+.slot-info .slot-name{font-size:.8rem;font-weight:600;color:#f1f5f9}
+.slot-info .slot-handle{font-size:.72rem;color:#64748b}
+.slot-info .slot-text{font-size:.78rem;color:#cbd5e1;line-height:1.45;margin-top:.2rem;word-break:break-word}
+.slot-info .slot-stats{font-size:.7rem;color:#475569;margin-top:.3rem}
+.slot-remove{margin-left:auto;background:none;border:none;color:#334155;cursor:pointer;font-size:.9rem;flex-shrink:0}
+.slot-remove:hover{color:#f87171}
+@media(max-width:640px){.block-row{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="topbar">
   <a href="/" class="back-btn">← 返回主页</a>
   <h1>🎬 Video Studio</h1>
-  <span class="sub">上传PDF幻灯片 + 添加真实推文 + 写下你的洞察 → 生成MP4</span>
+  <span class="sub">上传PDF幻灯片 + 写下洞察文案 + 绑定推文来源 → 生成MP4</span>
 </div>
 
 <div class="container">
 
-  <!-- Step 1: Insight text -->
+  <!-- Step 1: Block editor -->
   <div class="step">
     <div class="step-label">
       <div class="step-num">1</div>
       <div>
-        <div class="step-title">写下你的核心洞察文案</div>
-        <div class="step-hint">这段文字将作为视频字幕滚动显示，也决定哪些推文与哪一页幻灯片对应。</div>
+        <div class="step-title">写下你的洞察文案，逐句绑定推文来源</div>
+        <div class="step-hint">每句话作为视频底部字幕；绑定的推文在视频右侧同步显示。支持中文和英文。</div>
       </div>
     </div>
-    <textarea id="insight-text" placeholder="例：今日市场的核心叙事是基础设施的可持续性转型——绿色比特币、Physical AI、开源大模型三条赛道同步共振，指向同一结构性信号……&#10;&#10;（建议按段落分隔，每段对应一页PDF幻灯片）" oninput="updateCharCount()"></textarea>
-    <div class="char-count" id="char-count">0 字</div>
-    <div class="tip">💡 按 <strong>段落</strong>（空行分隔）组织内容，每段会自动对应一张PDF幻灯片，并匹配最相关的推文。</div>
+
+    <!-- Paste & auto-split section -->
+    <div id="paste-section" style="margin-bottom:1rem">
+      <textarea id="paste-area" rows="4" placeholder="粘贴全文，点击「自动分句」按按段落/句子拆分成区块..." style="min-height:90px"></textarea>
+      <button class="add-btn" style="margin-top:.5rem" onclick="splitTextIntoBlocks()">📋 自动分句</button>
+    </div>
+
+    <!-- Block list -->
+    <div id="block-list"></div>
+
+    <button class="add-btn" style="margin-top:.8rem;width:100%" onclick="addBlock('')">＋ 添加句子</button>
+    <div class="tip" id="block-count-tip" style="margin-top:.5rem;display:none">共 <span id="block-count">0</span> 个句子区块</div>
   </div>
 
-  <!-- Step 2: Tweet links -->
+  <!-- Step 2: PDF upload -->
   <div class="step">
     <div class="step-label">
       <div class="step-num">2</div>
-      <div>
-        <div class="step-title">添加你要引用的推文链接</div>
-        <div class="step-hint">粘贴真实 X (Twitter) 链接，系统自动拉取内容。最多10条。</div>
-      </div>
-    </div>
-    <div class="tweet-input-row">
-      <input type="url" id="tweet-url-input" placeholder="https://x.com/username/status/1234567890" onkeydown="if(event.key==='Enter')addTweet()">
-      <button class="add-btn" onclick="addTweet()">＋ 添加</button>
-    </div>
-    <div id="tweet-list"></div>
-    <div class="tip" id="tweet-count-tip" style="display:none">已添加 <span id="tweet-count">0</span> 条推文</div>
-  </div>
-
-  <!-- Step 3: PDF upload -->
-  <div class="step">
-    <div class="step-label">
-      <div class="step-num">3</div>
       <div>
         <div class="step-title">上传 PDF 幻灯片</div>
         <div class="step-hint">推荐用 NotebookLM 生成，或任意 16:9 幻灯片导出的 PDF。</div>
@@ -7321,13 +7316,13 @@ textarea::placeholder{color:#334155}
     </div>
   </div>
 
-  <!-- Step 4: Settings -->
+  <!-- Step 3: Settings -->
   <div class="step">
     <div class="step-label">
-      <div class="step-num">4</div>
+      <div class="step-num">3</div>
       <div>
         <div class="step-title">设置</div>
-        <div class="step-hint">选择语言和音频模式。</div>
+        <div class="step-hint">选择语言、音频模式和视频格式。</div>
       </div>
     </div>
     <div class="settings-row">
@@ -7345,6 +7340,13 @@ textarea::placeholder{color:#334155}
           <option value="none">🔇 无音频（静音）</option>
         </select>
       </div>
+      <div class="setting-group">
+        <label>视频格式</label>
+        <select id="format-select">
+          <option value="landscape">📺 横版 16:9（YouTube/B站）</option>
+          <option value="portrait">📱 竖版 9:16（抖音/Reels/Shorts）</option>
+        </select>
+      </div>
     </div>
   </div>
 
@@ -7354,135 +7356,170 @@ textarea::placeholder{color:#334155}
     <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
     <div class="progress-msg" id="progress-msg">准备中...</div>
   </div>
-  <button class="generate-btn" id="gen-btn" onclick="generate()">🎬 生成 MP4 视频</button>
+  <button class="gen-btn" id="gen-btn" onclick="generate()">🎬 生成 MP4 视频</button>
 
 </div>
 
 <script>
-const resolvedTweets = [];   // {url, id, text, username, author_name, likes, retweets}
+// ── State ──────────────────────────────────────────────
+let blocks = [];   // [{id, text, tweet}]  tweet: null or tweet object
+let blockCounter = 0;
 
-function updateCharCount() {
-  const n = document.getElementById('insight-text').value.length;
-  document.getElementById('char-count').textContent = n + ' 字';
+function newId() { return 'b' + (++blockCounter); }
+
+// ── Block management ───────────────────────────────────
+function addBlock(text) {
+  if (blocks.length >= 20) { alert('最多 20 个句子区块'); return; }
+  blocks.push({ id: newId(), text: text || '', tweet: null });
+  renderBlocks();
+  updateBlockCount();
 }
 
-function extractTweetId(url) {
-  const parts = url.split('/status/');
-  if (parts.length < 2) return null;
-  const id = parts[1].split(/[/?#]/)[0];
-  return /^\d+$/.test(id) ? id : null;
+function removeBlock(id) {
+  blocks = blocks.filter(b => b.id !== id);
+  renderBlocks();
+  updateBlockCount();
 }
 
-async function fetchTweetIntoEl(url, el, id) {
-  el.className = 'tweet-card-preview loading';
-  el.innerHTML = '<div style="color:#64748b;font-size:.85rem">⏳ 正在获取推文内容...</div>';
+function updateBlockText(id, val) {
+  const b = blocks.find(b => b.id === id);
+  if (b) b.text = val;
+}
+
+function removeTweetFromBlock(id) {
+  const b = blocks.find(b => b.id === id);
+  if (b) { b.tweet = null; renderBlocks(); }
+}
+
+function updateBlockCount() {
+  const n = blocks.length;
+  document.getElementById('block-count').textContent = n;
+  document.getElementById('block-count-tip').style.display = n > 0 ? '' : 'none';
+}
+
+// ── Split full text into blocks ────────────────────────
+function splitTextIntoBlocks() {
+  const raw = document.getElementById('paste-area').value.trim();
+  if (!raw) return;
+  const parts = raw.split('。').join('。\x00').split('！').join('！\x00').split('？').join('？\x00').split('!').join('!\x00').split('?').join('?\x00').split('\x00');
+  const sentences = [];
+  for (let i = 0; i < parts.length; i++) {
+    const s = parts[i].trim();
+    if (s) sentences.push(s);
+  }
+  const allSentences = sentences.length > 1 ? sentences : raw.split('\n\n').map(function(s){ return s.trim(); }).filter(Boolean);
+  if (allSentences.length === 0) return;
+  const newBlocks = allSentences.slice(0, 20).map(function(s, i) {
+    return {
+      id: newId(),
+      text: s,
+      tweet: blocks[i] ? blocks[i].tweet : null
+    };
+  });
+  blocks = newBlocks;
+  renderBlocks();
+  updateBlockCount();
+  document.getElementById('paste-area').value = '';
+}
+
+// ── Render ─────────────────────────────────────────────
+function renderBlocks() {
+  const container = document.getElementById('block-list');
+  container.innerHTML = '';
+  blocks.forEach(function(b, idx) {
+    const row = document.createElement('div');
+    row.className = 'block-row';
+    row.id = 'row-' + b.id;
+
+    // Left: sentence textarea
+    const sentDiv = document.createElement('div');
+    sentDiv.className = 'block-sentence';
+    sentDiv.innerHTML = '<div class="block-num">句子 ' + (idx + 1) + '</div>'
+      + '<textarea oninput="updateBlockText(\'' + b.id + '\',this.value)"'
+      + ' placeholder="输入这段文字（视频底部字幕）...">' + esc(b.text) + '</textarea>'
+      + '<button class="block-del" onclick="removeBlock(\'' + b.id + '\')" title="删除">✕</button>';
+
+    // Right: tweet slot
+    const slotDiv = document.createElement('div');
+    slotDiv.className = 'tweet-slot';
+    slotDiv.id = 'slot-' + b.id;
+    if (b.tweet) {
+      renderSlotCard(slotDiv, b.id, b.tweet);
+    } else {
+      renderSlotInput(slotDiv, b.id);
+    }
+
+    row.appendChild(sentDiv);
+    row.appendChild(slotDiv);
+    container.appendChild(row);
+  });
+}
+
+function renderSlotInput(slotDiv, bid) {
+  slotDiv.innerHTML = '<div class="bind-row">'
+    + '<input type="url" id="tinput-' + bid + '" placeholder="粘贴推文链接绑定来源..." onkeydown="if(event.key===\'Enter\')bindTweet(\'' + bid + '\')">'
+    + '<button class="add-btn" onclick="bindTweet(\'' + bid + '\')">绑定</button>'
+    + '</div>';
+}
+
+function renderSlotCard(slotDiv, bid, tw) {
+  const initial = ((tw.author_name || tw.username || '?')[0]).toUpperCase();
+  slotDiv.innerHTML = '<div class="slot-card">'
+    + '<div class="slot-avatar">' + initial + '</div>'
+    + '<div class="slot-info" style="flex:1;min-width:0">'
+    + '<div class="slot-name">' + esc(tw.author_name || tw.username) + '</div>'
+    + '<div class="slot-handle">@' + esc(tw.username) + '</div>'
+    + '<div class="slot-text">' + esc((tw.text || '').slice(0, 160)) + '</div>'
+    + '<div class="slot-stats">♥ ' + (tw.likes||0).toLocaleString() + ' &nbsp;🔁 ' + (tw.retweets||0).toLocaleString() + '</div>'
+    + '</div>'
+    + '<button class="slot-remove" onclick="removeTweetFromBlock(\'' + bid + '\')" title="移除">✕</button>'
+    + '</div>';
+}
+
+// ── Tweet resolution ────────────────────────────────────
+async function bindTweet(bid) {
+  const input = document.getElementById('tinput-' + bid);
+  if (!input) return;
+  const url = input.value.trim();
+  if (!url) return;
+  const m = url.split('/status/');
+  if (m.length < 2) { alert('无法识别推文链接'); return; }
+  const id = m[1].split(/[/?#]/)[0];
+  if (!/^\d+$/.test(id)) { alert('无法识别推文链接'); return; }
+
+  const slot = document.getElementById('slot-' + bid);
+  slot.innerHTML = '<div style="color:#64748b;font-size:.8rem;padding:.3rem">⏳ 获取中...</div>';
+
   try {
     const r = await fetch('/api/studio/resolve-tweet', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url})
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
     });
     const d = await r.json();
-    if (!r.ok || d.error) throw new Error(d.detail || d.error || '获取失败');
-    // Remove any existing entry with same id (retry replaces error entry)
-    const idx = resolvedTweets.findIndex(t => t.id === id);
-    if (idx >= 0) resolvedTweets.splice(idx, 1);
-    resolvedTweets.push(d);
-    renderTweetCard(el, d);
-    updateTweetCount();
-  } catch(e) {
-    el.classList.remove('loading');
-    el.classList.add('error');
-    el.innerHTML = `<div class="info"><div class="text">❌ 获取失败: ${e.message}</div><div class="stats" style="font-size:.75rem;word-break:break-all">${url}</div></div>`
-      + `<div style="display:flex;gap:6px;margin-top:6px">`
-      + `<button class="add-btn" style="padding:3px 10px;font-size:.8rem" onclick="retryTweet('${id}','${encodeURIComponent(url)}',this.closest('.tweet-card-preview'))">重试</button>`
-      + `<button class="remove-btn" onclick="removeTweet('${id}',this.closest('.tweet-card-preview'))">✕</button>`
-      + `</div>`;
-    // Ensure error entry exists
-    if (!resolvedTweets.find(t => t.id === id))
-      resolvedTweets.push({id, url, error: true});
-    updateTweetCount();
+    if (!r.ok) throw new Error(d.detail || d.error || '获取失败');
+    const b = blocks.find(b => b.id === bid);
+    if (b) b.tweet = d;
+    renderSlotCard(slot, bid, d);
+  } catch (e) {
+    slot.innerHTML = '<div style="color:#f87171;font-size:.78rem">❌ ' + esc(e.message) + '</div>'
+      + '<button class="add-btn" style="margin-top:.4rem;font-size:.75rem" onclick="renderSlotInput(document.getElementById(\'slot-' + bid + '\'),\'' + bid + '\')">重试</button>';
   }
 }
 
-async function addTweet() {
-  const input = document.getElementById('tweet-url-input');
-  const url = input.value.trim();
-  if (!url) return;
-  const id = extractTweetId(url);
-  if (!id) { alert('无法识别推文链接，请确认格式为 https://x.com/.../status/123...'); return; }
-  if (resolvedTweets.find(t => t.id === id && !t.error)) { input.value = ''; return; }
-  if (resolvedTweets.filter(t => !t.error).length >= 10) { alert('最多添加10条推文'); return; }
-
-  input.value = '';
-  const cardId = 'tc-' + id;
-  let el = document.getElementById(cardId);
-  if (!el) {
-    el = document.createElement('div');
-    el.id = cardId;
-    document.getElementById('tweet-list').appendChild(el);
-  }
-  await fetchTweetIntoEl(url, el, id);
-}
-
-async function retryTweet(id, encodedUrl, el) {
-  const url = decodeURIComponent(encodedUrl);
-  const idx = resolvedTweets.findIndex(t => t.id === id);
-  if (idx >= 0) resolvedTweets.splice(idx, 1);
-  await fetchTweetIntoEl(url, el, id);
-}
-
-function renderTweetCard(el, d) {
-  el.classList.remove('loading');
-  const initial = (d.author_name || d.username || '?')[0].toUpperCase();
-  const linkedText = esc(d.linked_text || '');
-  el.innerHTML = `
-    <div class="avatar">${initial}</div>
-    <div class="info">
-      <div class="name">${esc(d.author_name || d.username)}</div>
-      <div class="handle">@${esc(d.username)}</div>
-      <div class="text">${esc((d.text||'').slice(0,200))}</div>
-      <div class="stats">♥ ${(d.likes||0).toLocaleString()}  🔁 ${(d.retweets||0).toLocaleString()}</div>
-      <div style="margin-top:8px">
-        <div style="font-size:.75rem;color:#64748b;margin-bottom:3px">🔗 关联语句（视频中显示此推文时对应的字幕文字片段）</div>
-        <textarea class="linked-text-input" data-id="${esc(d.id)}" rows="2"
-          placeholder="粘贴洞察文案中的对应语句片段，留空则自动匹配..."
-          style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:.8rem;padding:6px;resize:vertical"
-          onchange="updateLinkedText('${esc(d.id)}', this.value)">${linkedText}</textarea>
-      </div>
-    </div>
-    <button class="remove-btn" onclick="removeTweet('${esc(d.id)}',this.closest('.tweet-card-preview'))" title="删除">✕</button>`;
-}
-
-function updateLinkedText(id, value) {
-  const tw = resolvedTweets.find(t => t.id === id);
-  if (tw) tw.linked_text = value.trim();
-}
-
-function removeTweet(id, el) {
-  const idx = resolvedTweets.findIndex(t => t.id === id);
-  if (idx >= 0) resolvedTweets.splice(idx, 1);
-  el.remove();
-  updateTweetCount();
-}
-
-function updateTweetCount() {
-  const n = resolvedTweets.filter(t => !t.error).length;
-  document.getElementById('tweet-count').textContent = n;
-  document.getElementById('tweet-count-tip').style.display = n > 0 ? '' : 'none';
-}
-
+// ── Utils ───────────────────────────────────────────────
 function esc(s) {
-  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ── File drag/drop ──────────────────────────────────────
 function handleFileSelect(input) {
   const f = input.files[0];
   if (!f) return;
   const zone = document.getElementById('upload-zone');
   zone.classList.add('has-file');
-  const sizeMB = f.size > 0 ? (f.size/1024/1024).toFixed(1) + ' MB' : '(大小待读取)';
-  document.getElementById('upload-label').textContent = '📄 ' + f.name + '  (' + sizeMB + ')';
+  const sizeMB = (f.size / 1024 / 1024).toFixed(1);
+  document.getElementById('upload-label').textContent = '📄 ' + f.name + '  (' + sizeMB + ' MB)';
 }
 
 function handleDrop(e) {
@@ -7496,32 +7533,33 @@ function handleDrop(e) {
   handleFileSelect(document.getElementById('pdf-input'));
 }
 
+// ── Error display ───────────────────────────────────────
 function showErr(msg) {
   const el = document.getElementById('err-msg');
   el.textContent = msg;
   el.style.display = 'block';
-  el.scrollIntoView({behavior:'smooth', block:'center'});
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 function hideErr() {
   document.getElementById('err-msg').style.display = 'none';
 }
 
+// ── Generate ────────────────────────────────────────────
 async function generate() {
   hideErr();
-  const text = document.getElementById('insight-text').value.trim();
-  const pdfInput = document.getElementById('pdf-input');
+  const validBlocks = blocks.filter(b => b.text.trim());
   const lang = document.getElementById('lang-select').value;
   const audioMode = document.getElementById('audio-select').value;
-  const validTweets = resolvedTweets.filter(t => !t.error);
+  const videoFormat = document.getElementById('format-select').value;
+  const pdfInput = document.getElementById('pdf-input');
 
-  if (!text) {
-    showErr('⚠️ 请先填写第1步：核心洞察文案（字幕内容）');
-    document.getElementById('insight-text').focus();
+  if (validBlocks.length === 0) {
+    showErr('⚠️ 请先在第1步添加洞察文案句子');
     return;
   }
   if (!pdfInput.files || !pdfInput.files[0]) {
-    showErr('⚠️ 请先上传第3步：PDF 幻灯片文件');
-    document.getElementById('upload-zone').scrollIntoView({behavior:'smooth', block:'center'});
+    showErr('⚠️ 请先上传第2步：PDF 幻灯片文件');
+    document.getElementById('upload-zone').scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
 
@@ -7529,34 +7567,37 @@ async function generate() {
   const wrap = document.getElementById('progress-wrap');
   btn.disabled = true;
   wrap.classList.add('visible');
-  wrap.scrollIntoView({behavior:'smooth', block:'center'});
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
   setProgress(3, '准备上传...');
+
+  // Remove any old save button
+  const oldSaveBtn = wrap.querySelector('.save-btn');
+  if (oldSaveBtn) oldSaveBtn.remove();
 
   const form = new FormData();
   form.append('pdf', pdfInput.files[0]);
-  form.append('insight_text', text);
-  form.append('tweets_json', JSON.stringify(validTweets));
+  form.append('blocks_json', JSON.stringify(validBlocks));
   form.append('lang', lang);
   form.append('audio_mode', audioMode);
+  form.append('video_format', videoFormat);
 
   let jobId;
   try {
     setProgress(8, '上传中...');
-    const r = await fetch('/api/studio/generate', {method:'POST', body: form});
+    const r = await fetch('/api/studio/generate', { method: 'POST', body: form });
     if (!r.ok) {
-      const e = await r.json().catch(()=>({}));
+      const e = await r.json().catch(() => ({}));
       throw new Error(e.detail || '提交失败');
     }
     const d = await r.json();
     jobId = d.job_id;
-  } catch(e) {
+  } catch (e) {
     wrap.classList.remove('visible');
     showErr('❌ 提交失败：' + e.message);
     btn.disabled = false;
     return;
   }
 
-  // Poll
   const poll = setInterval(async () => {
     try {
       const r = await fetch('/api/digest/pdf-video/status/' + jobId);
@@ -7564,13 +7605,12 @@ async function generate() {
       setProgress(d.progress || 0, d.message || '');
       if (d.status === 'done') {
         clearInterval(poll);
-        const kb = Math.round((d.size||0)/1024);
+        const kb = Math.round((d.size || 0) / 1024);
         setProgress(100, '✅ 完成！(' + kb + ' KB)');
-        // Show save button so user can choose local path
         const dlUrl = '/api/digest/pdf-video/download/' + jobId;
-        const fname = (d.filename || 'studio-video.mp4');
+        const fname = d.filename || 'studio-video.mp4';
         const saveBtn = document.createElement('button');
-        saveBtn.className = 'gen-btn';
+        saveBtn.className = 'gen-btn save-btn';
         saveBtn.style.cssText = 'margin-top:12px;background:#16a34a;width:100%';
         saveBtn.textContent = '📥 保存视频到本地';
         saveBtn.onclick = async () => {
@@ -7583,33 +7623,32 @@ async function generate() {
             if (window.showSaveFilePicker) {
               const fh = await window.showSaveFilePicker({
                 suggestedName: fname,
-                types: [{ description: 'MP4 视频', accept: {'video/mp4': ['.mp4']} }]
+                types: [{ description: 'MP4 视频', accept: { 'video/mp4': ['.mp4'] } }]
               });
               const w = await fh.createWritable();
               await w.write(blob);
               await w.close();
               saveBtn.textContent = '✅ 已保存';
             } else {
-              // Fallback: anchor download
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url; a.download = fname; a.click();
               URL.revokeObjectURL(url);
               saveBtn.textContent = '✅ 已发送到下载文件夹';
             }
-          } catch(e) {
+          } catch (e) {
             if (e.name === 'AbortError') { saveBtn.textContent = '📥 保存视频到本地'; saveBtn.disabled = false; return; }
             saveBtn.textContent = '❌ ' + e.message;
           }
         };
-        document.getElementById('progress-wrap').appendChild(saveBtn);
+        wrap.appendChild(saveBtn);
         btn.disabled = false;
       } else if (d.status === 'error') {
         clearInterval(poll);
         setProgress(0, '❌ ' + (d.message || '生成失败，请重试'));
         btn.disabled = false;
       }
-    } catch(e) {}
+    } catch (e) { }
   }, 2500);
 }
 
@@ -7617,6 +7656,9 @@ function setProgress(pct, msg) {
   document.getElementById('progress-fill').style.width = pct + '%';
   document.getElementById('progress-msg').textContent = msg;
 }
+
+// Init with one empty block
+addBlock('');
 </script>
 </body>
 </html>"""
@@ -7652,14 +7694,26 @@ async def studio_resolve_tweet(request: Request):
         raise HTTPException(status_code=404, detail="推文不存在或无法访问")
     # Normalise field names
     author = raw.get("author") or {}
+    # Extract first photo media URL if available
+    media_url = ""
+    media_list = (raw.get("media") or raw.get("extendedEntities", {}).get("media")
+                  or raw.get("entities", {}).get("media") or [])
+    if isinstance(media_list, list):
+        for m in media_list:
+            t = m.get("type", "")
+            if t in ("photo", "image", "animated_gif"):
+                media_url = m.get("media_url_https") or m.get("media_url") or ""
+                if media_url:
+                    break
     return JSONResponse({
         "id": tweet_id,
         "url": url,
         "text": raw.get("text") or raw.get("full_text") or "",
         "username": author.get("userName") or author.get("username") or raw.get("username") or "",
         "author_name": author.get("name") or author.get("displayName") or "",
-        "likes": raw.get("likeCount") or raw.get("like_count") or 0,
-        "retweets": raw.get("retweetCount") or raw.get("retweet_count") or 0,
+        "likes": int(raw.get("likeCount") or raw.get("like_count") or 0),
+        "retweets": int(raw.get("retweetCount") or raw.get("retweet_count") or 0),
+        "media_url": media_url,
     })
 
 
@@ -7672,10 +7726,10 @@ async def studio_generate(request: Request):
 
     form = await request.form()
     pdf_file = form.get("pdf")
-    insight_text = (form.get("insight_text") or "").strip()
-    tweets_json = form.get("tweets_json") or "[]"
+    blocks_json = form.get("blocks_json") or "[]"
     lang = form.get("lang") or "zh"
     audio_mode = form.get("audio_mode") or "tts"
+    video_format = form.get("video_format") or "landscape"
 
     if not pdf_file or not hasattr(pdf_file, "read"):
         raise HTTPException(status_code=400, detail="Missing pdf file")
@@ -7685,9 +7739,19 @@ async def studio_generate(request: Request):
 
     import json as _json
     try:
-        tweets = _json.loads(tweets_json)
+        block_list = _json.loads(blocks_json)
     except Exception:
-        tweets = []
+        block_list = []
+
+    # Extract insight_text (join all block texts) and tweets (with linked_text)
+    insight_text = "\n\n".join(b.get("text", "").strip() for b in block_list if b.get("text", "").strip())
+    tweets = []
+    for b in block_list:
+        tw = b.get("tweet")
+        if tw and isinstance(tw, dict) and not tw.get("error"):
+            tw = dict(tw)
+            tw["linked_text"] = b.get("text", "").strip()
+            tweets.append(tw)
 
     job_id = _uuid.uuid4().hex[:10]
     _pdf_video_jobs[job_id] = {"status": "pending", "progress": 0, "message": "排队中..."}
@@ -7721,6 +7785,7 @@ async def studio_generate(request: Request):
                 pdf_bytes, audio_path,
                 insight_text=insight_text,
                 tweets=tweets,
+                video_format=video_format,
                 on_progress=_cb,
             )
 

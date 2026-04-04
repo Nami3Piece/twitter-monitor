@@ -260,9 +260,37 @@ _HANDLE_COLOR = (100, 140, 200)
 _SUB_BG = (0, 0, 0, 185)       # RGBA semi-transparent
 _SUB_TEXT = (255, 255, 255)
 
+# Portrait (9:16) constants
+_FW_P = 1080
+_FH_P = 1920
+_PDF_AREA_H = 860    # top area for PDF slide
+_TWEET_AREA_H = 840  # middle area for tweet card
+_SUB_H_P = 220       # subtitle bar height (portrait)
 
-def _render_tweet_card(tweet: dict, card_w: int) -> "Optional[object]":
-    """Render a tweet as a styled PIL Image card. Returns Image or None."""
+# Light card colors for new tweet card style
+_CARD_BG_LIGHT = (255, 255, 255)
+_CARD_BORDER_LIGHT = (207, 217, 222)
+_BODY_COLOR = (15, 20, 25)
+_HANDLE_LIGHT = (83, 100, 113)
+_STATS_LIGHT = (83, 100, 113)
+
+
+def _fetch_media_image(url: str) -> "Optional[object]":
+    """Download a media image URL and return a PIL Image, or None on failure."""
+    try:
+        import urllib.request as _urllib
+        from PIL import Image as _PILImg
+        req = _urllib.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with _urllib.urlopen(req, timeout=8) as resp:
+            data = resp.read()
+        img = _PILImg.open(io.BytesIO(data)).convert("RGB")
+        return img
+    except Exception:
+        return None
+
+
+def _render_tweet_card(tweet: dict, card_w: int, media_img=None) -> "Optional[object]":
+    """Render a tweet as a light-themed Twitter-style PIL Image card. Returns Image or None."""
     try:
         from PIL import Image, ImageDraw
         text = (tweet.get("text") or "").strip()
@@ -277,52 +305,84 @@ def _render_tweet_card(tweet: dict, card_w: int) -> "Optional[object]":
         f_text   = _get_font(20)
         f_stats  = _get_font(17)
 
-        PADDING = 18
+        PADDING = 16
         AVATAR  = 44
-        text_w  = card_w - PADDING * 2 - AVATAR - 12
+        text_w  = card_w - PADDING * 2
 
         # Dummy draw for measurement
         dummy = ImageDraw.Draw(Image.new("RGB", (1, 1)))
         wrapped = _wrap_text(text, f_text, text_w, dummy)
-        # Cap at 5 lines to keep card compact
-        wrapped = wrapped[:5]
-        if len(wrapped) == 5 and len(text) > sum(len(l) for l in wrapped):
-            wrapped[-1] = wrapped[-1][:-1] + "…"
+        # No line cap — show full text
 
-        bb = dummy.textbbox((0, 0), "Ag", font=f_text)
-        lh = bb[3] - bb[1] + 5
-        content_h = len(wrapped) * lh + 8
-        card_h = PADDING + AVATAR + 8 + content_h + 28 + PADDING
+        bb_text = dummy.textbbox((0, 0), "Ag", font=f_text)
+        lh = bb_text[3] - bb_text[1] + 5
+        text_block_h = len(wrapped) * lh
 
-        img  = Image.new("RGB", (card_w, card_h), _CARD_BG)
+        # Header height: avatar row
+        header_h = PADDING + AVATAR + PADDING // 2
+
+        # Divider
+        divider_h = 1
+
+        # Body text area
+        body_h = 14 + text_block_h + 8  # top pad + text + bottom pad
+
+        # Media image area
+        media_h = 0
+        media_resized = None
+        if media_img is not None:
+            avail_media_w = card_w - 28
+            scale_m = avail_media_w / media_img.width
+            new_mh = int(media_img.height * scale_m)
+            new_mh = min(new_mh, 240)
+            new_mw = int(media_img.width * (new_mh / media_img.height))
+            media_resized = media_img.resize((new_mw, new_mh), Image.LANCZOS)
+            media_h = new_mh + 8 + 8  # top + image + bottom gap
+
+        # Stats area
+        stats_h = 10 + 24 + 16  # top gap + row + bottom
+
+        card_h = header_h + divider_h + body_h + media_h + stats_h
+
+        img  = Image.new("RGB", (card_w, card_h), _CARD_BG_LIGHT)
         draw = ImageDraw.Draw(img)
 
         # Border
         draw.rounded_rectangle([0, 0, card_w - 1, card_h - 1], radius=10,
-                                outline=_CARD_BORDER, width=1)
+                                outline=_CARD_BORDER_LIGHT, width=1)
 
-        # Avatar circle
+        # Header: avatar circle + author + handle
         ax, ay = PADDING, PADDING
-        draw.ellipse([ax, ay, ax + AVATAR, ay + AVATAR], fill=(45, 65, 120))
+        draw.ellipse([ax, ay, ax + AVATAR, ay + AVATAR], fill=(29, 155, 240))
         initial = (author[0] if author else "?").upper()
         fi = _get_font(22, bold=True)
         iw = draw.textlength(initial, font=fi)
-        draw.text((ax + (AVATAR - iw) / 2, ay + 10), initial, font=fi, fill=(160, 190, 240))
+        draw.text((ax + (AVATAR - iw) / 2, ay + 10), initial, font=fi, fill=(255, 255, 255))
 
-        # Author + handle
         tx = ax + AVATAR + 12
-        draw.text((tx, ay + 4), author[:22], font=f_author, fill=_TWEET_TEXT)
-        draw.text((tx, ay + 28), f"@{handle}"[:26], font=f_handle, fill=_HANDLE_COLOR)
+        draw.text((tx, ay + 4), author[:24], font=f_author, fill=_BODY_COLOR)
+        draw.text((tx, ay + 28), "@" + handle[:26], font=f_handle, fill=_HANDLE_LIGHT)
 
-        # Tweet text
-        ty = ay + AVATAR + 8
+        # Divider line
+        div_y = header_h
+        draw.rectangle([0, div_y, card_w, div_y + divider_h], fill=_CARD_BORDER_LIGHT)
+
+        # Tweet full text
+        ty = div_y + divider_h + 14
         for line in wrapped:
-            draw.text((PADDING, ty), line, font=f_text, fill=_TWEET_TEXT)
+            draw.text((PADDING, ty), line, font=f_text, fill=_BODY_COLOR)
             ty += lh
 
-        # Stats
-        stats = f"♥ {likes:,}   🔁 {rts:,}"
-        draw.text((PADDING, ty + 4), stats, font=f_stats, fill=_HANDLE_COLOR)
+        # Media image
+        if media_resized is not None:
+            mx = (card_w - media_resized.width) // 2
+            my = ty + 8
+            img.paste(media_resized, (mx, my))
+            ty = my + media_resized.height + 8
+
+        # Stats row
+        stats = "♥ " + "{:,}".format(likes) + "   🔁 " + "{:,}".format(rts)
+        draw.text((PADDING, ty + 10), stats, font=f_stats, fill=_STATS_LIGHT)
 
         return img
     except Exception as e:
@@ -374,7 +434,7 @@ def _score_tweets_for_paragraph(para: str, tweets: list) -> list:
     return [t for _, t in scored[:3]]
 
 
-def _composite_frame(
+def _composite_frame_landscape(
     pdf_page_img: "object",  # PIL Image of the PDF page
     tweet_imgs: list,         # list of PIL Image tweet cards
     subtitle: str,
@@ -440,17 +500,79 @@ def _composite_frame(
     return buf.read()
 
 
+def _composite_frame_portrait(pdf_page_img, tweet_imgs, subtitle):
+    """Compose a 1080x1920 portrait frame: PDF top, tweet middle, subtitle bottom."""
+    from PIL import Image, ImageDraw
+    frame = Image.new("RGB", (_FW_P, _FH_P), _BG)
+
+    # ── PDF section (top _PDF_AREA_H px) ────────────────────────────────────
+    avail_h = _PDF_AREA_H - 20
+    scale = min(_FW_P / pdf_page_img.width, avail_h / pdf_page_img.height)
+    new_w = int(pdf_page_img.width * scale)
+    new_h = int(pdf_page_img.height * scale)
+    pdf_resized = pdf_page_img.resize((new_w, new_h), Image.LANCZOS)
+    px = (_FW_P - new_w) // 2
+    py = (_PDF_AREA_H - new_h) // 2
+    frame.paste(pdf_resized, (px, py))
+
+    # ── Divider line ─────────────────────────────────────────────────────────
+    draw_tmp = ImageDraw.Draw(frame)
+    draw_tmp.rectangle([0, _PDF_AREA_H, _FW_P, _PDF_AREA_H + 2], fill=(30, 40, 60))
+
+    # ── Tweet section (middle _TWEET_AREA_H px) ──────────────────────────────
+    if tweet_imgs:
+        card = tweet_imgs[0]  # portrait: show one tweet, full width
+        # Scale card to fit full width minus margins
+        margin = 20
+        avail_tw = _FW_P - margin * 2
+        if card.width != avail_tw:
+            scale_c = avail_tw / card.width
+            new_cw = avail_tw
+            new_ch = int(card.height * scale_c)
+            card = card.resize((new_cw, new_ch), Image.LANCZOS)
+        ty = _PDF_AREA_H + 2 + (_TWEET_AREA_H - min(card.height, _TWEET_AREA_H)) // 2
+        frame.paste(card, (margin, max(_PDF_AREA_H + 2, ty)))
+
+    # ── Subtitle bar (bottom _SUB_H_P px) ───────────────────────────────────
+    if subtitle:
+        from PIL import Image as _I
+        overlay = _I.new("RGBA", (_FW_P, _SUB_H_P), (0, 0, 0, 200))
+        frame_rgba = frame.convert("RGBA")
+        frame_rgba.paste(overlay, (0, _FH_P - _SUB_H_P), overlay)
+        frame = frame_rgba.convert("RGB")
+        draw = ImageDraw.Draw(frame)
+        f_sub = _get_font(34)
+        dummy = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+        sub_lines = _wrap_text(subtitle, f_sub, _FW_P - 60, dummy)[:3]
+        bb = dummy.textbbox((0, 0), "测Ag", font=f_sub)
+        lh = bb[3] - bb[1] + 8
+        total_h = len(sub_lines) * lh
+        ty = _FH_P - _SUB_H_P + (_SUB_H_P - total_h) // 2
+        for line in sub_lines:
+            lw = draw.textlength(line, font=f_sub)
+            x = _FW_P // 2 - int(lw) // 2
+            draw.text((x, ty), line, font=f_sub, fill=(0, 0, 0), stroke_width=2, stroke_fill=(0, 0, 0))
+            draw.text((x, ty), line, font=f_sub, fill=(255, 255, 255))
+            ty += lh
+
+    buf = io.BytesIO()
+    frame.save(buf, format="PNG", optimize=False)
+    buf.seek(0)
+    return buf.read()
+
+
 async def generate_video_from_pdf(
     pdf_bytes: bytes,
     audio_path: Optional[str],
     insight_text: str = "",
     tweets: Optional[list] = None,
+    video_format: str = "landscape",
     on_progress=None,
 ) -> Optional[bytes]:
     """
-    Render PDF pages into a 1920×1080 video with:
-      - Left panel: PDF slide
-      - Right panel: matched tweet cards
+    Render PDF pages into video with:
+      - landscape (1920x1080): Left panel: PDF slide, Right panel: matched tweet cards
+      - portrait  (1080x1920): Top: PDF slide, Middle: tweet card, Bottom: subtitle
       - Bottom bar: rolling subtitle from insight_text
       - Audio track
 
@@ -507,11 +629,18 @@ async def generate_video_from_pdf(
 
     await _p(15, "渲染推文卡片...")
 
-    # Pre-render tweet cards for each subtitle chunk (run in thread to avoid blocking)
-    def _render_page_cards(matched_tweets):
+    # Determine card width based on format
+    card_w = _TWEET_W if video_format != "portrait" else (_FW_P - 40)
+
+    # Pre-render tweet cards for each subtitle chunk with media image support
+    async def _render_cards_for_chunk(matched_tweets):
         cards = []
         for tw in matched_tweets[:3]:
-            img = _render_tweet_card(tw, _TWEET_W)
+            media_url = tw.get("media_url") or tw.get("media_url_https") or ""
+            media_img = None
+            if media_url:
+                media_img = await asyncio.to_thread(_fetch_media_image, media_url)
+            img = await asyncio.to_thread(_render_tweet_card, tw, card_w, media_img)
             if img:
                 cards.append(img)
         return cards
@@ -519,7 +648,7 @@ async def generate_video_from_pdf(
     sub_tweets = [_match_tweets_for_chunk(sub_chunks[i], tweets) for i in range(n_sub)]
     sub_tweet_imgs = []
     for matched in sub_tweets:
-        imgs = await asyncio.to_thread(_render_page_cards, matched)
+        imgs = await _render_cards_for_chunk(matched)
         sub_tweet_imgs.append(imgs)
 
     await _p(25, f"渲染 {n_pages} 页PDF + {n_sub} 段字幕...")
@@ -542,7 +671,9 @@ async def generate_video_from_pdf(
         t = sub_idx * sub_duration
         page_idx = min(int(t / (audio_duration / n_pages)), n_pages - 1)
         subtitle = sub_chunks[sub_idx] if sub_idx < len(sub_chunks) else ""
-        return _composite_frame(pdf_page_imgs[page_idx], sub_tweet_imgs[sub_idx], subtitle)
+        if video_format == "portrait":
+            return _composite_frame_portrait(pdf_page_imgs[page_idx], sub_tweet_imgs[sub_idx], subtitle)
+        return _composite_frame_landscape(pdf_page_imgs[page_idx], sub_tweet_imgs[sub_idx], subtitle)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         frame_paths = []
