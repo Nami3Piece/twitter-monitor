@@ -7401,7 +7401,7 @@ function updateBlockCount() {
 function splitTextIntoBlocks() {
   const raw = document.getElementById('paste-area').value.trim();
   if (!raw) return;
-  const SEP = '\u2028';
+  const SEP = '\\u2028';
   const marked = raw.replace(/([。！？!?])/g, '$1' + SEP).split(SEP).map(function(s){ return s.trim(); }).filter(Boolean);
   const allSentences = marked.length > 1 ? marked : raw.split(/\n\n+/).map(function(s){ return s.trim(); }).filter(Boolean);
   if (allSentences.length === 0) return;
@@ -7438,7 +7438,7 @@ function renderBlocks() {
     const delBtn = document.createElement('button');
     delBtn.className = 'block-del';
     delBtn.title = '删除';
-    delBtn.textContent = '\u2715';
+    delBtn.textContent = '\\u2715';
     delBtn.addEventListener('click', (function(bid){ return function(){ removeBlock(bid); }; })(b.id));
 
     sentDiv.appendChild(numDiv);
@@ -7493,11 +7493,11 @@ function renderSlotCard(slotDiv, bid, tw) {
   infoDiv.innerHTML = '<div class="slot-name">' + esc(tw.author_name || tw.username) + '</div>'
     + '<div class="slot-handle">@' + esc(tw.username) + '</div>'
     + '<div class="slot-text">' + esc((tw.text || '').slice(0, 160)) + '</div>'
-    + '<div class="slot-stats">\u2665 ' + (tw.likes||0).toLocaleString() + ' \u00a0\u{1F501} ' + (tw.retweets||0).toLocaleString() + '</div>';
+    + '<div class="slot-stats">&#9829; ' + (tw.likes||0).toLocaleString() + ' &nbsp;&#128257; ' + (tw.retweets||0).toLocaleString() + '</div>';
   const removeBtn = document.createElement('button');
   removeBtn.className = 'slot-remove';
   removeBtn.title = '移除';
-  removeBtn.textContent = '\u2715';
+  removeBtn.textContent = '\\u2715';
   removeBtn.addEventListener('click', (function(id){ return function(){ removeTweetFromBlock(id); }; })(bid));
   card.appendChild(avatarDiv);
   card.appendChild(infoDiv);
@@ -7514,7 +7514,7 @@ async function bindTweet(bid) {
   const m = url.split('/status/');
   if (m.length < 2) { alert('无法识别推文链接'); return; }
   const id = m[1].split(/[/?#]/)[0];
-  if (!/^\d+$/.test(id)) { alert('无法识别推文链接'); return; }
+  if (!/^[0-9]+$/.test(id)) { alert('无法识别推文链接'); return; }
 
   const slot = document.getElementById('slot-' + bid);
   slot.innerHTML = '<div style="color:#64748b;font-size:.8rem;padding:.3rem">⏳ 获取中...</div>';
@@ -7534,7 +7534,7 @@ async function bindTweet(bid) {
     slot.innerHTML = '';
     const errDiv = document.createElement('div');
     errDiv.style.cssText = 'color:#f87171;font-size:.78rem';
-    errDiv.textContent = '\u274C ' + e.message;
+    errDiv.textContent = '\\u274C ' + e.message;
     const retryBtn = document.createElement('button');
     retryBtn.className = 'add-btn';
     retryBtn.style.cssText = 'margin-top:.4rem;font-size:.75rem';
