@@ -7370,25 +7370,9 @@ function extractTweetId(url) {
   return m ? m[1] : null;
 }
 
-async function addTweet() {
-  const input = document.getElementById('tweet-url-input');
-  const url = input.value.trim();
-  if (!url) return;
-  const id = extractTweetId(url);
-  if (!id) { alert('无法识别推文链接，请确认格式为 https://x.com/.../status/123...'); return; }
-  if (resolvedTweets.find(t => t.id === id)) { input.value = ''; return; }
-  if (resolvedTweets.length >= 10) { alert('最多添加10条推文'); return; }
-
-  input.value = '';
-  // Add loading placeholder
-  const cardId = 'tc-' + id;
-  const list = document.getElementById('tweet-list');
-  const placeholder = document.createElement('div');
-  placeholder.className = 'tweet-card-preview loading';
-  placeholder.id = cardId;
-  placeholder.innerHTML = '<div style="color:#64748b;font-size:.85rem">⏳ 正在获取推文内容...</div>';
-  list.appendChild(placeholder);
-
+async function fetchTweetIntoEl(url, el, id) {
+  el.className = 'tweet-card-preview loading';
+  el.innerHTML = '<div style="color:#64748b;font-size:.85rem">⏳ 正在获取推文内容...</div>';
   try {
     const r = await fetch('/api/studio/resolve-tweet', {
       method: 'POST',
@@ -7396,18 +7380,53 @@ async function addTweet() {
       body: JSON.stringify({url})
     });
     const d = await r.json();
-    if (!r.ok || d.error) throw new Error(d.error || '获取失败');
+    if (!r.ok || d.error) throw new Error(d.detail || d.error || '获取失败');
+    // Remove any existing entry with same id (retry replaces error entry)
+    const idx = resolvedTweets.findIndex(t => t.id === id);
+    if (idx >= 0) resolvedTweets.splice(idx, 1);
     resolvedTweets.push(d);
-    renderTweetCard(placeholder, d);
+    renderTweetCard(el, d);
     updateTweetCount();
   } catch(e) {
-    placeholder.classList.remove('loading');
-    placeholder.classList.add('error');
-    placeholder.innerHTML = `<div class="info"><div class="text">❌ 获取失败: ${e.message}</div><div class="stats">${url}</div></div><button class="remove-btn" onclick="removeTweet('${id}',this.parentElement)">✕</button>`;
-    // Store error placeholder so user can remove it
-    resolvedTweets.push({id, url, error: true});
+    el.classList.remove('loading');
+    el.classList.add('error');
+    el.innerHTML = `<div class="info"><div class="text">❌ 获取失败: ${e.message}</div><div class="stats" style="font-size:.75rem;word-break:break-all">${url}</div></div>`
+      + `<div style="display:flex;gap:6px;margin-top:6px">`
+      + `<button class="add-btn" style="padding:3px 10px;font-size:.8rem" onclick="retryTweet('${id}','${encodeURIComponent(url)}',this.closest('.tweet-card-preview'))">重试</button>`
+      + `<button class="remove-btn" onclick="removeTweet('${id}',this.closest('.tweet-card-preview'))">✕</button>`
+      + `</div>`;
+    // Ensure error entry exists
+    if (!resolvedTweets.find(t => t.id === id))
+      resolvedTweets.push({id, url, error: true});
     updateTweetCount();
   }
+}
+
+async function addTweet() {
+  const input = document.getElementById('tweet-url-input');
+  const url = input.value.trim();
+  if (!url) return;
+  const id = extractTweetId(url);
+  if (!id) { alert('无法识别推文链接，请确认格式为 https://x.com/.../status/123...'); return; }
+  if (resolvedTweets.find(t => t.id === id && !t.error)) { input.value = ''; return; }
+  if (resolvedTweets.filter(t => !t.error).length >= 10) { alert('最多添加10条推文'); return; }
+
+  input.value = '';
+  const cardId = 'tc-' + id;
+  let el = document.getElementById(cardId);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = cardId;
+    document.getElementById('tweet-list').appendChild(el);
+  }
+  await fetchTweetIntoEl(url, el, id);
+}
+
+async function retryTweet(id, encodedUrl, el) {
+  const url = decodeURIComponent(encodedUrl);
+  const idx = resolvedTweets.findIndex(t => t.id === id);
+  if (idx >= 0) resolvedTweets.splice(idx, 1);
+  await fetchTweetIntoEl(url, el, id);
 }
 
 function renderTweetCard(el, d) {
@@ -7421,7 +7440,7 @@ function renderTweetCard(el, d) {
       <div class="text">${esc((d.text||'').slice(0,200))}</div>
       <div class="stats">♥ ${(d.likes||0).toLocaleString()}  🔁 ${(d.retweets||0).toLocaleString()}</div>
     </div>
-    <button class="remove-btn" onclick="removeTweet('${esc(d.id)}',this.parentElement)" title="删除">✕</button>`;
+    <button class="remove-btn" onclick="removeTweet('${esc(d.id)}',this.closest('.tweet-card-preview'))" title="删除">✕</button>`;
 }
 
 function removeTweet(id, el) {

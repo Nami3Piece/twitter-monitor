@@ -250,7 +250,7 @@ _FW = 1920
 _FH = 1080
 _PDF_W = 1150   # left panel width
 _TWEET_W = 720  # right panel width (gap = 50px)
-_SUB_H = 110    # subtitle bar height at bottom
+_SUB_H = 130    # subtitle bar height at bottom
 _GAP = 50       # gap between panels
 _BG = (10, 14, 26)
 _CARD_BG = (20, 28, 46)
@@ -268,8 +268,8 @@ def _render_tweet_card(tweet: dict, card_w: int) -> "Optional[object]":
         text = (tweet.get("text") or "").strip()
         author = tweet.get("author_name") or tweet.get("username") or "Unknown"
         handle = tweet.get("username") or ""
-        likes = tweet.get("likes") or tweet.get("like_count") or 0
-        rts = tweet.get("retweets") or tweet.get("retweet_count") or 0
+        likes = int(tweet.get("likes") or tweet.get("like_count") or 0)
+        rts = int(tweet.get("retweets") or tweet.get("retweet_count") or 0)
 
         # Fonts
         f_author = _get_font(22, bold=True)
@@ -427,7 +427,11 @@ def _composite_frame(
         ty = _FH - _SUB_H + (_SUB_H - total_h) // 2
         for line in sub_lines:
             lw = draw.textlength(line, font=f_sub)
-            draw.text((_FW // 2 - lw // 2, ty), line, font=f_sub, fill=_SUB_TEXT)
+            x = _FW // 2 - int(lw) // 2
+            # Draw black stroke for readability on any background
+            draw.text((x, ty), line, font=f_sub, fill=(0, 0, 0),
+                      stroke_width=2, stroke_fill=(0, 0, 0))
+            draw.text((x, ty), line, font=f_sub, fill=_SUB_TEXT)
             ty += lh
 
     buf = io.BytesIO()
