@@ -271,12 +271,17 @@ async def _concat_audio(files: list[str], output_path: str) -> None:
             f.write(f"file '{fp}'\n")
 
     proc = await asyncio.create_subprocess_exec(
-        _get_ffmpeg(), "-f", "concat", "-safe", "0", "-i", list_path,
+        _get_ffmpeg(), "-loglevel", "error",
+        "-f", "concat", "-safe", "0", "-i", list_path,
         "-c", "copy", output_path, "-y",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    _, stderr = await proc.communicate()
+    try:
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    except asyncio.TimeoutError:
+        proc.kill()
+        raise RuntimeError("ffmpeg concat timed out after 120s")
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg concat failed: {stderr.decode()[:500]}")
 

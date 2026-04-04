@@ -301,7 +301,7 @@ async def generate_insight_video(
         ffmpeg = _get_ffmpeg()
         if audio_path:
             cmd = [
-                ffmpeg, "-y",
+                ffmpeg, "-y", "-loglevel", "error",
                 "-loop", "1", "-i", poster_path,
                 "-i", audio_path,
                 "-c:v", "libx264", "-tune", "stillimage",
@@ -315,7 +315,7 @@ async def generate_insight_video(
         else:
             # No audio: 60s silent video
             cmd = [
-                ffmpeg, "-y",
+                ffmpeg, "-y", "-loglevel", "error",
                 "-loop", "1", "-t", "60", "-i", poster_path,
                 "-c:v", "libx264", "-tune", "stillimage",
                 "-preset", "ultrafast", "-crf", "28",
@@ -324,11 +324,20 @@ async def generate_insight_video(
                 out_mp4,
             ]
 
-        proc = await asyncio.to_thread(
-            subprocess.run, cmd, capture_output=True, text=True, timeout=120
+        # Use asyncio subprocess to avoid pipe-buffer deadlock from capture_output=True
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
+        try:
+            _, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=300)
+        except asyncio.TimeoutError:
+            proc.kill()
+            logger.error("poster: ffmpeg timed out after 300s")
+            return None
         if proc.returncode != 0:
-            logger.error(f"poster: ffmpeg failed:\n{proc.stderr[-600:]}")
+            logger.error(f"poster: ffmpeg failed:\n{stderr_bytes.decode()[-600:]}")
             return None
 
         await _p(95, "打包完成..." if lang == "zh" else "Finalizing...")
