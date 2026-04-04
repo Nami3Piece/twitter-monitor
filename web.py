@@ -3913,16 +3913,18 @@ async def api_ai_strategy_analysis(_: str = Depends(_auth)) -> JSONResponse:
         f"3. 具体的搜索规则优化建议（可以直接给出修改后的关键词）\n\n"
         f"输出格式：用中文，分三节，每节 2-4 条建议，简洁直接。"
     )
+    from anthropic import APITimeoutError as _APITimeoutError
     client = AsyncAnthropic(
         api_key=os.getenv("ANTHROPIC_API_KEY", ""),
         base_url=os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+        timeout=45.0,
     )
     last_err = None
-    for attempt in range(3):
+    for attempt in range(2):
         try:
             resp = await client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=1500,
+                max_tokens=1200,
                 messages=[{"role": "user", "content": prompt}],
             )
             analysis = resp.content[0].text
@@ -3930,8 +3932,8 @@ async def api_ai_strategy_analysis(_: str = Depends(_auth)) -> JSONResponse:
         except Exception as e:
             last_err = e
             logger.warning(f"ai-strategy-analysis attempt {attempt+1} failed: {e}")
-            if attempt < 2:
-                await asyncio.sleep(2 ** attempt)
+            if attempt < 1:
+                await asyncio.sleep(2)
     return JSONResponse({"ok": False, "error": f"AI 服务暂时不可用，请稍后重试。({last_err})"}, status_code=500)
 
 
@@ -4375,18 +4377,23 @@ async function runAiAnalysis() {{
   btn.innerHTML = '<span class="loading-spin"></span>分析中...';
   box.className = 'ai-box loading';
   box.textContent = 'AI 正在分析删除数据，请稍候（约15-30秒）...';
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 100000);
   try {{
-    const r = await fetch('/api/admin/ai-strategy-analysis', {{method:'POST'}});
+    const r = await fetch('/api/admin/ai-strategy-analysis', {{method:'POST', signal: ctrl.signal}});
+    clearTimeout(timer);
     const data = await r.json();
     box.className = 'ai-box';
     if (data.ok) {{
-      box.textContent = data.analysis;
+      box.innerHTML = data.analysis.replace(/\n/g, '<br>');
     }} else {{
+      box.className = 'ai-box ai-draft-error';
       box.textContent = '分析失败：' + (data.error||'未知错误');
     }}
   }} catch(e) {{
-    box.className = 'ai-box';
-    box.textContent = '请求失败：' + e.message;
+    clearTimeout(timer);
+    box.className = 'ai-box ai-draft-error';
+    box.textContent = e.name === 'AbortError' ? '请求超时，请稍后重试' : '请求失败：' + e.message;
   }}
   btn.disabled = false;
   btn.textContent = '重新分析';
