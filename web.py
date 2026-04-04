@@ -7227,7 +7227,7 @@ textarea::placeholder{color:#334155}
 .add-btn{padding:.6rem 1.1rem;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;font-size:.82rem;cursor:pointer;white-space:nowrap;transition:background .15s}
 .add-btn:hover{background:#263450;color:#e2e8f0}
 #tweet-list{display:flex;flex-direction:column;gap:.6rem}
-.tweet-card-preview{background:#0a0f1a;border:1px solid #1e3a5f;border-radius:10px;padding:.9rem 1rem;display:flex;align-items:flex-start;gap:.75rem;position:relative}
+.tweet-card-preview{background:#0a0f1a;border:1px solid #1e3a5f;border-radius:10px;padding:.9rem 1rem;display:flex;align-items:flex-start;gap:.75rem;position:relative;flex-wrap:wrap}
 .tweet-card-preview .avatar{width:36px;height:36px;border-radius:50%;background:#1e3a5f;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.95rem;color:#7dd3fc;flex-shrink:0}
 .tweet-card-preview .info{flex:1;min-width:0}
 .tweet-card-preview .info .name{font-weight:600;font-size:.88rem;color:#f1f5f9}
@@ -7435,6 +7435,7 @@ async function retryTweet(id, encodedUrl, el) {
 function renderTweetCard(el, d) {
   el.classList.remove('loading');
   const initial = (d.author_name || d.username || '?')[0].toUpperCase();
+  const linkedText = esc(d.linked_text || '');
   el.innerHTML = `
     <div class="avatar">${initial}</div>
     <div class="info">
@@ -7442,8 +7443,20 @@ function renderTweetCard(el, d) {
       <div class="handle">@${esc(d.username)}</div>
       <div class="text">${esc((d.text||'').slice(0,200))}</div>
       <div class="stats">♥ ${(d.likes||0).toLocaleString()}  🔁 ${(d.retweets||0).toLocaleString()}</div>
+      <div style="margin-top:8px">
+        <div style="font-size:.75rem;color:#64748b;margin-bottom:3px">🔗 关联语句（视频中显示此推文时对应的字幕文字片段）</div>
+        <textarea class="linked-text-input" data-id="${esc(d.id)}" rows="2"
+          placeholder="粘贴洞察文案中的对应语句片段，留空则自动匹配..."
+          style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:.8rem;padding:6px;resize:vertical"
+          onchange="updateLinkedText('${esc(d.id)}', this.value)">${linkedText}</textarea>
+      </div>
     </div>
     <button class="remove-btn" onclick="removeTweet('${esc(d.id)}',this.closest('.tweet-card-preview'))" title="删除">✕</button>`;
+}
+
+function updateLinkedText(id, value) {
+  const tw = resolvedTweets.find(t => t.id === id);
+  if (tw) tw.linked_text = value.trim();
 }
 
 function removeTweet(id, el) {

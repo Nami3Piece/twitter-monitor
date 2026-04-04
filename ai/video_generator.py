@@ -489,19 +489,25 @@ async def generate_video_from_pdf(
     n_sub = len(sub_chunks)
     sub_duration = audio_duration / n_sub  # seconds per subtitle chunk
 
-    # ── Match tweets to PDF pages ─────────────────────────────────────────────
+    # ── Match tweets to subtitle chunks ──────────────────────────────────────
     tweets = tweets or []
-    # Split insight text into paragraphs (one per page roughly)
-    paras = [p.strip() for p in insight_text.split("\n\n") if p.strip()] if insight_text else []
-    page_tweets: list[list] = []
-    for i in range(n_pages):
-        para = paras[i] if i < len(paras) else (insight_text or "")
-        matched = _score_tweets_for_paragraph(para, tweets) if tweets else []
-        page_tweets.append(matched)
+
+    def _match_tweets_for_chunk(chunk_text: str, all_tweets: list) -> list:
+        """Match tweets to a subtitle chunk. Uses linked_text if present, else keyword scoring."""
+        if not all_tweets:
+            return []
+        # First pass: exact linked_text match
+        explicit = [tw for tw in all_tweets
+                    if (tw.get("linked_text") or "").strip()
+                    and tw["linked_text"].strip() in chunk_text]
+        if explicit:
+            return explicit[:3]
+        # Second pass: keyword scoring
+        return _score_tweets_for_paragraph(chunk_text, all_tweets)
 
     await _p(15, "渲染推文卡片...")
 
-    # Pre-render tweet cards for each page (run in thread to avoid blocking)
+    # Pre-render tweet cards for each subtitle chunk (run in thread to avoid blocking)
     def _render_page_cards(matched_tweets):
         cards = []
         for tw in matched_tweets[:3]:
@@ -510,10 +516,11 @@ async def generate_video_from_pdf(
                 cards.append(img)
         return cards
 
-    page_tweet_imgs = []
-    for matched in page_tweets:
+    sub_tweets = [_match_tweets_for_chunk(sub_chunks[i], tweets) for i in range(n_sub)]
+    sub_tweet_imgs = []
+    for matched in sub_tweets:
         imgs = await asyncio.to_thread(_render_page_cards, matched)
-        page_tweet_imgs.append(imgs)
+        sub_tweet_imgs.append(imgs)
 
     await _p(25, f"渲染 {n_pages} 页PDF + {n_sub} 段字幕...")
 
@@ -535,7 +542,7 @@ async def generate_video_from_pdf(
         t = sub_idx * sub_duration
         page_idx = min(int(t / (audio_duration / n_pages)), n_pages - 1)
         subtitle = sub_chunks[sub_idx] if sub_idx < len(sub_chunks) else ""
-        return _composite_frame(pdf_page_imgs[page_idx], page_tweet_imgs[page_idx], subtitle)
+        return _composite_frame(pdf_page_imgs[page_idx], sub_tweet_imgs[sub_idx], subtitle)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         frame_paths = []
