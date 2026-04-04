@@ -244,14 +244,212 @@ def _draw_poster(date: str, lang: str, text: str) -> Optional[bytes]:
         return None
 
 
+# ── Tweet card + subtitle helpers ─────────────────────────────────────────────
+
+_FW = 1920
+_FH = 1080
+_PDF_W = 1150   # left panel width
+_TWEET_W = 720  # right panel width (gap = 50px)
+_SUB_H = 110    # subtitle bar height at bottom
+_GAP = 50       # gap between panels
+_BG = (10, 14, 26)
+_CARD_BG = (20, 28, 46)
+_CARD_BORDER = (45, 65, 100)
+_TWEET_TEXT = (220, 230, 245)
+_HANDLE_COLOR = (100, 140, 200)
+_SUB_BG = (0, 0, 0, 185)       # RGBA semi-transparent
+_SUB_TEXT = (255, 255, 255)
+
+
+def _render_tweet_card(tweet: dict, card_w: int) -> "Optional[object]":
+    """Render a tweet as a styled PIL Image card. Returns Image or None."""
+    try:
+        from PIL import Image, ImageDraw
+        text = (tweet.get("text") or "").strip()
+        author = tweet.get("author_name") or tweet.get("username") or "Unknown"
+        handle = tweet.get("username") or ""
+        likes = tweet.get("likes") or tweet.get("like_count") or 0
+        rts = tweet.get("retweets") or tweet.get("retweet_count") or 0
+
+        # Fonts
+        f_author = _get_font(22, bold=True)
+        f_handle = _get_font(18)
+        f_text   = _get_font(20)
+        f_stats  = _get_font(17)
+
+        PADDING = 18
+        AVATAR  = 44
+        text_w  = card_w - PADDING * 2 - AVATAR - 12
+
+        # Dummy draw for measurement
+        dummy = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+        wrapped = _wrap_text(text, f_text, text_w, dummy)
+        # Cap at 5 lines to keep card compact
+        wrapped = wrapped[:5]
+        if len(wrapped) == 5 and len(text) > sum(len(l) for l in wrapped):
+            wrapped[-1] = wrapped[-1][:-1] + "…"
+
+        bb = dummy.textbbox((0, 0), "Ag", font=f_text)
+        lh = bb[3] - bb[1] + 5
+        content_h = len(wrapped) * lh + 8
+        card_h = PADDING + AVATAR + 8 + content_h + 28 + PADDING
+
+        img  = Image.new("RGB", (card_w, card_h), _CARD_BG)
+        draw = ImageDraw.Draw(img)
+
+        # Border
+        draw.rounded_rectangle([0, 0, card_w - 1, card_h - 1], radius=10,
+                                outline=_CARD_BORDER, width=1)
+
+        # Avatar circle
+        ax, ay = PADDING, PADDING
+        draw.ellipse([ax, ay, ax + AVATAR, ay + AVATAR], fill=(45, 65, 120))
+        initial = (author[0] if author else "?").upper()
+        fi = _get_font(22, bold=True)
+        iw = draw.textlength(initial, font=fi)
+        draw.text((ax + (AVATAR - iw) / 2, ay + 10), initial, font=fi, fill=(160, 190, 240))
+
+        # Author + handle
+        tx = ax + AVATAR + 12
+        draw.text((tx, ay + 4), author[:22], font=f_author, fill=_TWEET_TEXT)
+        draw.text((tx, ay + 28), f"@{handle}"[:26], font=f_handle, fill=_HANDLE_COLOR)
+
+        # Tweet text
+        ty = ay + AVATAR + 8
+        for line in wrapped:
+            draw.text((PADDING, ty), line, font=f_text, fill=_TWEET_TEXT)
+            ty += lh
+
+        # Stats
+        stats = f"♥ {likes:,}   🔁 {rts:,}"
+        draw.text((PADDING, ty + 4), stats, font=f_stats, fill=_HANDLE_COLOR)
+
+        return img
+    except Exception as e:
+        logger.warning(f"tweet card render error: {e}")
+        return None
+
+
+def _split_subtitle_chunks(text: str, n_chunks: int) -> list:
+    """Split insight text into ~n_chunks subtitle segments by sentence."""
+    import re as _re
+    # Split on Chinese/English sentence endings
+    sentences = _re.split(r'(?<=[。！？.!?])\s*', text.strip())
+    sentences = [s.strip() for s in sentences if s.strip()]
+    if not sentences:
+        return [text.strip()]
+
+    # Group sentences into n_chunks buckets
+    total_chars = sum(len(s) for s in sentences)
+    target = max(1, total_chars // max(1, n_chunks))
+    chunks, current = [], ""
+    for s in sentences:
+        if len(current) + len(s) > target and current:
+            chunks.append(current.strip())
+            current = s
+        else:
+            current = (current + "　" + s).strip() if current else s
+    if current:
+        chunks.append(current.strip())
+    return chunks if chunks else [text.strip()]
+
+
+def _score_tweets_for_paragraph(para: str, tweets: list) -> list:
+    """Score tweets against a paragraph by keyword overlap. Returns top 3."""
+    import re as _re
+    # Extract CJK words (3+ chars) and English tokens (4+ chars) as keywords
+    cjk = _re.findall(r'[\u4e00-\u9fff]{2,}', para)
+    eng = _re.findall(r'[a-zA-Z]{4,}', para.lower())
+    keywords = set(cjk + eng)
+    if not keywords:
+        return []
+
+    scored = []
+    for tw in tweets:
+        tw_text = (tw.get("text") or "").lower()
+        score = sum(1 for kw in keywords if kw.lower() in tw_text)
+        if score > 0:
+            scored.append((score, tw))
+    scored.sort(key=lambda x: -x[0])
+    return [t for _, t in scored[:3]]
+
+
+def _composite_frame(
+    pdf_page_img: "object",  # PIL Image of the PDF page
+    tweet_imgs: list,         # list of PIL Image tweet cards
+    subtitle: str,
+) -> bytes:
+    """Composite PDF page + tweet cards + subtitle text into 1920×1080 PNG bytes."""
+    from PIL import Image, ImageDraw
+
+    frame = Image.new("RGB", (_FW, _FH), _BG)
+
+    # ── PDF page (left panel) ────────────────────────────────────────────────
+    avail_h = _FH - _SUB_H - 20
+    scale = min(_PDF_W / pdf_page_img.width, avail_h / pdf_page_img.height)
+    new_w = int(pdf_page_img.width * scale)
+    new_h = int(pdf_page_img.height * scale)
+    pdf_resized = pdf_page_img.resize((new_w, new_h), Image.LANCZOS)
+    px = (_PDF_W - new_w) // 2
+    py = (avail_h - new_h) // 2
+    frame.paste(pdf_resized, (px, py))
+
+    # ── Tweet cards (right panel) ────────────────────────────────────────────
+    if tweet_imgs:
+        rx = _PDF_W + _GAP
+        avail_tweet_h = _FH - _SUB_H - 20
+        n = len(tweet_imgs)
+        gap_between = 12
+        total_cards_h = sum(img.height for img in tweet_imgs) + gap_between * (n - 1)
+        ry = max(10, (avail_tweet_h - total_cards_h) // 2)
+        for card_img in tweet_imgs:
+            if ry + card_img.height > avail_tweet_h:
+                break
+            frame.paste(card_img, (rx, ry))
+            ry += card_img.height + gap_between
+
+    # ── Subtitle bar ─────────────────────────────────────────────────────────
+    if subtitle:
+        # Semi-transparent overlay strip at bottom
+        overlay = Image.new("RGBA", (_FW, _SUB_H), _SUB_BG)
+        frame_rgba = frame.convert("RGBA")
+        frame_rgba.paste(overlay, (0, _FH - _SUB_H), overlay)
+        frame = frame_rgba.convert("RGB")
+
+        draw = ImageDraw.Draw(frame)
+        f_sub = _get_font(30)
+        # Wrap subtitle text to fit full width with padding
+        dummy = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+        sub_lines = _wrap_text(subtitle, f_sub, _FW - 80, dummy)[:3]
+        bb = dummy.textbbox((0, 0), "测Ag", font=f_sub)
+        lh = bb[3] - bb[1] + 6
+        total_h = len(sub_lines) * lh
+        ty = _FH - _SUB_H + (_SUB_H - total_h) // 2
+        for line in sub_lines:
+            lw = draw.textlength(line, font=f_sub)
+            draw.text((_FW // 2 - lw // 2, ty), line, font=f_sub, fill=_SUB_TEXT)
+            ty += lh
+
+    buf = io.BytesIO()
+    frame.save(buf, format="PNG", optimize=False)
+    buf.seek(0)
+    return buf.read()
+
+
 async def generate_video_from_pdf(
     pdf_bytes: bytes,
     audio_path: Optional[str],
+    insight_text: str = "",
+    tweets: Optional[list] = None,
     on_progress=None,
 ) -> Optional[bytes]:
     """
-    Render each PDF page as a 1920×1080 image, then combine with audio into MP4.
-    Pages are distributed evenly over the audio duration (min 3s per page).
+    Render PDF pages into a 1920×1080 video with:
+      - Left panel: PDF slide
+      - Right panel: matched tweet cards
+      - Bottom bar: rolling subtitle from insight_text
+      - Audio track
+
     Returns raw MP4 bytes, or None on failure.
     """
     async def _p(pct: int, msg: str):
@@ -260,7 +458,7 @@ async def generate_video_from_pdf(
 
     await _p(5, "解析PDF...")
     try:
-        import fitz  # PyMuPDF
+        import fitz
     except ImportError:
         logger.error("pdf-video: PyMuPDF not installed")
         return None
@@ -275,41 +473,86 @@ async def generate_video_from_pdf(
         logger.error(f"pdf-video: failed to open PDF: {e}")
         return None
 
-    # Determine per-page duration
     audio_duration = 0.0
     if audio_path and os.path.exists(audio_path):
         audio_duration = _get_audio_duration(audio_path)
     if audio_duration <= 0:
-        audio_duration = n_pages * 8.0  # fallback: 8s per page
+        audio_duration = n_pages * 20.0
 
-    per_page = max(3.0, audio_duration / n_pages)
+    # ── Subtitle chunks: ~1 chunk every 6 seconds ────────────────────────────
+    n_sub_chunks = max(n_pages, int(audio_duration / 6))
+    sub_chunks = _split_subtitle_chunks(insight_text, n_sub_chunks) if insight_text else [""] * n_pages
+    n_sub = len(sub_chunks)
+    sub_duration = audio_duration / n_sub  # seconds per subtitle chunk
 
-    await _p(20, f"渲染 {n_pages} 页PDF...")
+    # ── Match tweets to PDF pages ─────────────────────────────────────────────
+    tweets = tweets or []
+    # Split insight text into paragraphs (one per page roughly)
+    paras = [p.strip() for p in insight_text.split("\n\n") if p.strip()] if insight_text else []
+    page_tweets: list[list] = []
+    for i in range(n_pages):
+        para = paras[i] if i < len(paras) else (insight_text or "")
+        matched = _score_tweets_for_paragraph(para, tweets) if tweets else []
+        page_tweets.append(matched)
+
+    await _p(15, "渲染推文卡片...")
+
+    # Pre-render tweet cards for each page (run in thread to avoid blocking)
+    def _render_page_cards(matched_tweets):
+        cards = []
+        for tw in matched_tweets[:3]:
+            img = _render_tweet_card(tw, _TWEET_W)
+            if img:
+                cards.append(img)
+        return cards
+
+    page_tweet_imgs = []
+    for matched in page_tweets:
+        imgs = await asyncio.to_thread(_render_page_cards, matched)
+        page_tweet_imgs.append(imgs)
+
+    await _p(25, f"渲染 {n_pages} 页PDF + {n_sub} 段字幕...")
+
+    # Render PDF pages to PIL Images
+    from PIL import Image as _PILImage
+    pdf_page_imgs = []
+    for i, page in enumerate(doc):
+        mat = fitz.Matrix(2.0, 2.0)
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+        img = _PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        pdf_page_imgs.append(img)
+        await _p(25 + int(20 * (i + 1) / n_pages), f"解析第 {i+1}/{n_pages} 页...")
+    doc.close()
+
+    await _p(50, "合成复合帧...")
+
+    # Build frames: one frame per subtitle chunk, showing appropriate PDF page
+    def _build_frame(sub_idx: int) -> bytes:
+        t = sub_idx * sub_duration
+        page_idx = min(int(t / (audio_duration / n_pages)), n_pages - 1)
+        subtitle = sub_chunks[sub_idx] if sub_idx < len(sub_chunks) else ""
+        return _composite_frame(pdf_page_imgs[page_idx], page_tweet_imgs[page_idx], subtitle)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         frame_paths = []
-        for i, page in enumerate(doc):
-            # Render at 2x scale → ~1920px wide for 16:9 PDF pages
-            mat = fitz.Matrix(2.0, 2.0)
-            pix = page.get_pixmap(matrix=mat, alpha=False)
-            frame_path = os.path.join(tmpdir, f"frame_{i:04d}.png")
-            pix.save(frame_path)
-            frame_paths.append(frame_path)
-            await _p(20 + int(40 * (i + 1) / n_pages), f"渲染第 {i+1}/{n_pages} 页...")
+        for i in range(n_sub):
+            frame_bytes = await asyncio.to_thread(_build_frame, i)
+            fp = os.path.join(tmpdir, f"frame_{i:05d}.png")
+            with open(fp, "wb") as f:
+                f.write(frame_bytes)
+            frame_paths.append(fp)
+            if i % 5 == 0:
+                await _p(50 + int(25 * i / n_sub), f"合成帧 {i+1}/{n_sub}...")
 
-        doc.close()
-
-        await _p(65, "合成视频...")
+        await _p(78, "ffmpeg 编码视频...")
         out_mp4 = os.path.join(tmpdir, "output.mp4")
         ffmpeg = _get_ffmpeg()
 
-        # Build concat demuxer file: each frame shown for per_page seconds
         concat_txt = os.path.join(tmpdir, "concat.txt")
         with open(concat_txt, "w") as f:
             for fp in frame_paths:
                 f.write(f"file '{fp}'\n")
-                f.write(f"duration {per_page:.3f}\n")
-            # ffmpeg concat needs the last file listed again without duration
+                f.write(f"duration {sub_duration:.3f}\n")
             f.write(f"file '{frame_paths[-1]}'\n")
 
         if audio_path and os.path.exists(audio_path):
@@ -317,8 +560,7 @@ async def generate_video_from_pdf(
                 ffmpeg, "-y", "-loglevel", "error",
                 "-f", "concat", "-safe", "0", "-i", concat_txt,
                 "-i", audio_path,
-                "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black",
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23",
                 "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
@@ -329,8 +571,7 @@ async def generate_video_from_pdf(
             cmd = [
                 ffmpeg, "-y", "-loglevel", "error",
                 "-f", "concat", "-safe", "0", "-i", concat_txt,
-                "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black",
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
                 out_mp4,
@@ -342,10 +583,10 @@ async def generate_video_from_pdf(
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            _, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=300)
+            _, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=600)
         except asyncio.TimeoutError:
             proc.kill()
-            logger.error("pdf-video: ffmpeg timed out after 300s")
+            logger.error("pdf-video: ffmpeg timed out after 600s")
             return None
         if proc.returncode != 0:
             logger.error(f"pdf-video: ffmpeg failed:\n{stderr_bytes.decode()[-600:]}")
@@ -355,7 +596,11 @@ async def generate_video_from_pdf(
         with open(out_mp4, "rb") as f:
             data = f.read()
 
-    logger.info(f"pdf-video: done {len(data)//1024}KB, {n_pages} pages, {audio_duration:.1f}s audio")
+    logger.info(
+        f"pdf-video: done {len(data)//1024}KB, {n_pages} pages, "
+        f"{n_sub} subtitle frames, {audio_duration:.1f}s audio, "
+        f"{len(tweets)} tweets matched"
+    )
     return data
 
 

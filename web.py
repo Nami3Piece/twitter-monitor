@@ -7532,7 +7532,10 @@ async def download_insight_video(job_id: str, request: Request):
 _pdf_video_jobs: dict = {}  # job_id -> {status, progress, message, data, error}
 
 
-async def _run_pdf_video_job(job_id: str, pdf_bytes: bytes, audio_path: str, filename_stem: str):
+async def _run_pdf_video_job(
+    job_id: str, pdf_bytes: bytes, audio_path: str,
+    filename_stem: str, insight_text: str = "", tweets: list = None,
+):
     job = _pdf_video_jobs[job_id]
     from ai.video_generator import generate_video_from_pdf
 
@@ -7542,7 +7545,12 @@ async def _run_pdf_video_job(job_id: str, pdf_bytes: bytes, audio_path: str, fil
 
     try:
         job.update({"status": "running"})
-        data = await generate_video_from_pdf(pdf_bytes, audio_path, on_progress=_cb)
+        data = await generate_video_from_pdf(
+            pdf_bytes, audio_path,
+            insight_text=insight_text,
+            tweets=tweets or [],
+            on_progress=_cb,
+        )
         if data:
             job.update({"status": "done", "progress": 100,
                         "message": "完成！", "data": data,
@@ -7582,26 +7590,51 @@ async def start_pdf_video(request: Request, date: str = "", lang: str = "zh"):
     if len(pdf_bytes) > 50 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="PDF too large (max 50MB)")
 
-    # Resolve audio file for the given date+lang
+    # Resolve audio, insight text, and tweets for the given date+lang
     audio_path = None
+    insight_text = ""
+    tweets = []
     if date and _re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         digest = await _fetch_digest(date)
         if digest:
             if lang == "zh":
                 audio_fn = digest.get("audio_insight_zh") or digest.get("audio_zh") or ""
+                insight_text = digest.get("content_insight_zh") or digest.get("content_zh") or ""
             else:
                 audio_fn = digest.get("audio_insight_en") or digest.get("audio_en") or ""
+                insight_text = digest.get("content_insight_en") or digest.get("content_en") or ""
             if audio_fn:
                 candidate = os.path.join(AUDIO_DIR, audio_fn)
                 if os.path.exists(candidate):
                     audio_path = candidate
+
+        # Fetch tweets for this date from DB
+        try:
+            import aiosqlite as _sq
+            async with _sq.connect(DB_PATH) as _db:
+                rows = await (await _db.execute(
+                    """SELECT text, username, like_count, retweet_count
+                       FROM tweets WHERE date(created_at) = ?
+                       ORDER BY like_count DESC LIMIT 60""",
+                    (date,)
+                )).fetchall()
+                tweets = [
+                    {"text": r[0], "username": r[1], "author_name": r[1],
+                     "likes": r[2] or 0, "retweets": r[3] or 0}
+                    for r in rows if r[0]
+                ]
+        except Exception as _e:
+            logger.warning(f"pdf-video: failed to fetch tweets: {_e}")
 
     filename_stem = f"pdf-digest-{date or 'video'}-{lang}"
     job_id = _uuid.uuid4().hex[:10]
     _pdf_video_jobs[job_id] = {
         "status": "pending", "progress": 0, "message": "排队中...",
     }
-    asyncio.create_task(_run_pdf_video_job(job_id, pdf_bytes, audio_path, filename_stem))
+    asyncio.create_task(_run_pdf_video_job(
+        job_id, pdf_bytes, audio_path, filename_stem,
+        insight_text=insight_text, tweets=tweets,
+    ))
     return JSONResponse({"job_id": job_id})
 
 
