@@ -360,18 +360,22 @@ async def generate_video_from_pdf(
 
 
 def _get_audio_duration(audio_path: str) -> float:
+    """Get audio duration using ffmpeg -i (imageio_ffmpeg bundles ffmpeg but not ffprobe)."""
+    import re as _re
     ffmpeg = _get_ffmpeg()
-    # ffprobe is usually co-located with ffmpeg
-    ffprobe = ffmpeg.replace("ffmpeg", "ffprobe") if "ffmpeg" in ffmpeg else "ffprobe"
-    result = subprocess.run(
-        [ffprobe, "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=noprint_wrappers=1:nokey=1", audio_path],
-        capture_output=True, text=True, timeout=10,
-    )
     try:
-        return float(result.stdout.strip())
+        result = subprocess.run(
+            [ffmpeg, "-i", audio_path],
+            capture_output=True, text=True, timeout=10,
+        )
+        # ffmpeg prints duration to stderr: "Duration: HH:MM:SS.xx"
+        m = _re.search(r"Duration:\s*(\d+):(\d+):([\d.]+)", result.stderr)
+        if m:
+            h, mn, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
+            return h * 3600 + mn * 60 + s
     except Exception:
-        return 60.0
+        pass
+    return 60.0
 
 
 async def generate_insight_video(
