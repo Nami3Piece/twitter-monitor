@@ -7678,8 +7678,11 @@ async def studio_generate(request: Request):
                 os.unlink(audio_path)
 
             if data:
+                file_path = os.path.join(_PDF_VIDEO_DIR, f"{job_id}.mp4")
+                with open(file_path, "wb") as _f:
+                    _f.write(data)
                 job.update({"status": "done", "progress": 100,
-                            "message": "完成！", "data": data,
+                            "message": "完成！", "file_path": file_path,
                             "size": len(data),
                             "filename": f"studio-video-{lang}.mp4"})
             else:
@@ -7687,8 +7690,10 @@ async def studio_generate(request: Request):
         except Exception as e:
             logger.error(f"studio job {job_id}: {e}")
             job.update({"status": "error", "message": str(e)[:120]})
-        await asyncio.sleep(600)
-        _pdf_video_jobs.pop(job_id, None)
+        await asyncio.sleep(3600)
+        file_path = _pdf_video_jobs.pop(job_id, {}).get("file_path")
+        if file_path and os.path.exists(file_path):
+            os.unlink(file_path)
 
     asyncio.create_task(_run())
     return JSONResponse({"job_id": job_id})
@@ -8029,7 +8034,10 @@ async def download_insight_video(job_id: str, request: Request):
 
 # ── PDF → Video Job API ───────────────────────────────────────────────────────
 
-_pdf_video_jobs: dict = {}  # job_id -> {status, progress, message, data, error}
+_PDF_VIDEO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "videos")
+os.makedirs(_PDF_VIDEO_DIR, exist_ok=True)
+
+_pdf_video_jobs: dict = {}  # job_id -> {status, progress, message, file_path, size, filename}
 
 
 async def _run_pdf_video_job(
@@ -8052,16 +8060,22 @@ async def _run_pdf_video_job(
             on_progress=_cb,
         )
         if data:
+            file_path = os.path.join(_PDF_VIDEO_DIR, f"{job_id}.mp4")
+            with open(file_path, "wb") as f:
+                f.write(data)
             job.update({"status": "done", "progress": 100,
-                        "message": "完成！", "data": data,
+                        "message": "完成！", "file_path": file_path,
                         "size": len(data), "filename": f"{filename_stem}.mp4"})
         else:
             job.update({"status": "error", "message": "视频生成失败，请重试"})
     except Exception as e:
         logger.error(f"pdf-video job {job_id}: {e}")
         job.update({"status": "error", "message": str(e)[:120]})
-    await asyncio.sleep(600)
-    _pdf_video_jobs.pop(job_id, None)
+    # Keep job entry for 1 hour so user can re-download; then clean up
+    await asyncio.sleep(3600)
+    file_path = _pdf_video_jobs.pop(job_id, {}).get("file_path")
+    if file_path and os.path.exists(file_path):
+        os.unlink(file_path)
 
 
 @app.post("/api/digest/pdf-video/start")
@@ -8159,15 +8173,15 @@ async def download_pdf_video(job_id: str, request: Request):
     user = await _auth_module.get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Login required")
-    data = job.pop("data", None)
-    if not data:
-        raise HTTPException(status_code=410, detail="Already downloaded")
+    file_path = job.get("file_path")
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=410, detail="Video file no longer available")
     filename = job.get("filename", "digest-video.mp4")
-    from fastapi.responses import StreamingResponse as _SR
-    return _SR(
-        io.BytesIO(data),
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        file_path,
         media_type="video/mp4",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        filename=filename,
     )
 
 
