@@ -7346,11 +7346,11 @@ textarea::placeholder{color:#334155}
   </div>
 
   <!-- Generate -->
-  <button class="generate-btn" id="gen-btn" onclick="generate()">🎬 生成 MP4 视频</button>
   <div class="progress-wrap" id="progress-wrap">
     <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
     <div class="progress-msg" id="progress-msg">准备中...</div>
   </div>
+  <button class="generate-btn" id="gen-btn" onclick="generate()">🎬 生成 MP4 视频</button>
 
 </div>
 
@@ -7443,7 +7443,8 @@ function handleFileSelect(input) {
   if (!f) return;
   const zone = document.getElementById('upload-zone');
   zone.classList.add('has-file');
-  document.getElementById('upload-label').textContent = '📄 ' + f.name + '  (' + (f.size/1024/1024).toFixed(1) + ' MB)';
+  const sizeMB = f.size > 0 ? (f.size/1024/1024).toFixed(1) + ' MB' : '(大小待读取)';
+  document.getElementById('upload-label').textContent = '📄 ' + f.name + '  (' + sizeMB + ')';
 }
 
 function handleDrop(e) {
@@ -7471,6 +7472,7 @@ async function generate() {
   const wrap = document.getElementById('progress-wrap');
   btn.disabled = true;
   wrap.style.display = '';
+  wrap.scrollIntoView({behavior:'smooth', block:'center'});
   setProgress(3, '准备上传...');
 
   const form = new FormData();
@@ -8116,7 +8118,8 @@ async def download_pdf_video(job_id: str, request: Request):
     if not data:
         raise HTTPException(status_code=410, detail="Already downloaded")
     filename = job.get("filename", "digest-video.mp4")
-    return StreamingResponse(
+    from fastapi.responses import StreamingResponse as _SR
+    return _SR(
         io.BytesIO(data),
         media_type="video/mp4",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
