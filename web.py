@@ -7194,6 +7194,459 @@ async def _get_digest_user_tier(request: Request) -> str:
     return sub.get("tier", "free") if sub.get("status") == "active" else "free"
 
 
+# ── Video Studio ──────────────────────────────────────────────────────────────
+
+_STUDIO_HTML = """<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Video Studio — Daily X Digest</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#080d18;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;min-height:100vh}
+a{color:#a78bfa;text-decoration:none}
+.topbar{background:#0f172a;border-bottom:1px solid #1e293b;padding:.75rem 1.5rem;display:flex;align-items:center;gap:1rem}
+.topbar h1{font-size:1.1rem;font-weight:700;color:#f1f5f9}
+.topbar .sub{font-size:.8rem;color:#64748b}
+.back-btn{padding:.3rem .8rem;border-radius:6px;background:#1e293b;color:#94a3b8;font-size:.8rem;border:1px solid #334155;cursor:pointer;text-decoration:none}
+.container{max-width:900px;margin:2rem auto;padding:0 1.5rem 4rem}
+.step{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:1.5rem;margin-bottom:1.5rem}
+.step-label{display:flex;align-items:center;gap:.6rem;margin-bottom:1rem}
+.step-num{width:28px;height:28px;border-radius:50%;background:#4f46e5;color:#fff;font-size:.8rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step-title{font-size:1rem;font-weight:600;color:#f1f5f9}
+.step-hint{font-size:.78rem;color:#64748b;margin-top:.2rem}
+textarea{width:100%;background:#0a0f1a;border:1px solid #1e3a5f;border-radius:8px;color:#e2e8f0;font-size:.9rem;padding:.9rem;resize:vertical;line-height:1.7;min-height:180px;outline:none;transition:border .2s}
+textarea:focus{border-color:#4f46e5}
+textarea::placeholder{color:#334155}
+.tweet-input-row{display:flex;gap:.6rem;margin-bottom:.8rem}
+.tweet-input-row input{flex:1;background:#0a0f1a;border:1px solid #1e3a5f;border-radius:8px;color:#e2e8f0;font-size:.85rem;padding:.6rem .9rem;outline:none;transition:border .2s}
+.tweet-input-row input:focus{border-color:#4f46e5}
+.tweet-input-row input::placeholder{color:#334155}
+.add-btn{padding:.6rem 1.1rem;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;font-size:.82rem;cursor:pointer;white-space:nowrap;transition:background .15s}
+.add-btn:hover{background:#263450;color:#e2e8f0}
+#tweet-list{display:flex;flex-direction:column;gap:.6rem}
+.tweet-card-preview{background:#0a0f1a;border:1px solid #1e3a5f;border-radius:10px;padding:.9rem 1rem;display:flex;align-items:flex-start;gap:.75rem;position:relative}
+.tweet-card-preview .avatar{width:36px;height:36px;border-radius:50%;background:#1e3a5f;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.95rem;color:#7dd3fc;flex-shrink:0}
+.tweet-card-preview .info{flex:1;min-width:0}
+.tweet-card-preview .info .name{font-weight:600;font-size:.88rem;color:#f1f5f9}
+.tweet-card-preview .info .handle{font-size:.78rem;color:#64748b;margin-bottom:.3rem}
+.tweet-card-preview .info .text{font-size:.85rem;color:#cbd5e1;line-height:1.5;word-break:break-word}
+.tweet-card-preview .info .stats{font-size:.75rem;color:#475569;margin-top:.4rem}
+.tweet-card-preview .remove-btn{position:absolute;top:.6rem;right:.6rem;background:none;border:none;color:#475569;cursor:pointer;font-size:1rem;padding:.1rem .3rem;border-radius:4px;transition:color .15s}
+.tweet-card-preview .remove-btn:hover{color:#f87171}
+.tweet-card-preview.loading{opacity:.6}
+.tweet-card-preview.error{border-color:#7f1d1d;background:#1c0a0a}
+.tweet-card-preview.error .text{color:#f87171}
+.upload-zone{border:2px dashed #1e3a5f;border-radius:10px;padding:2rem;text-align:center;cursor:pointer;transition:border .2s,background .2s;position:relative}
+.upload-zone:hover,.upload-zone.drag-over{border-color:#4f46e5;background:rgba(79,70,229,.05)}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.upload-zone .icon{font-size:2.2rem;margin-bottom:.5rem}
+.upload-zone .label{color:#94a3b8;font-size:.9rem}
+.upload-zone .sub-label{color:#475569;font-size:.78rem;margin-top:.3rem}
+.upload-zone.has-file{border-color:#059669;background:rgba(5,150,105,.07)}
+.upload-zone.has-file .label{color:#34d399}
+.settings-row{display:flex;gap:1rem;flex-wrap:wrap}
+.setting-group{flex:1;min-width:140px}
+.setting-group label{font-size:.8rem;color:#64748b;display:block;margin-bottom:.4rem}
+.setting-group select{width:100%;padding:.5rem .8rem;background:#0a0f1a;border:1px solid #1e3a5f;border-radius:8px;color:#e2e8f0;font-size:.85rem;outline:none}
+.generate-btn{width:100%;padding:1rem;background:linear-gradient(135deg,#4f46e5,#7c3aed);border:none;border-radius:10px;color:#fff;font-size:1rem;font-weight:700;cursor:pointer;letter-spacing:.02em;transition:opacity .2s;margin-top:.5rem}
+.generate-btn:hover{opacity:.9}
+.generate-btn:disabled{opacity:.5;cursor:not-allowed}
+.progress-wrap{display:none;margin-top:1rem}
+.progress-bar-bg{background:#1e293b;border-radius:99px;height:8px;overflow:hidden;margin-bottom:.6rem}
+.progress-bar-fill{height:100%;background:linear-gradient(90deg,#4f46e5,#7c3aed);width:0%;transition:width .4s}
+.progress-msg{font-size:.82rem;color:#94a3b8;text-align:center}
+.char-count{font-size:.75rem;color:#475569;text-align:right;margin-top:.3rem}
+.tip{font-size:.78rem;color:#475569;margin-top:.5rem;padding:.5rem .75rem;background:#0a0f1a;border-radius:6px;border-left:2px solid #1e3a5f}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="/" class="back-btn">← 返回主页</a>
+  <h1>🎬 Video Studio</h1>
+  <span class="sub">上传PDF幻灯片 + 添加真实推文 + 写下你的洞察 → 生成MP4</span>
+</div>
+
+<div class="container">
+
+  <!-- Step 1: Insight text -->
+  <div class="step">
+    <div class="step-label">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">写下你的核心洞察文案</div>
+        <div class="step-hint">这段文字将作为视频字幕滚动显示，也决定哪些推文与哪一页幻灯片对应。</div>
+      </div>
+    </div>
+    <textarea id="insight-text" placeholder="例：今日市场的核心叙事是基础设施的可持续性转型——绿色比特币、Physical AI、开源大模型三条赛道同步共振，指向同一结构性信号……&#10;&#10;（建议按段落分隔，每段对应一页PDF幻灯片）" oninput="updateCharCount()"></textarea>
+    <div class="char-count" id="char-count">0 字</div>
+    <div class="tip">💡 按 <strong>段落</strong>（空行分隔）组织内容，每段会自动对应一张PDF幻灯片，并匹配最相关的推文。</div>
+  </div>
+
+  <!-- Step 2: Tweet links -->
+  <div class="step">
+    <div class="step-label">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">添加你要引用的推文链接</div>
+        <div class="step-hint">粘贴真实 X (Twitter) 链接，系统自动拉取内容。最多10条。</div>
+      </div>
+    </div>
+    <div class="tweet-input-row">
+      <input type="url" id="tweet-url-input" placeholder="https://x.com/username/status/1234567890" onkeydown="if(event.key==='Enter')addTweet()">
+      <button class="add-btn" onclick="addTweet()">＋ 添加</button>
+    </div>
+    <div id="tweet-list"></div>
+    <div class="tip" id="tweet-count-tip" style="display:none">已添加 <span id="tweet-count">0</span> 条推文</div>
+  </div>
+
+  <!-- Step 3: PDF upload -->
+  <div class="step">
+    <div class="step-label">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">上传 PDF 幻灯片</div>
+        <div class="step-hint">推荐用 NotebookLM 生成，或任意 16:9 幻灯片导出的 PDF。</div>
+      </div>
+    </div>
+    <div class="upload-zone" id="upload-zone" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleDrop(event)">
+      <input type="file" id="pdf-input" accept=".pdf,application/pdf" onchange="handleFileSelect(this)">
+      <div class="icon">📄</div>
+      <div class="label" id="upload-label">点击或拖放 PDF 文件</div>
+      <div class="sub-label">最大 50MB · 建议 16:9 横向幻灯片</div>
+    </div>
+  </div>
+
+  <!-- Step 4: Settings -->
+  <div class="step">
+    <div class="step-label">
+      <div class="step-num">4</div>
+      <div>
+        <div class="step-title">设置</div>
+        <div class="step-hint">选择语言和音频模式。</div>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="setting-group">
+        <label>语言</label>
+        <select id="lang-select">
+          <option value="zh">🇨🇳 中文</option>
+          <option value="en">🇺🇸 English</option>
+        </select>
+      </div>
+      <div class="setting-group">
+        <label>音频</label>
+        <select id="audio-select">
+          <option value="tts">🎙️ 自动 TTS 配音（推荐）</option>
+          <option value="none">🔇 无音频（静音）</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generate -->
+  <button class="generate-btn" id="gen-btn" onclick="generate()">🎬 生成 MP4 视频</button>
+  <div class="progress-wrap" id="progress-wrap">
+    <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
+    <div class="progress-msg" id="progress-msg">准备中...</div>
+  </div>
+
+</div>
+
+<script>
+const resolvedTweets = [];   // {url, id, text, username, author_name, likes, retweets}
+
+function updateCharCount() {
+  const n = document.getElementById('insight-text').value.length;
+  document.getElementById('char-count').textContent = n + ' 字';
+}
+
+function extractTweetId(url) {
+  const m = url.match(/status\/(\d+)/);
+  return m ? m[1] : null;
+}
+
+async function addTweet() {
+  const input = document.getElementById('tweet-url-input');
+  const url = input.value.trim();
+  if (!url) return;
+  const id = extractTweetId(url);
+  if (!id) { alert('无法识别推文链接，请确认格式为 https://x.com/.../status/123...'); return; }
+  if (resolvedTweets.find(t => t.id === id)) { input.value = ''; return; }
+  if (resolvedTweets.length >= 10) { alert('最多添加10条推文'); return; }
+
+  input.value = '';
+  // Add loading placeholder
+  const cardId = 'tc-' + id;
+  const list = document.getElementById('tweet-list');
+  const placeholder = document.createElement('div');
+  placeholder.className = 'tweet-card-preview loading';
+  placeholder.id = cardId;
+  placeholder.innerHTML = '<div style="color:#64748b;font-size:.85rem">⏳ 正在获取推文内容...</div>';
+  list.appendChild(placeholder);
+
+  try {
+    const r = await fetch('/api/studio/resolve-tweet', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url})
+    });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || '获取失败');
+    resolvedTweets.push(d);
+    renderTweetCard(placeholder, d);
+    updateTweetCount();
+  } catch(e) {
+    placeholder.classList.remove('loading');
+    placeholder.classList.add('error');
+    placeholder.innerHTML = `<div class="info"><div class="text">❌ 获取失败: ${e.message}</div><div class="stats">${url}</div></div><button class="remove-btn" onclick="removeTweet('${id}',this.parentElement)">✕</button>`;
+    // Store error placeholder so user can remove it
+    resolvedTweets.push({id, url, error: true});
+    updateTweetCount();
+  }
+}
+
+function renderTweetCard(el, d) {
+  el.classList.remove('loading');
+  const initial = (d.author_name || d.username || '?')[0].toUpperCase();
+  el.innerHTML = `
+    <div class="avatar">${initial}</div>
+    <div class="info">
+      <div class="name">${esc(d.author_name || d.username)}</div>
+      <div class="handle">@${esc(d.username)}</div>
+      <div class="text">${esc((d.text||'').slice(0,200))}</div>
+      <div class="stats">♥ ${(d.likes||0).toLocaleString()}  🔁 ${(d.retweets||0).toLocaleString()}</div>
+    </div>
+    <button class="remove-btn" onclick="removeTweet('${esc(d.id)}',this.parentElement)" title="删除">✕</button>`;
+}
+
+function removeTweet(id, el) {
+  const idx = resolvedTweets.findIndex(t => t.id === id);
+  if (idx >= 0) resolvedTweets.splice(idx, 1);
+  el.remove();
+  updateTweetCount();
+}
+
+function updateTweetCount() {
+  const n = resolvedTweets.filter(t => !t.error).length;
+  document.getElementById('tweet-count').textContent = n;
+  document.getElementById('tweet-count-tip').style.display = n > 0 ? '' : 'none';
+}
+
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function handleFileSelect(input) {
+  const f = input.files[0];
+  if (!f) return;
+  const zone = document.getElementById('upload-zone');
+  zone.classList.add('has-file');
+  document.getElementById('upload-label').textContent = '📄 ' + f.name + '  (' + (f.size/1024/1024).toFixed(1) + ' MB)';
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (!f || !f.name.toLowerCase().endsWith('.pdf')) { alert('请上传 PDF 文件'); return; }
+  const dt = new DataTransfer();
+  dt.items.add(f);
+  document.getElementById('pdf-input').files = dt.files;
+  handleFileSelect(document.getElementById('pdf-input'));
+}
+
+async function generate() {
+  const text = document.getElementById('insight-text').value.trim();
+  const pdfInput = document.getElementById('pdf-input');
+  const lang = document.getElementById('lang-select').value;
+  const audioMode = document.getElementById('audio-select').value;
+  const validTweets = resolvedTweets.filter(t => !t.error);
+
+  if (!text) { alert('请填写核心洞察文案（第1步）'); return; }
+  if (!pdfInput.files || !pdfInput.files[0]) { alert('请上传 PDF 文件（第3步）'); return; }
+
+  const btn = document.getElementById('gen-btn');
+  const wrap = document.getElementById('progress-wrap');
+  btn.disabled = true;
+  wrap.style.display = '';
+  setProgress(3, '准备上传...');
+
+  const form = new FormData();
+  form.append('pdf', pdfInput.files[0]);
+  form.append('insight_text', text);
+  form.append('tweets_json', JSON.stringify(validTweets));
+  form.append('lang', lang);
+  form.append('audio_mode', audioMode);
+
+  let jobId;
+  try {
+    setProgress(8, '上传中...');
+    const r = await fetch('/api/studio/generate', {method:'POST', body: form});
+    if (!r.ok) {
+      const e = await r.json().catch(()=>({}));
+      throw new Error(e.detail || '提交失败');
+    }
+    const d = await r.json();
+    jobId = d.job_id;
+  } catch(e) {
+    setProgress(0, '❌ ' + e.message);
+    btn.disabled = false;
+    return;
+  }
+
+  // Poll
+  const poll = setInterval(async () => {
+    try {
+      const r = await fetch('/api/digest/pdf-video/status/' + jobId);
+      const d = await r.json();
+      setProgress(d.progress || 0, d.message || '');
+      if (d.status === 'done') {
+        clearInterval(poll);
+        setProgress(100, '✅ 完成！(' + Math.round((d.size||0)/1024) + ' KB) — 正在下载...');
+        window.location.href = '/api/digest/pdf-video/download/' + jobId;
+        setTimeout(() => { btn.disabled = false; }, 3000);
+      } else if (d.status === 'error') {
+        clearInterval(poll);
+        setProgress(0, '❌ ' + (d.message || '生成失败，请重试'));
+        btn.disabled = false;
+      }
+    } catch(e) {}
+  }, 2500);
+}
+
+function setProgress(pct, msg) {
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-msg').textContent = msg;
+}
+</script>
+</body>
+</html>"""
+
+
+@app.get("/studio", response_class=HTMLResponse)
+async def studio_page(request: Request):
+    user = await _auth_module.get_current_user(request)
+    if not user:
+        return HTMLResponse('<meta http-equiv="refresh" content="0;url=/login">', status_code=302)
+    return HTMLResponse(_STUDIO_HTML)
+
+
+@app.post("/api/studio/resolve-tweet")
+async def studio_resolve_tweet(request: Request):
+    """Resolve a tweet URL → tweet data via twitterapi.io."""
+    user = await _auth_module.get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    body = await request.json()
+    url = (body.get("url") or "").strip()
+    import re as _re2
+    m = _re2.search(r"/status/(\d+)", url)
+    if not m:
+        raise HTTPException(status_code=400, detail="无法从链接中提取推文ID")
+    tweet_id = m.group(1)
+    try:
+        from api.twitterapi import fetch_tweet_by_id
+        raw = await fetch_tweet_by_id(tweet_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"API error: {e}")
+    if not raw:
+        raise HTTPException(status_code=404, detail="推文不存在或无法访问")
+    # Normalise field names
+    author = raw.get("author") or {}
+    return JSONResponse({
+        "id": tweet_id,
+        "url": url,
+        "text": raw.get("text") or raw.get("full_text") or "",
+        "username": author.get("userName") or author.get("username") or raw.get("username") or "",
+        "author_name": author.get("name") or author.get("displayName") or "",
+        "likes": raw.get("likeCount") or raw.get("like_count") or 0,
+        "retweets": raw.get("retweetCount") or raw.get("retweet_count") or 0,
+    })
+
+
+@app.post("/api/studio/generate")
+async def studio_generate(request: Request):
+    """Start a PDF video job from studio form submission."""
+    user = await _auth_module.get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+
+    form = await request.form()
+    pdf_file = form.get("pdf")
+    insight_text = (form.get("insight_text") or "").strip()
+    tweets_json = form.get("tweets_json") or "[]"
+    lang = form.get("lang") or "zh"
+    audio_mode = form.get("audio_mode") or "tts"
+
+    if not pdf_file or not hasattr(pdf_file, "read"):
+        raise HTTPException(status_code=400, detail="Missing pdf file")
+    pdf_bytes = await pdf_file.read()
+    if len(pdf_bytes) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="PDF too large (max 50MB)")
+
+    import json as _json
+    try:
+        tweets = _json.loads(tweets_json)
+    except Exception:
+        tweets = []
+
+    job_id = _uuid.uuid4().hex[:10]
+    _pdf_video_jobs[job_id] = {"status": "pending", "progress": 0, "message": "排队中..."}
+
+    async def _run():
+        from ai.video_generator import generate_video_from_pdf
+        from services.tts_service import synthesize
+        job = _pdf_video_jobs[job_id]
+
+        async def _cb(pct, msg):
+            job["progress"] = pct
+            job["message"] = msg
+
+        try:
+            job.update({"status": "running"})
+            audio_path = None
+
+            # TTS: generate audio from insight text
+            if audio_mode == "tts" and insight_text:
+                await _cb(5, "生成 TTS 音频...")
+                import tempfile as _tf
+                tmp_audio = _tf.NamedTemporaryFile(suffix=".mp3", delete=False)
+                tmp_audio.close()
+                ok = await synthesize(insight_text, tmp_audio.name, lang=lang)
+                if ok and os.path.exists(tmp_audio.name):
+                    audio_path = tmp_audio.name
+                else:
+                    logger.warning("studio: TTS failed, proceeding without audio")
+
+            data = await generate_video_from_pdf(
+                pdf_bytes, audio_path,
+                insight_text=insight_text,
+                tweets=tweets,
+                on_progress=_cb,
+            )
+
+            if audio_path and os.path.exists(audio_path):
+                os.unlink(audio_path)
+
+            if data:
+                job.update({"status": "done", "progress": 100,
+                            "message": "完成！", "data": data,
+                            "size": len(data),
+                            "filename": f"studio-video-{lang}.mp4"})
+            else:
+                job.update({"status": "error", "message": "视频生成失败，请重试"})
+        except Exception as e:
+            logger.error(f"studio job {job_id}: {e}")
+            job.update({"status": "error", "message": str(e)[:120]})
+        await asyncio.sleep(600)
+        _pdf_video_jobs.pop(job_id, None)
+
+    asyncio.create_task(_run())
+    return JSONResponse({"job_id": job_id})
+
+
 @app.get("/digest", response_class=HTMLResponse)
 async def digest_latest(request: Request):
     dates = await _fetch_digest_dates(30)
