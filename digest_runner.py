@@ -171,8 +171,17 @@ async def _save_digest(
     logger.info(f"Digest saved for {date}")
 
 
+_digest_lock = asyncio.Lock()
+
 async def run_daily_digest() -> None:
-    """每日播报主函数，由调度器在 UTC 0:00 调用。"""
+    """每日播报主函数，由调度器在 UTC 0:00 调用。加锁防止重复执行。"""
+    if _digest_lock.locked():
+        logger.warning("Daily digest already running, skipping duplicate")
+        return
+    async with _digest_lock:
+        await _run_daily_digest_impl()
+
+async def _run_daily_digest_impl() -> None:
     date = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime("%Y-%m-%d")
     logger.info(f"=== Daily Digest starting for {date} ===")
 
