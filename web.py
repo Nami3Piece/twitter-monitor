@@ -4491,7 +4491,7 @@ async function runAiAnalysis() {{
     const data = await r.json();
     box.className = 'ai-box';
     if (data.ok) {{
-      box.innerHTML = data.analysis.replace(/\n/g, '<br>');
+      box.innerHTML = data.analysis.replace(/\\n/g, '<br>');
     }} else {{
       box.className = 'ai-box ai-draft-error';
       box.textContent = '分析失败：' + (data.error||'未知错误');
