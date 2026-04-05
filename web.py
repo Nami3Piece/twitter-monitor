@@ -4705,13 +4705,21 @@ async def api_manage_keywords(req: KeywordRequest, _: None = Depends(_auth)) -> 
     with open(env_path, "w", encoding="utf-8") as f:
         f.writelines(new_lines)
 
-    # Restart service to reload config.PROJECTS from updated .env
-    try:
-        subprocess.run(["supervisorctl", "restart", "twitter-monitor-main", "twitter-monitor-web"], check=False)
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": f"重启服务失败: {str(e)}"})
+    # Hot-reload config.PROJECTS in-memory (no service restart needed)
+    from config import PROJECTS
+    env_key = f"{req.project}_KEYWORDS"
+    updated_kws = [k.strip() for k in os.environ.get(env_key, "").split(",") if k.strip()]
+    # Re-read from the .env we just wrote
+    for line in new_lines:
+        if line.startswith(f"{env_key}="):
+            val = line.split("=", 1)[1].strip()
+            updated_kws = [k.strip() for k in val.split(",") if k.strip()]
+            break
+    os.environ[env_key] = ",".join(updated_kws)
+    PROJECTS[req.project] = updated_kws
+    logger.info(f"Keywords hot-reloaded: {req.project} = {updated_kws}")
 
-    return JSONResponse({"ok": True, "message": "Keyword已更新，服务正在重启"})
+    return JSONResponse({"ok": True, "message": "Keyword已更新（即时生效）"})
 
 
 class SuggestRequest(BaseModel):
