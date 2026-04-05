@@ -33,5 +33,16 @@ for _key, _value in os.environ.items():
 if not PROJECTS:
     raise ValueError("No project keywords found. Set at least one {NAME}_KEYWORDS in .env")
 
+# Guard: warn if expected projects are missing (Issue #53)
+_EXPECTED_PROJECTS = {"ARKREEN", "GREENBTC", "TLAY", "AI_RENAISSANCE"}
+_missing = _EXPECTED_PROJECTS - set(PROJECTS.keys())
+if _missing:
+    import warnings
+    warnings.warn(
+        f"Expected projects missing from .env: {_missing}. "
+        f"Check that {', '.join(f'{p}_KEYWORDS' for p in sorted(_missing))} are set.",
+        stacklevel=1,
+    )
+
 # Auto-follow threshold: votes needed before an account is auto-followed
 AUTO_FOLLOW_THRESHOLD: int = int(os.getenv("AUTO_FOLLOW_THRESHOLD", "3"))
